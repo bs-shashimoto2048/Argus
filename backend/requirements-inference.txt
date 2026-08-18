@@ -1,0 +1,23 @@
+# 実推論エンジン用のオプション依存関係。
+#
+# requirements.txt（camera-onlyのMonitor監視だけなら不要）とは別に、
+# YOLO / EasyOCR / Tesseractによる実推論を使う場合のみ追加でインストールする。
+#
+#   py -m pip install -r requirements.txt
+#   py -m pip install -r requirements-inference.txt
+#
+# torchはCPU版がデフォルトで入る。GPU(CUDA)で動かす場合は、上記のあとで
+# 環境のCUDAドライババージョンに合ったインデックスから明示的に入れ直すこと。
+# 例（NVIDIA Driverが CUDA 12.1系ランタイムに対応している場合）:
+#
+#   py -m pip install torch --index-url https://download.pytorch.org/whl/cu121
+#
+# 対応バージョンは https://pytorch.org/get-started/locally/ を参照。
+ultralytics>=8.3
+easyocr>=1.7
+pytesseract>=0.3.13
+
+# Tesseract本体（tesseract.exe）はPythonパッケージとは別に、
+# Windows native executableのインストールが必要（Pythonパッケージだけでは動作しない）。
+# 未導入でもArgusは起動でき、Tesseractエンジンのみ TESSERACT_NOT_INSTALLED を返す。
+# https://github.com/UB-Mannheim/tesseract/wiki からインストーラを取得する。

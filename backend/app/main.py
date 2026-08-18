@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -5,11 +6,13 @@ from .core.config import settings
 from .core.database import Base, SessionLocal, engine
 from sqlalchemy import text
 from .models import Monitor
-from .routers import cameras, health, monitors, preprocess, roi, sources, streams
+from .routers import cameras, health, monitors, preprocess, roi, sources, streams, system
 from runtime.runtime_manager import runtime_manager
 from runtime.video_reader import ReaderConfig
 from .services.secret_store import decrypt
 from .services.result_store import save_result
+
+logger = logging.getLogger("argus.startup")
 
 def _set_result(monitor_id: int, result) -> None:
     save_result(monitor_id, result)
@@ -47,9 +50,13 @@ async def lifespan(_app: FastAPI):
     try:
         for monitor in db.query(Monitor).all():
             if monitor.enabled and monitor.source:
-                inference = monitor.inference
-                inference_settings = {"method": inference.method, "engine": inference.engine, "model_id": inference.model_id, "device": inference.device, "video_fps": inference.video_fps, "inference_fps": inference.inference_fps, "confidence": inference.confidence, "iou": inference.iou, "image_size": inference.image_size, "preprocessing": inference.preprocessing, "roi": inference.roi, "engine_options": inference.engine_options} if inference else None
-                runtime_manager.start_monitor(monitor.id, ReaderConfig(source_type=monitor.source.source_type, device_id=monitor.source.device_id, url=monitor.source.url, username=monitor.source.username, password=decrypt(monitor.source.encrypted_password), video_fps=monitor.inference.video_fps if monitor.inference else 15.0, inference_settings=inference_settings))
+                try:
+                    inference = monitor.inference
+                    inference_settings = {"method": inference.method, "engine": inference.engine, "model_id": inference.model_id, "device": inference.device, "video_fps": inference.video_fps, "inference_fps": inference.inference_fps, "confidence": inference.confidence, "iou": inference.iou, "image_size": inference.image_size, "preprocessing": inference.preprocessing, "roi": inference.roi, "engine_options": inference.engine_options} if inference else None
+                    runtime_manager.start_monitor(monitor.id, ReaderConfig(source_type=monitor.source.source_type, device_id=monitor.source.device_id, url=monitor.source.url, username=monitor.source.username, password=decrypt(monitor.source.encrypted_password), video_fps=monitor.inference.video_fps if monitor.inference else 15.0, inference_settings=inference_settings))
+                except Exception:
+                    # 1台のRuntime起動失敗が他Monitor・アプリ全体の起動を止めないようにする。
+                    logger.exception("monitor %s のRuntime起動に失敗しました。このMonitorは停止状態のまま起動を継続します。", monitor.id)
     finally:
         db.close()
     yield
@@ -64,3 +71,4 @@ app.include_router(sources.router)
 app.include_router(streams.router)
 app.include_router(preprocess.router)
 app.include_router(roi.router)
+app.include_router(system.router)
