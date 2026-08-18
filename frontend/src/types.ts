@@ -4,3 +4,11 @@ export type Inference = {method:"object_detection"|"ocr";engine:"ultralytics"|"e
 export type Roi = {x:number;y:number;width:number;height:number};
 export type Monitor = {id:number;name:string;display_name:string;location:string;enabled:boolean;status:Status;created_at:string;updated_at:string;source:Source|null;inference:Inference;current_value:string|null;previous_value:string|null;confidence:number|null;last_updated:string|null;inference_status:string;last_inference_error:string|null};
 export type History = {id:number;url:string;username:string|null;last_verified_at:string;has_password:boolean};
+export type DeviceOption = {value:string;label:string};
+export type SystemInference = {
+  torch:{available:boolean;version:string|null;cuda_available:boolean;cuda_version:string|null;device_count:number;devices:{index:number;name:string}[]};
+  ultralytics:{available:boolean;version?:string|null};
+  easyocr:{available:boolean};
+  tesseract:{python_package:boolean;executable:boolean;version?:string|null};
+  devices:DeviceOption[];
+};
