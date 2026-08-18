@@ -6,8 +6,13 @@ import { Brand } from "../components/Brand";
 import { InferenceSettings } from "../components/InferenceSettings";
 import { SourceSettings } from "../components/SourceSettings";
 import { VideoPreview } from "../components/VideoPreview";
+import { RoiEditor } from "../components/RoiEditor";
+import { PreprocessEditor } from "../components/PreprocessEditor";
 
 const labels: Record<string, string> = {
+  running: "正常",
+  reconnecting: "再接続中",
+  error: "映像取得エラー",
   stopped: "停止中",
   connecting: "接続中",
   normal: "正常",
@@ -25,6 +30,7 @@ export function MonitorDetailPage() {
   const [inference, setInference] = useState<Inference | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [editor, setEditor] = useState<"roi" | "preprocess" | null>(null);
 
   useEffect(() => {
     api.monitor(monitorId)
@@ -43,8 +49,8 @@ export function MonitorDetailPage() {
   const check = async (value: Source & { password?: string }) => {
     setMessage("接続確認中...");
     try {
-      const result = await api.check(value);
-      setMessage(`${result.success ? "●" : "×"} ${result.message}`);
+      const result = await api.testSource(monitorId, value);
+      setMessage(`${result.connected ? "●" : "×"} ${result.message}`);
     } catch (reason) {
       setMessage(String(reason));
     }
@@ -81,6 +87,7 @@ export function MonitorDetailPage() {
     <div className="detail-layout">
       <section className="monitor-column">
         <div className="panel video-panel">
+          <div className="result-values-live" aria-live="polite"><span>現在値 <strong>{monitor.current_value ?? "--"}</strong></span><span>信頼度 <strong>{monitor.confidence == null ? "--" : `${(monitor.confidence * 100).toFixed(1)}%`}</strong></span><span>前回値 <strong>{monitor.previous_value ?? "--"}</strong></span></div>
           <div className="section-title">
             <span>モニター映像</span>
             <span className={`status-text ${monitor.status}`}>● {labels[monitor.status] || monitor.status}</span>
@@ -99,13 +106,15 @@ export function MonitorDetailPage() {
         <SourceSettings source={source} onChange={setSource} onCheck={check} />
         <section className="panel future">
           <h3>前処理</h3>
-          <button className="secondary" onClick={() => setMessage("前処理編集は次フェーズで実装します")}>前処理を編集</button>
+          <button className="secondary" onClick={() => setEditor("preprocess")}>前処理を編集</button>
           <h3>ROI（関心領域）</h3>
-          <button className="secondary" onClick={() => setMessage("ROI編集は次フェーズで実装します")}>ROIを編集</button>
+          <button className="secondary" onClick={() => setEditor("roi")}>ROIを編集</button>
         </section>
         <InferenceSettings value={inference} onChange={setInference} />
         <div className="settings-actions"><button className="save-button" onClick={save}>設定を保存</button></div>
       </aside>
     </div>
+    {editor === "roi" && <RoiEditor monitorId={monitorId} initial={inference.roi} onClose={() => setEditor(null)} onSaved={(roi) => setInference({ ...inference, roi })} />}
+    {editor === "preprocess" && <PreprocessEditor monitorId={monitorId} roi={inference.roi} initial={inference.preprocessing} onClose={() => setEditor(null)} onSaved={(preprocessing) => setInference({ ...inference, preprocessing })} />}
   </main>;
 }

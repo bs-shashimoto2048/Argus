@@ -1,4 +1,3 @@
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 from ..models import UrlHistory
 from ..schemas.video_source import UrlHistoryResponse

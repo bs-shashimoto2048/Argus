@@ -11,6 +11,10 @@ class LatestResult(Base):
     previous_value: Mapped[str | None] = mapped_column(String(128), nullable=True)
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     timestamp: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="disabled")
+    engine: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    processing_time_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
+    last_error: Mapped[str | None] = mapped_column(String(128), nullable=True)
     monitor = relationship("Monitor", back_populates="latest_result")
 
 class InferenceResult(Base):
@@ -21,4 +25,5 @@ class InferenceResult(Base):
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     detections: Mapped[list] = mapped_column(JSON, default=list)
     processing_time_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
+    engine: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

@@ -7,6 +7,24 @@ class Roi(BaseModel):
     width: float = Field(1, gt=0, le=1)
     height: float = Field(1, gt=0, le=1)
 
+    @model_validator(mode="after")
+    def fits_frame(self):
+        if self.x + self.width > 1 or self.y + self.height > 1:
+            raise ValueError("ROI must fit within the normalized frame")
+        return self
+
+
+class PreprocessSettings(BaseModel):
+    grayscale: bool = False
+    binary: bool = False
+    threshold: int = Field(128, ge=0, le=255)
+    invert: bool = False
+    brightness: float = Field(1.0, ge=0.1, le=3.0)
+    contrast: float = Field(1.0, ge=0.1, le=3.0)
+    clahe: bool = False
+    sharpen: bool = False
+    resize: int | None = Field(default=None, ge=32, le=4096)
+
 class InferenceSettingsInput(BaseModel):
     method: Literal["object_detection", "ocr"] = "object_detection"
     engine: Literal["ultralytics", "easyocr", "tesseract"] = "ultralytics"
@@ -17,7 +35,7 @@ class InferenceSettingsInput(BaseModel):
     confidence: float = Field(0.25, ge=0, le=1)
     iou: float = Field(0.7, ge=0, le=1)
     image_size: int = Field(640, gt=0, le=4096)
-    preprocessing: dict = Field(default_factory=dict)
+    preprocessing: PreprocessSettings = Field(default_factory=PreprocessSettings)
     roi: Roi = Field(default_factory=Roi)
     engine_options: dict = Field(default_factory=dict)
     @model_validator(mode="after")

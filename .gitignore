@@ -10,6 +10,7 @@ frontend/.vite/
 *.tsbuildinfo
 data/argus.db
 data/argus.db-*
+data/runtime/*.mp4
 .env
 .env.*
 !.env.example
