@@ -12,8 +12,10 @@ Argus/
 │  │  ├─ services/      アプリケーションサービス
 │  │  └─ main.py        FastAPIエントリポイント
 │  ├─ runtime/          映像Runtime
-│  ├─ tests/            pytestテスト
-│  └─ requirements.txt  Python依存関係
+│  ├─ tests/            pytestテスト（tests/fixtures/にOCR用数字画像生成ヘルパー）
+│  ├─ pytest.ini        pytest marker設定（unit/integration/optional_inference/hardware）
+│  ├─ requirements.txt  Python依存関係（camera-only運用の最小構成）
+│  └─ requirements-inference.txt  YOLO/EasyOCR/Tesseract用の追加依存
 ├─ frontend/
 │  ├─ public/assets/    アイコン画像
 │  ├─ src/api/          APIクライアント
@@ -24,12 +26,26 @@ Argus/
 │  ├─ src/styles.css    グローバルCSS
 │  ├─ package.json      npm scriptsと依存関係
 │  └─ vite.config.ts    Vite設定とAPI proxy
-├─ data/                SQLite DBとSQLite補助ファイル
+├─ data/
+│  ├─ argus.db          SQLite DBとSQLite補助ファイル
+│  └─ models/           YOLOモデル配置先（例: meter_digits_v1.pt）
+├─ .github/workflows/   CI（ci.yml: 通常CI／inference-smoke.yml: 手動の重い依存Smoke Test）
 ├─ scripts/             開発用PowerShell起動スクリプト
 ├─ docs/                プロジェクトドキュメント
 ├─ README.md            セットアップと制限事項
 └─ .gitignore           生成物・環境ファイルの除外
 ```
+
+## `data/models/` の配置ルール
+
+推論設定の`model_id`は、`data/models/`からの相対ファイル名で指定する（絶対パスは指定しない）。
+
+```text
+data/models/
+  meter_digits_v1.pt      # model_id: "meter_digits_v1.pt"
+```
+
+`YoloInferenceEngine`は`model_id`を`data/models/`基準で解決し、`data/models/`の外を指すパスや存在しないファイルは`MODEL_NOT_FOUND`として扱う。モデルファイルはリポジトリ内に直接コミットする（LFS等は未導入）。
 
 ## 主要ファイル
 
