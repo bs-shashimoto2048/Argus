@@ -21,6 +21,33 @@ const labels: Record<string, string> = {
   read_error: "読取不能",
 };
 
+// 推論エラーコード -> ユーザー向け日本語メッセージ。Pythonの例外や内部詳細は表示しない。
+const inferenceErrorMessages: Record<string, string> = {
+  MODEL_NOT_CONFIGURED: "モデルが設定されていません",
+  MODEL_NOT_FOUND: "指定されたモデルファイルが見つかりません",
+  DEVICE_UNAVAILABLE: "指定されたDevice（GPU/CPU）が利用できません",
+  OCR_ENGINE_UNAVAILABLE: "OCRエンジンがインストールされていません",
+  TESSERACT_NOT_INSTALLED: "Tesseractがインストールされていません",
+  NO_DETECTION: "検出結果がありません",
+  INFERENCE_FAILED: "推論処理でエラーが発生しました",
+};
+
+function inferenceErrorText(code: string, engine: string): string {
+  if (code === "OCR_ENGINE_UNAVAILABLE") {
+    return engine === "tesseract" ? "pytesseractがインストールされていません" : "EasyOCRがインストールされていません";
+  }
+  return inferenceErrorMessages[code] ?? `推論エラー: ${code}`;
+}
+
+function formatDiff(current: string | null, previous: string | null): string {
+  if (current == null || previous == null) return "--";
+  const a = Number(current);
+  const b = Number(previous);
+  if (Number.isNaN(a) || Number.isNaN(b)) return "--";
+  const diff = a - b;
+  return `${diff >= 0 ? "+" : ""}${diff}`;
+}
+
 export function MonitorDetailPage() {
   const { id } = useParams();
   const monitorId = Number(id);
@@ -40,6 +67,15 @@ export function MonitorDetailPage() {
         setInference(value.inference);
       })
       .catch((reason: Error) => setError(reason.message));
+  }, [monitorId]);
+
+  // 現在値/信頼度/推論statusを画面を開いたまま更新できるよう定期的に取得する。
+  // 編集中のsource/inferenceフォームは上書きしない（monitorのみ更新）。
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      api.monitor(monitorId).then(setMonitor).catch(() => undefined);
+    }, 5000);
+    return () => window.clearInterval(timer);
   }, [monitorId]);
 
   if (!monitor || !inference) {
@@ -94,11 +130,16 @@ export function MonitorDetailPage() {
           </div>
           {monitor.source ? <VideoPreview monitorId={monitor.id} large /> : <div className="no-video large">映像ソースを設定してください</div>}
         </div>
+        {monitor.source && <div className="panel video-panel">
+          <div className="section-title"><span>推論オーバーレイ</span></div>
+          <VideoPreview monitorId={monitor.id} overlay />
+        </div>}
+        {monitor.last_inference_error && <div className="alert error">{inferenceErrorText(monitor.last_inference_error, monitor.inference.engine)}</div>}
         <div className="result-panel reading-summary">
-          <div><small>現在値</small><strong>--</strong></div>
-          <div><small>信頼度</small><strong>--</strong></div>
-          <div><small>前回値</small><strong>--</strong></div>
-          <div><small>差分</small><strong>--</strong></div>
+          <div><small>現在値</small><strong>{monitor.current_value ?? "--"}</strong></div>
+          <div><small>信頼度</small><strong>{monitor.confidence == null ? "--" : `${(monitor.confidence * 100).toFixed(1)}%`}</strong></div>
+          <div><small>前回値</small><strong>{monitor.previous_value ?? "--"}</strong></div>
+          <div><small>差分</small><strong>{formatDiff(monitor.current_value, monitor.previous_value)}</strong></div>
         </div>
       </section>
 

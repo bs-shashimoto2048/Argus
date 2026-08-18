@@ -30,8 +30,8 @@ def save_result(monitor_id: int, result: PipelineResult) -> None:
         latest.processing_time_ms = result.processing_time_ms
         latest.timestamp = datetime.utcnow()
         monitor = db.get(Monitor, monitor_id)
-        if monitor and not result.error:
-            monitor.status = "normal" if result.value is not None else "warning"
+        if monitor:
+            monitor.status = "read_error" if result.error else ("normal" if result.value is not None else "warning")
         last_history = db.scalar(select(InferenceResult).where(InferenceResult.monitor_id == monitor_id).order_by(InferenceResult.created_at.desc()))
         should_record = result.error is not None or last_history is None or last_history.value != result.value or last_history.created_at < datetime.utcnow() - timedelta(seconds=60)
         if should_record:

@@ -3,6 +3,7 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
+from ..inference.device import resolve_device
 from ..models import InferenceSettings, LatestResult, Monitor, UrlHistory, VideoSource
 from ..schemas.video_source import VideoSourceInput
 from .secret_store import decrypt, encrypt
@@ -27,7 +28,12 @@ def _to_response(monitor: Monitor):
     return MonitorResponse(id=monitor.id, name=monitor.name, display_name=monitor.display_name, location=monitor.location, enabled=monitor.enabled, status=monitor.status, created_at=monitor.created_at, updated_at=monitor.updated_at, source=source, inference=monitor.inference, current_value=monitor.latest_result.value if monitor.latest_result else None, previous_value=monitor.latest_result.previous_value if monitor.latest_result else None, confidence=monitor.latest_result.confidence if monitor.latest_result else None, last_updated=monitor.latest_result.timestamp if monitor.latest_result else None, inference_status=monitor.latest_result.status if monitor.latest_result else "disabled", last_inference_error=monitor.latest_result.last_error if monitor.latest_result else None)
 
 
-def _restart_runtime(monitor: Monitor, db: Session) -> None:
+def restart_runtime(monitor: Monitor, db: Session) -> None:
+    """稼働中Monitorの映像/推論Runtimeを最新設定で再構成する。
+
+    PATCH /api/monitors/{id} だけでなく、ROI PUTなど設定を部分更新する
+    他のRouterからも呼び出せるよう公開関数にしている。
+    """
     if monitor.enabled and monitor.source:
         password = decrypt(monitor.source.encrypted_password)
         fps = monitor.inference.video_fps if monitor.inference else 15.0
@@ -84,6 +90,11 @@ def update_monitor(db: Session, monitor_id: int, req):
             if history and history.encrypted_password:
                 monitor.source.encrypted_password = history.encrypted_password
     if inference_data is not None:
+        if "device" in inference_data:
+            try:
+                resolve_device(inference_data["device"])
+            except ValueError as exc:
+                raise ValueError(f"DEVICE_UNAVAILABLE: {exc}") from exc
         for key, value in inference_data.items():
             if key in {"roi", "preprocessing"} and hasattr(value, "model_dump"):
                 value = value.model_dump()
@@ -91,7 +102,7 @@ def update_monitor(db: Session, monitor_id: int, req):
     monitor.updated_at = datetime.utcnow()
     db.commit()
     monitor = get_monitor(db, monitor_id)
-    _restart_runtime(monitor, db)
+    restart_runtime(monitor, db)
     return _to_response(monitor)
 
 

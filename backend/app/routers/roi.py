@@ -25,4 +25,8 @@ def update_roi(monitor_id: int, roi: Roi, db: Session = Depends(get_db)):
         raise HTTPException(404, str(exc)) from exc
     monitor.inference.roi = roi.model_dump()
     db.commit()
+    # DB保存だけでは稼働中InferenceSchedulerの設定dictへ反映されないため、
+    # PATCH /api/monitors/{id} と同じRuntime再構成経路を通す。
+    monitor = monitor_service.get_monitor(db, monitor_id)
+    monitor_service.restart_runtime(monitor, db)
     return roi

@@ -32,6 +32,17 @@ def preview(monitor_id: int):
     return _snapshot_response(monitor_id)
 
 
+@router.get("/{monitor_id}/overlay.jpg")
+def overlay(monitor_id: int):
+    runtime = _runtime_or_404(monitor_id)
+    scheduler = runtime.inference_scheduler
+    overlay_bytes = scheduler.latest_overlay if scheduler else None
+    if overlay_bytes:
+        return Response(content=overlay_bytes, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+    # 推論未実行・overlay未生成でも映像自体は見えるよう、通常のsnapshotへフォールバックする。
+    return _snapshot_response(monitor_id)
+
+
 @router.get("/{monitor_id}/runtime")
 def runtime_diagnostics(monitor_id: int):
     return _runtime_or_404(monitor_id).diagnostics()
