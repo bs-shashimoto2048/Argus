@@ -2,6 +2,9 @@ import type { Monitor } from "../types";
 import { VideoPreview } from "./VideoPreview";
 
 const labels: Record<string, string> = {
+  running: "正常",
+  reconnecting: "再接続中",
+  error: "映像取得エラー",
   stopped: "停止中",
   connecting: "接続中",
   normal: "正常",

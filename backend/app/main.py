@@ -3,11 +3,16 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .core.config import settings
 from .core.database import Base, SessionLocal, engine
+from sqlalchemy import text
 from .models import Monitor
-from .routers import cameras, health, monitors, sources, streams
+from .routers import cameras, health, monitors, preprocess, roi, sources, streams
 from runtime.runtime_manager import runtime_manager
 from runtime.video_reader import ReaderConfig
 from .services.secret_store import decrypt
+from .services.result_store import save_result
+
+def _set_result(monitor_id: int, result) -> None:
+    save_result(monitor_id, result)
 
 def _set_status(monitor_id: int, status: str) -> None:
     db = SessionLocal()
@@ -21,12 +26,30 @@ def _set_status(monitor_id: int, status: str) -> None:
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     Base.metadata.create_all(engine)
+    if engine.url.get_backend_name() == "sqlite":
+        with engine.begin() as connection:
+            columns = connection.execute(text("PRAGMA table_info(url_histories)")).all()
+            if not any(row[1] == "encrypted_password" for row in columns):
+                connection.execute(text("ALTER TABLE url_histories ADD COLUMN encrypted_password VARCHAR(4096)"))
+            for table, column, definition in (
+                ("latest_results", "status", "VARCHAR(32) DEFAULT 'disabled'"),
+                ("latest_results", "engine", "VARCHAR(32)"),
+                ("latest_results", "processing_time_ms", "FLOAT"),
+                ("latest_results", "last_error", "VARCHAR(128)"),
+                ("inference_results", "engine", "VARCHAR(32)"),
+            ):
+                table_columns = connection.execute(text(f"PRAGMA table_info({table})")).all()
+                if not any(row[1] == column for row in table_columns):
+                    connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}"))
     runtime_manager.set_status_callback(_set_status)
+    runtime_manager.set_result_callback(_set_result)
     db = SessionLocal()
     try:
         for monitor in db.query(Monitor).all():
             if monitor.enabled and monitor.source:
-                runtime_manager.start_monitor(monitor.id, ReaderConfig(source_type=monitor.source.source_type, device_id=monitor.source.device_id, url=monitor.source.url, username=monitor.source.username, password=decrypt(monitor.source.encrypted_password)))
+                inference = monitor.inference
+                inference_settings = {"method": inference.method, "engine": inference.engine, "model_id": inference.model_id, "device": inference.device, "video_fps": inference.video_fps, "inference_fps": inference.inference_fps, "confidence": inference.confidence, "iou": inference.iou, "image_size": inference.image_size, "preprocessing": inference.preprocessing, "roi": inference.roi, "engine_options": inference.engine_options} if inference else None
+                runtime_manager.start_monitor(monitor.id, ReaderConfig(source_type=monitor.source.source_type, device_id=monitor.source.device_id, url=monitor.source.url, username=monitor.source.username, password=decrypt(monitor.source.encrypted_password), video_fps=monitor.inference.video_fps if monitor.inference else 15.0, inference_settings=inference_settings))
     finally:
         db.close()
     yield
@@ -39,3 +62,5 @@ app.include_router(cameras.router)
 app.include_router(monitors.router)
 app.include_router(sources.router)
 app.include_router(streams.router)
+app.include_router(preprocess.router)
+app.include_router(roi.router)

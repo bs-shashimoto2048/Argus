@@ -13,3 +13,9 @@ class LatestFrameBuffer:
     def get(self) -> tuple[bytes | None, float | None]:
         with self._lock:
             return self._jpeg, self._updated_at
+
+    def age(self, now: float | None = None) -> float | None:
+        with self._lock:
+            if self._updated_at is None:
+                return None
+            return max(0.0, (now if now is not None else time.time()) - self._updated_at)

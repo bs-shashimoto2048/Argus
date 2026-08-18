@@ -7,11 +7,13 @@ class RuntimeManager:
         self._lock = RLock()
         self._runtimes: dict[int, MonitorRuntime] = {}
         self._status_callback = None
+        self._result_callback = None
     def set_status_callback(self, callback) -> None: self._status_callback = callback
+    def set_result_callback(self, callback) -> None: self._result_callback = callback
     def start_monitor(self, monitor_id: int, config: ReaderConfig) -> None:
         with self._lock:
             self.stop_monitor(monitor_id)
-            runtime = MonitorRuntime(monitor_id, config, self._status_callback or (lambda *_: None))
+            runtime = MonitorRuntime(monitor_id, config, self._status_callback or (lambda *_: None), self._result_callback)
             self._runtimes[monitor_id] = runtime
             runtime.start()
     def stop_monitor(self, monitor_id: int) -> None:
@@ -21,6 +23,16 @@ class RuntimeManager:
     def restart_monitor(self, monitor_id: int, config: ReaderConfig) -> None: self.start_monitor(monitor_id, config)
     def get_runtime(self, monitor_id: int) -> MonitorRuntime | None:
         with self._lock: return self._runtimes.get(monitor_id)
+
+    # Public aliases kept close to the runtime domain API.
+    def start(self, monitor_id: int, config: ReaderConfig) -> None:
+        self.start_monitor(monitor_id, config)
+
+    def stop(self, monitor_id: int) -> None:
+        self.stop_monitor(monitor_id)
+
+    def get(self, monitor_id: int) -> MonitorRuntime | None:
+        return self.get_runtime(monitor_id)
     def stop_all(self) -> None:
         with self._lock:
             for monitor_id in list(self._runtimes): self.stop_monitor(monitor_id)

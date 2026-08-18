@@ -10,7 +10,13 @@ export const api={
  history:()=>request<{items:History[]}>('/api/url-history'),
  deleteHistory:(id:number)=>request<void>(`/api/url-history/${id}`,{method:'DELETE'}),
  check:(source:unknown)=>request<{success:boolean;message:string;detail?:string}>('/api/sources/check',{method:'POST',body:JSON.stringify(source)}),
+ testSource:(id:number,source:unknown)=>request<{connected:boolean;source_type:string;width:number|null;height:number|null;fps:number|null;error_code:string|null;message:string}>(`/api/monitors/${id}/source/test`,{method:'POST',body:JSON.stringify(source)}),
  snapshot:(id:number)=>`/api/monitors/${id}/snapshot`,
  stream:(id:number)=>`/api/monitors/${id}/stream`,
+ preview:(id:number)=>`/api/monitors/${id}/preview.jpg`,
+ mjpg:(id:number)=>`/api/monitors/${id}/stream.mjpg`,
+ roi:(id:number)=>request<import("../types").Roi>(`/api/monitors/${id}/roi`),
+ saveRoi:(id:number,value:import("../types").Roi)=>request<import("../types").Roi>(`/api/monitors/${id}/roi`,{method:'PUT',body:JSON.stringify(value)}),
+ preprocessPreview:async(id:number,payload:unknown):Promise<string>=>{const r=await fetch(`/api/monitors/${id}/preprocess/preview`,{method:'POST',headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});if(!r.ok)throw new Error((await r.json().catch(()=>({}))).detail||`HTTP ${r.status}`);return URL.createObjectURL(await r.blob())},
 };
 export type {Source,Inference};

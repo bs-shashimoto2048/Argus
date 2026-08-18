@@ -30,4 +30,6 @@ class MonitorResponse(BaseModel):
     previous_value: str | None = None
     confidence: float | None = None
     last_updated: datetime | None = None
+    inference_status: str = "disabled"
+    last_inference_error: str | None = None
     model_config = {"from_attributes": True}
