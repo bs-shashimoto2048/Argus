@@ -24,9 +24,12 @@ def sha256_of(path: Path) -> str:
     return digest.hexdigest()
 
 
-def build(version: str, source_note: str) -> None:
-    test_set_dir = ROOT / "data" / "eval" / f"meter_test_set_{version}"
-    manifest_path = Path(__file__).resolve().parent / f"meter_test_set_{version}_manifest.json"
+def build(version: str, source_note: str, dataset_dir_name: str | None = None) -> None:
+    """dataset_dir_name省略時は従来通り meter_test_set_{version} を対象にする。
+    meter_holdout_v3 のような別名Datasetの場合は dataset_dir_name を明示する。"""
+    dir_name = dataset_dir_name or f"meter_test_set_{version}"
+    test_set_dir = ROOT / "data" / "eval" / dir_name
+    manifest_path = Path(__file__).resolve().parent / f"{dir_name}_manifest.json"
     images_dir = test_set_dir / "images"
     labels_dir = test_set_dir / "labels"
     if not images_dir.is_dir():
@@ -45,7 +48,7 @@ def build(version: str, source_note: str) -> None:
         })
 
     manifest = {
-        "dataset_version": f"meter_test_set_{version}",
+        "dataset_version": dir_name,
         "source": source_note,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "image_count": len(entries),
@@ -68,6 +71,17 @@ def main() -> None:
         "yolo_pipeline_studio/projects/meter/raw/images (src_004: mechanical drum-counter gas meter, "
         "a DIFFERENT meter style/domain never included in training. SECONDARY out-of-domain evaluation only "
         "-- not used for the baseline-vs-candidate acceptance decision.)",
+    )
+    build(
+        "v3",
+        "yolo_pipeline_studio/projects/meter/raw/images src_001_v3+src_002_v3 (2026-08-19 additional live-camera "
+        "capture of the SAME two physical units already held out in meter_test_set_v2's src_001/src_002, "
+        "different session/time/lighting/framing than the original capture). NEW HOLDOUT TEST -- kept fully "
+        "separate from meter_test_set_v2 (Legacy Golden Test) and NEVER used for training. Manually verified "
+        "digit labels (v2 pseudo-label predictions were largely wrong for these two units and were NOT used "
+        "as ground truth; box geometry reused from the fixed-camera reference labels already in "
+        "meter_test_set_v2, class ids corrected by visual reading).",
+        dataset_dir_name="meter_holdout_v3",
     )
 
 

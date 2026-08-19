@@ -350,3 +350,117 @@ Candidateは精度改善だけでなく、CPU/GPUとも高速・省メモリで�
 **A: Candidate(`meter_digits_v2_candidate.pt`)をProduction Candidateとして採用し、Model Registryへ`role=candidate`で
 登録する。** Baseline(`meter_digits_v1.pt`)は`role=baseline`のまま削除せず維持し、Frontendから両方を選択可能にする。
 `role=production`への昇格は、9-10章のデータ収集・再学習を経て、より大規模なTest Setで再評価した後に判断する。
+
+---
+
+## 13. v3 Round — Expand Meter Dataset and Retrain Production Candidate Model（2026-08-19）
+
+### 13.1 前提と制約
+
+当初目標は「Domain A 5個体以上・500枚以上」だったが、実際に取得可能な実物理個体はsrc_001/src_002/src_003の
+**3個体のみ**（社内の実運用カメラを直接調査して確認）。したがって本ラウンドは、5個体到達を装わず
+**「取得可能な3個体で正直に評価する」**方針で実施した。src_001/src_002は既存`meter_test_set_v2`と同一の
+Test役割個体、src_003は`meter_argus_train_v2`と同一のTrain役割個体であり、個体の役割（train/test）はv2から
+変更していない。追加2個体・Domain B(機械式ドラムメーター、src_004)はFuture Data Collection（13.7節）とする。
+
+### 13.2 追加データ取得（実カメラ, capture-sessions機能）
+
+src_001/002/003それぞれに対し、既存`capture-sessions`機能で実カメラから追加撮影を実施（interval 3〜5分、
+video_fps=6）。credential・IP・URLはコミット・ログ・本ドキュメントに一切記録していない。
+
+| Source | 役割 | 取得枚数 | 実測内容（目視確認） |
+|---|---|---|---|
+| src_001 | Test(New Holdout) | 7枚 | **全7枚が同一reading("0023607")** — 撮影window中ガス使用なし(idle)。2種の撮影条件(明るい広角/暗くdustyな接写)を確認、うち代表2枚を採用。 |
+| src_002 | Test(New Holdout) | 7枚 | **全7枚が同一reading("0214968")** — 同じくidle。視覚的な多様性もほぼ無く、代表2枚のみ採用。 |
+| src_003 | Train | 4枚 | reading "0258150→0258153→0258155→0258158"と**全て異なる実測値**、Train拡充に有効と判断し4枚全て採用。 |
+
+制約#6/#8（機械的水増し禁止・近似フレーム大量生成回避）に従い、src_001/002はreading自体に変化が無かったため、
+枚数を無理に積み増さず「New Holdout Test」へ**4枚のみ**（src_001×2 + src_002×2）を採用した。取得できた枚数の
+多くをそのまま採用しなかった理由は、同一readingの複製がTest集計を歪める（同じ正解/不正解が重複カウントされる）
+ことを避けるためであり、精度の見かけを良くするための操作ではない。
+
+### 13.3 Annotation QA（pseudo-labelを正解として採用しない）
+
+`meter_digits_v2_candidate.pt`で新規18枚にpseudo-labelを生成した後、**Ground Truthとして自動採用せず**全数を
+目視のメーター読み取り値と突き合わせた。結果:
+
+- **src_003(Train用)の4枚**: v2予測がすべて目視GTと完全一致 → そのままラベルとして採用（境界箱・クラスとも）。
+- **src_001/002(Test用)の14枚**: v2予測は**すべて誤り**（digit数不足や誤分類）だった。固定カメラであるため、
+  既存`meter_test_set_v2`内の同一個体の正解ラベル（境界箱の位置は撮影ごとにほぼ不変）を参照し、境界箱位置は
+  流用、クラスのみ目視読み取り値へ手動で置き換えて最終ラベルを作成した。
+
+この結果自体が、v2が「未知の物理個体・条件」に対して脆弱であることを裏付けており、New Holdout Testの
+必要性を実証している。
+
+### 13.4 Dataset
+
+- **Train**: `meter_argus_train_v3`（src_003 既存163枚 + 新規4枚 = 167枚、143 train / 24 val、seed=42、
+  train/val比率はv2と同一の139:24 ≒ 0.853:0.147を踏襲）。`meter_argus_train_v2`は無変更のまま維持。
+- **Legacy Golden Test（A）**: `meter_test_set_v2`（21枚）。**完全固定・無変更**（画像・ラベル・SHA256すべて
+  Issue #7時点と一致することを確認済み）。
+- **New Holdout Test（B）**: `meter_holdout_v3`（4枚、src_001×2 + src_002×2）。Trainには一切使用していない。
+- **Combined（C）**は参考値としてのみ扱い、以下の表ではA/Bを必ず個別併記する。
+
+### 13.5 Training
+
+`meter_digits_v3_candidate_001`をv2と同一手法で学習: `yolov8n.pt`, epochs=100, batch=8, imgsz=640, device=cuda,
+seed=42, augmentation_preset=light(degrees=3, translate=0.05, scale=0.2, fliplr=0, flipud=0, mosaic=0.5)。
+内部val(24枚)でのYOLO標準指標はv2とほぼ同値（v2: precision=0.989, recall=0.993, mAP50=0.995, mAP50-95=0.936 /
+v3: precision=0.988, recall=1.000, mAP50=0.995, mAP50-95=0.938）。**同一ドメイン内val setでは両者とも
+ほぼ飽和しており、mAPだけでは差が検出できない**ことを確認した — Full Reading Exact Matchを中心指標とする
+本評価方針の妥当性を裏付ける結果である。
+
+### 13.6 v2(新Baseline) vs v3(新Candidate) 評価結果
+
+conf=0.25, iou=0.7, imgsz=640, device=cpuで統一。
+
+| 指標 | v2 × Legacy(A, n=21) | v3 × Legacy(A, n=21) | v2 × Holdout(B, n=4) | v3 × Holdout(B, n=4) |
+|---|---|---|---|---|
+| Full Reading Exact Match | 28.6% | **28.6%(無変化)** | 0.0% | **0.0%(無変化)** |
+| No Detection Rate | 4.8% | 4.8% | 0.0% | 0.0% |
+| Missing Digit Rate | 52.4% | **19.0%(改善)** | 50.0% | 50.0% |
+| Digit Detection Accuracy | 75.9% | **82.1%(改善)** | 71.4% | **82.1%(改善)** |
+| Digit Classification Accuracy | 86.4% | **81.5%(悪化)** | 75.0% | **69.6%(悪化)** |
+
+Temporal Stabilizer（repeat=3、同一値の連続観測をシミュレート）:
+
+| 指標 | v2 × Legacy(A) | v3 × Legacy(A) | v2 × Holdout(B) | v3 × Holdout(B) |
+|---|---|---|---|---|
+| False Confirmed Reading Rate | 46.4% | **100%(大幅悪化)** | 100% | 100%(無変化) |
+
+CPU/GPU latency（v3, CPU: 65.9ms warm avg / GPU RTX 4070 Laptop: 10.4ms warm avg）はv2（48.9ms / 8.18ms）と
+比べてやや遅いが、同一アーキテクチャ(yolov8n)のため誤差範囲。
+
+### 13.7 Per-digit confusionの追跡（4→7, 1→5, 0→7, 6→8）
+
+Issue #7で確認されたsrc_002個体の"1→5, 4→7"混同を個別追跡したところ、**v3でも解消していない**。むしろ
+`missing_digit`（未検出）から`wrong_value`（誤って別の数字と自信を持って判定）へ悪化した例が複数見られた
+（例: `src_002_20260818_110000.jpg` GT=0214943, v2予測=missing digit(027943), v3予測=0257943）。
+
+原因分析: 今回Trainへ追加した4枚は全てsrc_003（既存Train個体と同一物理個体）由来であり、confusionの震源で
+あるsrc_001/src_002個体自身のLCD表示特性（セグメント劣化・視認性）をTrainに反映できていない。制約#5
+（Test役割個体はTrainに使用しない）を遵守した結果、この特定confusionの根本解決には至らなかった。
+
+### 13.8 昇格判断
+
+判断基準（事前合意）: Legacy Golden Test改善 **かつ** New Holdout Test改善 **かつ** False Confirmed Reading改善
+**かつ** 重大Regressionなし、を全て満たし、かつ絶対精度が無監督運用に十分な場合のみ`role=production`へ昇格する。
+
+実績: Full Reading Exact MatchはA/Bとも**無変化**（改善なし）、Digit Classification AccuracyはA/Bとも**悪化**、
+False Confirmed Reading RateはAで**大幅悪化**（46.4%→100%）。判断基準を満たさないため、
+
+**`role=production`への昇格は見送る。** さらに、v3はv2を明確に上回ってもいないため（検出は改善、分類は悪化、
+Exact Matchは同点）、v2の`role=candidate`を無条件に置き換えることもしない。v3は`role=rejected_candidate`として
+Model Registryに記録のみ残し、`meter_digits_v2_candidate.pt`が引き続き`role=candidate`である。
+
+### 13.9 Future Data Collection（今回取得できなかった事項）
+
+- **5個体目標に対し3個体まで**: 追加2個体は未取得。実カメラ環境で新規個体が見つかり次第、Train/Test比率
+  （現状Train 1個体・Test 2個体）を崩さない形で追加することを推奨。
+- **Domain B(src_004, 機械式ドラムメーター)**: 依然未対応。専用datasetでの学習が必要。
+- **1/4/5/7の形状混同**: Test役割個体（src_001/002）自身のデータをTrainに使えない制約下では、今回の
+  「同一個体内での枚数追加」では解決不可能と判明した。次善策として (a) 4個体目以降の独立個体をTrain側に
+  追加する、(b) 1/4/5/7の書体差を狙った合成データ拡張（フォント変形・部分オクルージョン等）を検討する。
+- **New Holdout Testは4枚と小規模**: src_001/002が撮影window中ずっとidleだったため、今回の追加取得では
+  reading自体の多様性を増やせなかった。今後は複数日・複数時間帯にまたがる取得で、実際の値変化を捉える
+  必要がある。

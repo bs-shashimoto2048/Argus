@@ -219,7 +219,7 @@ ViteのFrontendポートは固定していません。5173が使用中なら5174
 
 ## 未実装・既知の制限
 
-- Argus専用数字検出モデルは"Production Candidate"（`meter_digits_v2_candidate.pt`）まで到達したが、学習139枚・Test 21枚と小規模なため"Production-ready"とは断定していない。追加データ収集後の再学習を推奨（詳細: `docs/METER_DIGIT_MODEL_EVALUATION.md`）
+- Argus専用数字検出モデルは"Production Candidate"（`meter_digits_v2_candidate.pt`、`role=candidate`）に留まっている。追加データ収集（実カメラ3個体・167枚）で`meter_digits_v3_candidate.pt`を再学習したが、Full Reading Exact Matchの改善なし・Temporal StabilizerのFalse Confirmed Reading悪化のため`role=production`への昇格は見送り、`role=rejected_candidate`として記録のみ（詳細: `docs/METER_DIGIT_MODEL_EVALUATION.md` 13章）
 - 機械式カウンター方式のメーター（Domain B）は今回のCandidate学習対象外。対応するには専用データ収集・学習が別途必要
 - 実際の物理メーター（積算ガスメーター等）を使ったConfirmed値の長時間安定性検証は未実施（この開発環境に物理メーターを継続設置できないため。既存の実メーター写真によるオフライン評価、実カメラ・実YOLOでのNO_DETECTION連続時の`no_reading`遷移は実機で確認済み）
 - Alert、グラフ・履歴分析（ConfirmedReadingのみを見る構造は用意済みだが、Alert本体・グラフ画面は未実装）
