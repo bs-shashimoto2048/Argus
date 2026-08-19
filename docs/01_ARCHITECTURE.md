@@ -28,8 +28,9 @@ flowchart LR
 - `backend/app/models/`: SQLAlchemy Entity
 - `backend/app/schemas/`: Pydantic入出力モデル
 - `backend/app/core/`: 設定、DB、SecretStoreの基盤
-- `backend/runtime/`: Monitorごとの映像Runtime、Reader、最新Frame Buffer
-- `backend/app/inference/`: 推論Engineの基底・Device・Registryのinterface
+- `backend/runtime/`: Monitorごとの映像Runtime、Reader、最新Frame Buffer、InferenceScheduler
+- `backend/app/inference/`: 推論Engine（Ultralytics/EasyOCR/Tesseract）、Device Resolver、ModelRegistry、Diagnostics
+- `backend/reading/`: Raw Reading→Confirmed Readingの時系列安定化・Validation（pure function中心）
 
 ## Frontendモジュール構成
 
@@ -70,6 +71,28 @@ sequenceDiagram
 ```
 
 `LatestFrameBuffer`はキューではなく、JPEGと更新時刻を1件だけ保持します。
+
+## 推論・Reading Stabilizationデータフロー
+
+```mermaid
+flowchart LR
+  Engine[InferenceEngine.infer]
+  Raw[InferenceResult raw]
+  Stab[ReadingStabilizer]
+  Valid[ReadingValidator]
+  Confirmed[ConfirmedReading]
+  Store[ResultStore]
+  DB[(LatestResult / InferenceResult)]
+
+  Engine --> Raw
+  Raw --> Stab
+  Stab -->|多数決 / 連続一致| Valid
+  Valid -->|monotonic / rate / format| Confirmed
+  Confirmed --> Store
+  Store --> DB
+```
+
+`InferenceScheduler`は`ReadingStabilizer`をインスタンス属性として保持しており、Engine/Model/ROI/Preprocessing/Device変更やBackend再起動のたびに`InferenceScheduler`ごと再構築されるため、Raw Readingのbufferは自動的にresetされる。`ResultStore.save_result()`はConfirmed Readingのみを受け取り、Temporal Stabilization自体のロジックは持たない。一時的な異常値（`decrease_detected`/`rate_exceeded`/`invalid_format`等）はLatestResult/Monitor.statusを変更せず静かに棄却され、直近のRaw Readingは`GET /api/monitors/{id}/reading/diagnostics`でのみ確認できる（DBには保存しない）。
 
 ## ライフサイクル
 

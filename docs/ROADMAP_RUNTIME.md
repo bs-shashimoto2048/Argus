@@ -11,8 +11,10 @@
 - 推論結果のLatestResult/InferenceResult保存（値変化時 + heartbeatでの履歴保存）とDashboard/Detail表示
 - Diagnostics API（`GET /api/system/inference`）とFrontend Device選択肢の実環境連動
 - Backend base CI（pytest）とFrontend build CI、重いAI依存のみを使う手動Smoke Test workflow
+- Raw Reading→Confirmed Readingの時系列安定化（`backend/reading/`、多数決/連続一致）とValidation（monotonic/rate/桁数/rollover）
+- Confirmed Reading中心のLatestResult/履歴保存（Raw推論結果を直接DBへ保存しない）、Reading Diagnostics API
 
-「Validate Real Camera and Inference Engines End-to-End」で実ultralytics/実easyocr/実tesseract・実カメラ・実GPU（環境がある場合）による検証を実施済み。
+「Validate Real Camera and Inference Engines End-to-End」で実ultralytics/実easyocr/実tesseract・実カメラ・実GPU（環境がある場合）による検証を、「Improve Meter Reading Accuracy and Temporal Stabilization」でRaw/Confirmed分離とTemporal Stabilizationを実施済み。
 
 ## Migration導入タイミング
 
@@ -22,5 +24,6 @@
 ## 次に実装する範囲
 
 - Argus専用の高精度な数字検出モデルの整備（現状は外部持ち込みモデルでのSmoke Test止まり。「Digit model required」）
-- Alert、グラフ、履歴分析
+- Alert、グラフ、履歴分析（Confirmed Readingのみを見る構造は用意済み）
 - Engine/Device変更時に対象Monitorの映像取得スレッドまで止めずに再構成する、より無停止に近いRuntime再構成方式の検討
+- 実際の物理メーターを使ったConfirmed値の長時間安定性検証（開発環境に物理メーターが無いため未実施）

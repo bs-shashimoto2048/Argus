@@ -31,6 +31,7 @@ Backend Routerの実装から確認できるAPIです。全Endpointは`/api`配�
 ### MonitorUpdate
 
 `display_name`、`location`、`enabled`、`source`、`inference`を任意で含めます。
+`inference.reading`で時系列安定化設定（`enabled`/`mode`/`window_size`/`required_matches`/`min_confidence`/`expected_digits`/`decimal_position`/`monotonic`/`max_rate_per_minute`/`max_consecutive_failures`/`allow_rollover`/`rollover_max`）を指定できます。
 
 ## Sources
 
@@ -55,7 +56,33 @@ OpenCVのカメラ番号0〜4を探索します。
 | Method | Endpoint | Response |
 |---|---|---|
 | GET | `/api/monitors/{monitor_id}/snapshot` | `image/jpeg` |
+| GET | `/api/monitors/{monitor_id}/preview.jpg` | `image/jpeg`（snapshotと同じ） |
+| GET | `/api/monitors/{monitor_id}/overlay.jpg` | `image/jpeg`（検出bbox/class/confidence描画済み。overlay未生成時はsnapshotへfallback） |
 | GET | `/api/monitors/{monitor_id}/stream` | `multipart/x-mixed-replace; boundary=frame` |
+| GET | `/api/monitors/{monitor_id}/stream.mjpg` | `multipart/x-mixed-replace; boundary=frame`（streamと同じ） |
+| GET | `/api/monitors/{monitor_id}/runtime` | Runtime診断（state/frame_size/inference_enabled等） |
 
 Runtimeが存在しない場合は409、最新フレームがない場合は503です。
+
+## Reading（時系列安定化）
+
+| Method | Endpoint | Response |
+|---|---|---|
+| GET | `/api/monitors/{monitor_id}/reading/diagnostics` | Raw Reading直近N件、Confirmed値、agreement_count、consecutive_failures |
+
+Debug用途のAPIで、通常UIで常用する想定はありません。password/認証URL等は含みません。Runtime未稼働時は409です。
+
+## ROI / Preprocess
+
+| Method | Endpoint | Request | Response |
+|---|---|---|---|
+| GET | `/api/monitors/{monitor_id}/roi` | なし | `Roi` |
+| PUT | `/api/monitors/{monitor_id}/roi` | `Roi` | `Roi`（稼働中Runtimeへ即時反映） |
+| POST | `/api/monitors/{monitor_id}/preprocess/preview` | `PreprocessSettings` | `image/jpeg` |
+
+## System
+
+| Method | Endpoint | Response |
+|---|---|---|
+| GET | `/api/system/inference` | torch/CUDA/ultralytics/easyocr/tesseractの導入状況、実環境のdevice一覧 |
 
