@@ -1,0 +1,37 @@
+{
+  "dataset_version": "meter_holdout_v3",
+  "source": "yolo_pipeline_studio/projects/meter/raw/images src_001_v3+src_002_v3 (2026-08-19 additional live-camera capture of the SAME two physical units already held out in meter_test_set_v2's src_001/src_002, different session/time/lighting/framing than the original capture). NEW HOLDOUT TEST -- kept fully separate from meter_test_set_v2 (Legacy Golden Test) and NEVER used for training. Manually verified digit labels (v2 pseudo-label predictions were largely wrong for these two units and were NOT used as ground truth; box geometry reused from the fixed-camera reference labels already in meter_test_set_v2, class ids corrected by visual reading).",
+  "generated_at": "2026-08-19T04:51:37.828115+00:00",
+  "image_count": 4,
+  "labeled_count": 4,
+  "entries": [
+    {
+      "stem": "src_001_v3_20260819_131500",
+      "image_file": "src_001_v3_20260819_131500.jpg",
+      "image_sha256": "52c183b550769648a4d0c2f2a977602c7626f013249e73fbbcd68353877d3c7f",
+      "has_label": true,
+      "label_sha256": "1308dbf109672dbb6f8a9a48be6acf917b4b29594bae55c8a0a19dd9553f59cb"
+    },
+    {
+      "stem": "src_001_v3_20260819_131800",
+      "image_file": "src_001_v3_20260819_131800.jpg",
+      "image_sha256": "547f453bfeac49603abf70903cd46dc0472bfe2dcf190ac64efd6d4341eef364",
+      "has_label": true,
+      "label_sha256": "1308dbf109672dbb6f8a9a48be6acf917b4b29594bae55c8a0a19dd9553f59cb"
+    },
+    {
+      "stem": "src_002_v3_20260819_131200",
+      "image_file": "src_002_v3_20260819_131200.jpg",
+      "image_sha256": "eeb85248396714db76f56562763528291e52d3e9f1124830cfa5f750eab1e99e",
+      "has_label": true,
+      "label_sha256": "543545763c9bbce5335ef49423c0c12626d3cdf6c6666d308d78e2e739d3399e"
+    },
+    {
+      "stem": "src_002_v3_20260819_133000",
+      "image_file": "src_002_v3_20260819_133000.jpg",
+      "image_sha256": "9a2e749fc6e498c37ee02df59f56cc393cecffdba071ed2d9175fe889f3636fb",
+      "has_label": true,
+      "label_sha256": "543545763c9bbce5335ef49423c0c12626d3cdf6c6666d308d78e2e739d3399e"
+    }
+  ]
+}
