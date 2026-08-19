@@ -1,4 +1,4 @@
-import type {History,Monitor,Source,Inference,SystemInference} from "../types";
+import type {History,Monitor,Source,Inference,SystemInference,ReadingDiagnostics} from "../types";
 const request=async<T>(url:string,init?:RequestInit):Promise<T>=>{const r=await fetch(url,{headers:{"Content-Type":"application/json",...(init?.headers||{})},...init});if(!r.ok){const body=await r.json().catch(()=>({}));throw new Error(body.detail||`HTTP ${r.status}`)}return r.status===204?undefined as T:r.json()};
 export const api={
  monitors:()=>request<{monitors:Monitor[]}>('/api/monitors'),
@@ -17,6 +17,7 @@ export const api={
  mjpg:(id:number)=>`/api/monitors/${id}/stream.mjpg`,
  overlay:(id:number)=>`/api/monitors/${id}/overlay.jpg`,
  systemInference:()=>request<SystemInference>('/api/system/inference'),
+ readingDiagnostics:(id:number)=>request<ReadingDiagnostics>(`/api/monitors/${id}/reading/diagnostics`),
  roi:(id:number)=>request<import("../types").Roi>(`/api/monitors/${id}/roi`),
  saveRoi:(id:number,value:import("../types").Roi)=>request<import("../types").Roi>(`/api/monitors/${id}/roi`,{method:'PUT',body:JSON.stringify(value)}),
  preprocessPreview:async(id:number,payload:unknown):Promise<string>=>{const r=await fetch(`/api/monitors/${id}/preprocess/preview`,{method:'POST',headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});if(!r.ok)throw new Error((await r.json().catch(()=>({}))).detail||`HTTP ${r.status}`);return URL.createObjectURL(await r.blob())},

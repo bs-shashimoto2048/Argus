@@ -59,6 +59,8 @@ def test_roi_detection_bbox_is_restored_to_full_frame_coordinates(tmp_path, monk
     scheduler._infer_latest()
 
     assert results, "推論結果が記録されていること"
-    detection = results[-1].detections[0]
+    # bbox座標復元はraw推論結果(scheduler.latest_result)の責務。ConfirmedReadingは
+    # 値のみを扱いdetectionsを持たないため、rawのdetectionsを直接検証する。
+    detection = scheduler.latest_result.detections[0]
     for actual, expected in zip(detection.bbox, expected_full_frame_bbox):
         assert actual == pytest.approx(expected, abs=0.5)

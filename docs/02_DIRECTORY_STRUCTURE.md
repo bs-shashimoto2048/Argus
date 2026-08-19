@@ -11,7 +11,9 @@ Argus/
 │  │  ├─ schemas/       Pydantic schema
 │  │  ├─ services/      アプリケーションサービス
 │  │  └─ main.py        FastAPIエントリポイント
-│  ├─ runtime/          映像Runtime
+│  ├─ runtime/          映像Runtime、InferenceScheduler
+│  ├─ reading/          Raw Reading→Confirmed Readingの時系列安定化・Validation
+│  ├─ scripts/          開発用スクリプト（テスト動画生成、Stabilizer前後比較レポート等）
 │  ├─ tests/            pytestテスト（tests/fixtures/にOCR用数字画像生成ヘルパー）
 │  ├─ pytest.ini        pytest marker設定（unit/integration/optional_inference/hardware）
 │  ├─ requirements.txt  Python依存関係（camera-only運用の最小構成）
@@ -59,6 +61,10 @@ data/models/
 | `backend/app/routers/streams.py` | Snapshot、MJPEG API |
 | `backend/runtime/runtime_manager.py` | MonitorRuntimeの管理 |
 | `backend/runtime/video_reader.py` | OpenCV入力と接続確認 |
+| `backend/runtime/inference_scheduler.py` | ROI/前処理/推論実行、ReadingStabilizer呼び出し、overlay生成 |
+| `backend/reading/stabilizer.py` | 多数決/連続一致によるConfirmed Readingの決定 |
+| `backend/reading/validator.py` | monotonic/rate/桁数のValidation（pure function） |
+| `backend/app/routers/reading.py` | Reading Diagnostics API |
 | `frontend/src/App.tsx` | Route、App Shell、Background |
 | `frontend/src/api/client.ts` | Frontend API呼び出し |
 | `frontend/src/pages/DashboardPage.tsx` | Dashboard画面 |

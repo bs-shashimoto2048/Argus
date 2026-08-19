@@ -80,6 +80,49 @@ data/models/
 
 推論設定の`model_id`にはこのファイル名（例: `meter_digits_v1.pt`）を指定します。絶対パスではなくファイル名で指定することで、環境が変わってもモデルの配置場所に依存しません。存在しないファイルを指定した場合は`MODEL_NOT_FOUND`が返ります。
 
+## 読取安定化（Reading Stabilization）
+
+単発のAI推論結果（Raw Reading）をそのままDashboardの現在値にはせず、直近の読み取り列から
+時系列で確認した確定値（Confirmed Reading）だけを運用値として表示します。
+
+```text
+InferenceEngine -> Raw Reading -> ReadingStabilizer(多数決/連続一致) -> ReadingValidator(monotonic/rate/桁数)
+  -> Confirmed Reading -> ResultStore -> LatestResult -> Dashboard/Detail
+```
+
+Monitor詳細画面の推論設定内「読取安定化」セクション（`inference.reading`）で設定します。
+
+| 設定 | 既定値 | 説明 |
+|---|---|---|
+| `enabled` | `true` | 安定化を有効にする。`false`にすると単発結果をそのままConfirmed扱いにする（互換モード） |
+| `mode` | `majority` | `majority`（多数決）または`consecutive`（連続一致） |
+| `window_size` | `5` | 直近何件のRaw Readingを保持するか |
+| `required_matches` | `3` | Confirmedとみなす一致数（`window_size`以下である必要がある） |
+| `min_confidence` | `0.60` | この値未満の平均confidenceで確定した場合は`low_confidence`として値は表示しつつ要確認扱いにする |
+| `expected_digits` | `null` | 桁数（小数点除く）が一致しない候補は`invalid_format`として棄却 |
+| `decimal_position` | `null` | 右から何桁目に小数点を挿入するか（Leading Zeroは常に保持） |
+| `monotonic` | `true` | 積算メーター向け。確定値が前回より減少した候補を`decrease_detected`として棄却 |
+| `max_rate_per_minute` | `null` | 1分あたりの変化量の上限。超過候補を`rate_exceeded`として棄却 |
+| `max_consecutive_failures` | `5` | この回数連続でエラー/未検出が続くと`read_error`（`no_reading`）へ遷移 |
+| `allow_rollover` | `false` | 最大値から0への巻き戻り（例: 999999→000000）を許可するか |
+| `rollover_max` | `null` | rollover時の最大値（`allow_rollover=true`かつrate検証を行う場合に必要） |
+
+一時的な異常値（`decrease_detected`/`rate_exceeded`/`invalid_format`/`pending`）はLatestResult/Dashboardの表示を一切変更せず、直前のConfirmed値を保持したまま静かに棄却します。NO_DETECTIONが1回挟まっても値は消えず、`max_consecutive_failures`連続で失敗した場合のみ「読取不能」へ遷移します。
+
+直近のRaw Reading・合意状況はDebug用途のAPIで確認できます（通常UIでは常用しません）。
+
+```
+GET /api/monitors/{id}/reading/diagnostics
+```
+
+Stabilizer適用前後の比較レポート（Raw件数・Unique値・多数決値・変化回数等）は以下のスクリプトで確認できます。
+
+```powershell
+cd backend
+.\.venv\Scripts\Activate.ps1
+py scripts/reading_stabilizer_report.py --sequence-preset noisy_meter
+```
+
 ## Smoke Test
 
 ```powershell
@@ -155,11 +198,14 @@ ViteのFrontendポートは固定していません。5173が使用中なら5174
 - 推論結果（現在値・信頼度・前回値・推論status/エラー）の保存とDashboard/Detail表示
 - Diagnostics API（`GET /api/system/inference`）によるtorch/CUDA/各推論ライブラリの導入状況確認
 - Frontend Device選択肢の実環境（実GPU）連動
+- Raw Reading→Confirmed Readingの時系列安定化（多数決/連続一致）、monotonic/rate/桁数のValidation、Reading Diagnostics API
 
 ## 未実装・既知の制限
 
-- Argus専用に学習された高精度な数字検出モデルは未整備（`data/models/meter_digits_v1.pt`は外部で学習済みの持ち込みモデルであり、精度評価は別途必要）
-- Alert、グラフ・履歴分析
+- Argus専用に学習された高精度な数字検出モデルは未整備（`data/models/meter_digits_v1.pt`は外部で学習済みの持ち込みモデルであり、精度評価は別途必要。「Digit model required」は継続課題）
+- 実際の物理メーター（積算ガスメーター等）を使ったConfirmed値の長時間安定性検証は未実施（この開発環境に物理メーターが無いため。合成シーケンスによる単体テストと、実カメラ・実YOLOでのNO_DETECTION連続時の`no_reading`遷移は実機で確認済み）
+- Alert、グラフ・履歴分析（ConfirmedReadingのみを見る構造は用意済みだが、Alert本体・グラフ画面は未実装）
+- `datetime.utcnow()`のdeprecation警告が残っている（DB層のdatetime列が全体的にnaive datetime前提のため、部分的なtimezone-aware化はnaive/aware比較エラーを誘発するリスクがあり、今回のscopeでは見送り）
 - カメラ一覧はOpenCVで0〜4番を探索
 - URL認証はOpenCVが受け付ける一時的なURL形式に変換して接続します。機器やOpenCVビルドによっては別途プロキシ等が必要です。
 - 暗号鍵未設定時は開発用固定キーのため、本番環境では必ず`ARGUS_SECRET_KEY`を設定してください。

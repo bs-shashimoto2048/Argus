@@ -18,9 +18,9 @@ Migrationツール、migrationファイル、Alembic設定は確認できませ�
 | `monitors` | `Monitor` | `id`, `name`, `display_name`, `location`, `enabled`, `status`, `created_at`, `updated_at` |
 | `video_sources` | `VideoSource` | `id`, `monitor_id`, `source_type`, `device_id`, `url`, `username`, `encrypted_password`, timestamps |
 | `url_histories` | `UrlHistory` | `id`, `url`, `username`, `last_verified_at` |
-| `inference_settings` | `InferenceSettings` | `method`, `engine`, `model_id`, `device`, FPS、Confidence、IoU、ImageSize、JSON設定 |
-| `latest_results` | `LatestResult` | `value`, `previous_value`, `confidence`, `timestamp` |
-| `inference_results` | `InferenceResult` | `value`, `confidence`, `detections`, `processing_time_ms`, `created_at` |
+| `inference_settings` | `InferenceSettings` | `method`, `engine`, `model_id`, `device`, FPS、Confidence、IoU、ImageSize、`roi`/`preprocessing`/`reading`（JSON） |
+| `latest_results` | `LatestResult` | `value`（Confirmed値）, `previous_value`, `confidence`, `status`, `last_error`, `engine`, `processing_time_ms`, `timestamp` |
+| `inference_results` | `InferenceResult` | `value`（Confirmed値の変化時 + heartbeatのみ記録）, `confidence`, `detections`, `processing_time_ms`, `created_at` |
 
 ## Relationships
 
@@ -29,5 +29,5 @@ Migrationツール、migrationファイル、Alembic設定は確認できませ�
 - Monitor : LatestResult = 1 : 1（Serviceが未作成時に補完）
 - `monitor_id`のForeignKeyは`ondelete="CASCADE"`です。
 
-推論履歴の書き込み処理は確認できません。`InferenceResult`モデルは存在しますが、実推論処理はREADMEで未実装です。
+`LatestResult`/`InferenceResult`は`backend/app/services/result_store.py`が書き込みます（`backend/reading/`のReadingStabilizerが確定したConfirmed Readingを受け取って保存する。Raw推論結果を直接保存することはない）。
 

@@ -17,5 +17,6 @@ class InferenceSettings(Base):
     image_size: Mapped[int] = mapped_column(Integer, default=640)
     preprocessing: Mapped[dict] = mapped_column(JSON, default=dict)
     roi: Mapped[dict] = mapped_column(JSON, default=lambda: {"x": 0, "y": 0, "width": 1, "height": 1})
+    reading: Mapped[dict] = mapped_column(JSON, default=dict)
     engine_options: Mapped[dict] = mapped_column(JSON, default=dict)
     monitor = relationship("Monitor", back_populates="inference")
