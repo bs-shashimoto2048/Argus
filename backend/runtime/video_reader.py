@@ -1,10 +1,18 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from urllib.parse import quote, urlsplit, urlunsplit
+import base64
+import socket
 import time
+from dataclasses import dataclass
+from urllib.error import HTTPError, URLError
+from urllib.parse import quote, urlsplit, urlunsplit
+from urllib.request import Request, urlopen
 
 import cv2
+
+# 事前probe(probe_http_status)の対象とする既知scheme。それ以外はSTREAM_URL_INVALID_OR_UNSUPPORTED。
+_KNOWN_SCHEMES = {"http", "https", "rtsp", "rtsps", "rtmp"}
+_PROBE_SCHEMES = {"http", "https"}
 
 
 @dataclass
@@ -61,9 +69,72 @@ def _temporary_auth_url(url: str, username: str | None, password: str | None) ->
     return urlunsplit((parts.scheme, host, parts.path, parts.query, parts.fragment))
 
 
+class _MethodNotSupported(Exception):
+    """HEADが405/501で拒否された場合にGETへフォールバックするための内部制御例外。"""
+
+
+def probe_http_status(
+    url: str, username: str | None, password: str | None, timeout: float = 5.0
+) -> str | None:
+    """HTTP/HTTPSソースに限り、OpenCV/FFmpegでは取得できないHTTP status相当を事前確認する。
+
+    認証はURLへ埋め込まず`Authorization`ヘッダで渡す(URL自体に平文credentialを含めない)。
+    bodyは読み切らない(MJPEGは無限ストリームのため、レスポンスヘッダ確認後すぐ閉じる)。
+
+    戻り値: 問題があれば"AUTH_FAILED"/"SOURCE_NOT_FOUND"/"CONNECTION_TIMEOUT"/"CONNECTION_FAILED"、
+    問題無し(2xx/3xx)またはprobe対象外(http/https以外)ならNone。
+    例外メッセージやURLをそのまま外部へ渡さない(credential/IPの露出防止)。
+    """
+    scheme = urlsplit(url).scheme.lower()
+    if scheme not in _PROBE_SCHEMES:
+        return None
+
+    headers: dict[str, str] = {}
+    if username and password:
+        token = base64.b64encode(f"{username}:{password}".encode()).decode("ascii")
+        headers["Authorization"] = f"Basic {token}"
+
+    def _attempt(method: str) -> str | None:
+        request = Request(url, headers=headers, method=method)
+        response = None
+        try:
+            response = urlopen(request, timeout=timeout)
+            return None  # 2xx
+        except HTTPError as exc:
+            if exc.code in (401, 403):
+                return "AUTH_FAILED"
+            if exc.code == 404:
+                return "SOURCE_NOT_FOUND"
+            if exc.code in (405, 501) and method == "HEAD":
+                raise _MethodNotSupported from exc
+            return "CONNECTION_FAILED"
+        except URLError as exc:
+            if isinstance(exc.reason, (socket.timeout, TimeoutError)):
+                return "CONNECTION_TIMEOUT"
+            return "CONNECTION_FAILED"
+        except socket.timeout:
+            return "CONNECTION_TIMEOUT"
+        except Exception:
+            return "CONNECTION_FAILED"
+        finally:
+            if response is not None:
+                response.close()
+
+    try:
+        return _attempt("HEAD")
+    except _MethodNotSupported:
+        return _attempt("GET")
+
+
 class VideoReader:
     OPEN_TIMEOUT_MS = 8000
     READ_TIMEOUT_MS = 8000
+    _PROBE_ERROR_MESSAGES = {
+        "AUTH_FAILED": "認証に失敗しました（ユーザー名/パスワードを確認してください）",
+        "SOURCE_NOT_FOUND": "映像URLが見つかりません（404）",
+        "CONNECTION_TIMEOUT": "接続がタイムアウトしました",
+        "CONNECTION_FAILED": "映像ソースへの接続に失敗しました",
+    }
 
     def __init__(self, config: ReaderConfig) -> None:
         self.config = config
@@ -117,6 +188,17 @@ class VideoReader:
     def check_detailed(self, timeout: float = 8.0) -> VideoCheckResult:
         if not is_local_camera(self.config.source_type) and not (self.config.url or "").strip():
             return VideoCheckResult(False, self.config.source_type, error_code="SOURCE_NOT_CONFIGURED", message="映像URLを入力してください")
+
+        url = (self.config.url or "").strip()
+        if not is_local_camera(self.config.source_type):
+            scheme = urlsplit(url).scheme.lower()
+            if scheme not in _KNOWN_SCHEMES:
+                return VideoCheckResult(False, self.config.source_type, error_code="STREAM_URL_INVALID_OR_UNSUPPORTED", message="対応していない、または不正な映像URL形式です")
+
+            probe_error = probe_http_status(url, self.config.username, self.config.password, timeout=min(timeout, 5.0))
+            if probe_error:
+                return VideoCheckResult(False, self.config.source_type, error_code=probe_error, message=self._PROBE_ERROR_MESSAGES[probe_error])
+
         reader = VideoReader(self.config)
         try:
             cap = reader._open()
@@ -129,7 +211,9 @@ class VideoReader:
                     height, width = frame.shape[:2]
                     fps = float(cap.get(cv2.CAP_PROP_FPS) or 0) or None
                     return VideoCheckResult(True, self.config.source_type, width, height, fps, message="接続成功")
-            return VideoCheckResult(False, self.config.source_type, error_code="CONNECTION_TIMEOUT", message="映像フレームを取得できません（タイムアウト）")
+            # 事前probe(またはlocal camera)を通過して開けはしたが、timeoutまで
+            # 一度も有効フレームを取得できなかった -> 「開けない」ではなく「読めない」。
+            return VideoCheckResult(False, self.config.source_type, error_code="READ_FAILED", message="映像を開けましたが、フレームを取得できません")
         except Exception:
             return VideoCheckResult(False, self.config.source_type, error_code="CONNECTION_FAILED", message="映像ソースへの接続に失敗しました")
         finally:

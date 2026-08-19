@@ -66,6 +66,8 @@ export function MonitorDetailPage() {
   const [error, setError] = useState("");
   const [editor, setEditor] = useState<"roi" | "preprocess" | null>(null);
   const [readingDiagnostics, setReadingDiagnostics] = useState<ReadingDiagnostics | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     api.monitor(monitorId)
@@ -105,6 +107,18 @@ export function MonitorDetailPage() {
       setMessage(`${result.connected ? "●" : "×"} ${result.message}`);
     } catch (reason) {
       setMessage(String(reason));
+    }
+  };
+
+  const deleteMonitor = async () => {
+    setDeleting(true);
+    try {
+      await api.remove(monitorId);
+      navigate("/");
+    } catch (reason) {
+      setError(String(reason));
+      setConfirmingDelete(false);
+      setDeleting(false);
     }
   };
 
@@ -178,6 +192,21 @@ export function MonitorDetailPage() {
         <ReadingSettingsPanel value={inference.reading} onChange={(reading) => setInference({ ...inference, reading })} />
         <InferenceSettings value={inference} onChange={setInference} />
         <div className="settings-actions"><button className="save-button" onClick={save}>設定を保存</button></div>
+
+        <section className="panel danger-zone">
+          <h3>Danger Zone</h3>
+          {!confirmingDelete ? (
+            <button className="danger" onClick={() => setConfirmingDelete(true)}>このモニターを削除</button>
+          ) : (
+            <div className="danger-confirm">
+              <p>「{monitor.display_name}」（{monitor.name}）を削除します。この操作は取り消せません。よろしいですか？</p>
+              <div className="danger-confirm-actions">
+                <button className="danger" onClick={deleteMonitor} disabled={deleting}>{deleting ? "削除中..." : "削除する"}</button>
+                <button className="secondary" onClick={() => setConfirmingDelete(false)} disabled={deleting}>キャンセル</button>
+              </div>
+            </div>
+          )}
+        </section>
       </aside>
     </div>
     {editor === "roi" && <RoiEditor monitorId={monitorId} initial={inference.roi} onClose={() => setEditor(null)} onSaved={(roi) => setInference({ ...inference, roi })} />}

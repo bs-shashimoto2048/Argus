@@ -11,6 +11,22 @@ from .video_service import reader_config
 from runtime.runtime_manager import runtime_manager
 
 
+def resolve_check_password(db: Session, source: VideoSourceInput) -> str | None:
+    """接続確認(check)で実際に使うpasswordを解決する。
+
+    クライアントが平文passwordを送っていればそれを優先する。未入力(保存済み認証情報を
+    再利用したいケース)で`history_id`が指定されていれば、URL履歴に保存済みの暗号化
+    passwordを復号して使う。どちらも無ければNone(認証情報無しで接続を試みる)。
+    """
+    if source.password:
+        return source.password
+    if source.history_id:
+        history = db.get(UrlHistory, source.history_id)
+        if history and history.encrypted_password:
+            return decrypt(history.encrypted_password)
+    return None
+
+
 def _ensure_children(db: Session, monitor: Monitor) -> None:
     if not monitor.inference:
         monitor.inference = InferenceSettings()
