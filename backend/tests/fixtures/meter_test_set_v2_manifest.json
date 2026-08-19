@@ -1,0 +1,156 @@
+{
+  "dataset_version": "meter_test_set_v2",
+  "source": "yolo_pipeline_studio/projects/meter/raw/images (capture_001+meter_001-004+src_001+src_002: same 7-segment digital meter style, different physical unit/session than training source src_003. PRIMARY fixed test set for baseline vs candidate accuracy comparison.)",
+  "generated_at": "2026-08-19T01:13:39.407955+00:00",
+  "image_count": 21,
+  "labeled_count": 21,
+  "entries": [
+    {
+      "stem": "capture_001_20260818_101259",
+      "image_file": "capture_001_20260818_101259.jpg",
+      "image_sha256": "6c5495ef6a4645bdb34215e5a55a2df2c4424e49b2894db899962cc6ad0cbf3f",
+      "has_label": true,
+      "label_sha256": "8415c4bae539f04888d494022ce3e120981bc174fa29a921493c192e56acf593"
+    },
+    {
+      "stem": "capture_001_20260818_101427",
+      "image_file": "capture_001_20260818_101427.jpg",
+      "image_sha256": "67a8f5f21130a367fbe56433566d262acc95c2be13b7d94a8af8cd015b631711",
+      "has_label": true,
+      "label_sha256": "fc6fa3e098010ebd719d377a61eb36cf6f88af4d942e0be6ffcc1b7c2126bba4"
+    },
+    {
+      "stem": "capture_001_20260818_101438",
+      "image_file": "capture_001_20260818_101438.jpg",
+      "image_sha256": "48d3c0dff48a5dc0f6bb116da026038010b407be0a605bb8fab23599ad0a9b9c",
+      "has_label": true,
+      "label_sha256": "fbeb9d4d4bcd1901c5c4a25dc0ef1b9fe29c865bd6b3e19e8736a2ef198e6fbf"
+    },
+    {
+      "stem": "capture_001_20260818_101453",
+      "image_file": "capture_001_20260818_101453.jpg",
+      "image_sha256": "6555d900b2860c24b143e8bf2af7bee91c39ec9de94a3cd4739ba1d074071a98",
+      "has_label": true,
+      "label_sha256": "e279fa55ddc855cdb14c620239d727cf6da9638075d6f10a9b707a4fb5ae06d6"
+    },
+    {
+      "stem": "capture_001_20260818_101525",
+      "image_file": "capture_001_20260818_101525.jpg",
+      "image_sha256": "318cd3fb3963f1a967bdfe5098639e8a200f574fd1853684f0cf9a80cdc4062a",
+      "has_label": true,
+      "label_sha256": "622c1516050550c06ec3a1cd516d6a90801adc96432579accba7a9b9ba14619f"
+    },
+    {
+      "stem": "capture_001_20260818_103027",
+      "image_file": "capture_001_20260818_103027.jpg",
+      "image_sha256": "0d05a4104ac936f074a505c1e883f8a5f89ccc624967dd630b16ba657e0061b3",
+      "has_label": true,
+      "label_sha256": "f48453aa6b63cb68d999ca697fcef3dc69a41e3b16351e6ca77a43ffb019ee2f"
+    },
+    {
+      "stem": "capture_001_20260818_103253",
+      "image_file": "capture_001_20260818_103253.jpg",
+      "image_sha256": "a3842784faedb8a0ee2647102fbc927476eb4fd7e2ea4122a6df1a5bffed07d0",
+      "has_label": true,
+      "label_sha256": "7a5c86bb8aa8c55f07027467c0e914153c3b72e8433dd5e83bead69a4006074d"
+    },
+    {
+      "stem": "capture_001_20260818_103306",
+      "image_file": "capture_001_20260818_103306.jpg",
+      "image_sha256": "0215d5e2dd8ea921dbf7b237bf008548a0a35203316ca44c91e87fe0f7143833",
+      "has_label": true,
+      "label_sha256": "44aba4bcc45f26a45540a6bad14fc2750530b3cf1357a5edb51f72a9dfdd6604"
+    },
+    {
+      "stem": "meter_001",
+      "image_file": "meter_001.png",
+      "image_sha256": "64fdf902bda7ac24a7188955f88aa1d505ad82f73fed58d8bb644549bd49003e",
+      "has_label": true,
+      "label_sha256": "486a272abde469725b7400df11fe580e5ba2672d7ca5847ce503eee1488b5334"
+    },
+    {
+      "stem": "meter_002",
+      "image_file": "meter_002.png",
+      "image_sha256": "ad1ec7584b90c8885d935d3db2e0942def43e659b19e54141b329c358e93ec3f",
+      "has_label": true,
+      "label_sha256": "695cc4151fa3a4402067ea8579ace5bdf6aba64f2d5fb914a1ac276f733513b9"
+    },
+    {
+      "stem": "meter_003",
+      "image_file": "meter_003.png",
+      "image_sha256": "427013f2333852537fdd4e2d577181fccfe01a04d5706b4748160622626718c8",
+      "has_label": true,
+      "label_sha256": "5455db5e42e4c647795020163cb977bd32116d96feba750ceb6097b2d0293f6b"
+    },
+    {
+      "stem": "meter_004",
+      "image_file": "meter_004.png",
+      "image_sha256": "770655233c2a55db0bb8ce7ebc4c9cc0c18bfa4d7409750948c2341aa12169eb",
+      "has_label": true,
+      "label_sha256": "efcd507f3fcf5c7dd92a08832b6b9847a349734e9003d44cc3686e405f78ba8e"
+    },
+    {
+      "stem": "src_001_20260818_140200",
+      "image_file": "src_001_20260818_140200.jpg",
+      "image_sha256": "42d8a4eb0372a8f7fdf5eac7112f0b7cd8627213ebc95ebe579e759fa2f1336d",
+      "has_label": true,
+      "label_sha256": "1308dbf109672dbb6f8a9a48be6acf917b4b29594bae55c8a0a19dd9553f59cb"
+    },
+    {
+      "stem": "src_002_20260818_110000",
+      "image_file": "src_002_20260818_110000.jpg",
+      "image_sha256": "eb1f1ed03d25ad6ac3edad920e6a396237e9b504701f766df63c2d654b259d6c",
+      "has_label": true,
+      "label_sha256": "726fbbf16189d48b253a16966ddc0c6187df996718068b430abafe19dd20e9e6"
+    },
+    {
+      "stem": "src_002_20260818_120200",
+      "image_file": "src_002_20260818_120200.jpg",
+      "image_sha256": "e0832221a047f7266ad5f489fc50f9df9229a2bbcd340a78015fe0f3a5363491",
+      "has_label": true,
+      "label_sha256": "adb520740bfb5598cfed45e86e3703372eb4e3ab1531eb0896d674234ade4d1c"
+    },
+    {
+      "stem": "src_002_20260818_121000",
+      "image_file": "src_002_20260818_121000.jpg",
+      "image_sha256": "c8974a1dd435e58d21e424961fe93dc823e303a38fa2c48ca2073059eeba0008",
+      "has_label": true,
+      "label_sha256": "9e07c598a491d7a66a82d7b98ec0cf3bdd11febaf4e83f4e2e1ab6139b07807e"
+    },
+    {
+      "stem": "src_002_20260818_125800",
+      "image_file": "src_002_20260818_125800.jpg",
+      "image_sha256": "b628b9514ff87edbe10b0aed963d498beee3c967e5162c43ab7872037986ccae",
+      "has_label": true,
+      "label_sha256": "756a472b0720237377549cd955b196d23622f88742d55cc7c44fe8e847f55147"
+    },
+    {
+      "stem": "src_002_20260818_130000",
+      "image_file": "src_002_20260818_130000.jpg",
+      "image_sha256": "8ea8bc1b379d6d932a31b300697b9a749374679cd50cbf375ae2ce80cad0b989",
+      "has_label": true,
+      "label_sha256": "5fa2280c220faa08de12916c976c993138cf3a6b8ce413bf7da2c33a412701f7"
+    },
+    {
+      "stem": "src_002_20260818_150200",
+      "image_file": "src_002_20260818_150200.jpg",
+      "image_sha256": "2ae3bb5b3aa952d544ff94aa9c3fbd308c8334250339ae62cb64b6fc42c3cccb",
+      "has_label": true,
+      "label_sha256": "04a1394d8b860bcf89be32e647e1d1014f35b1816d0925c3817daba2f3ee762a"
+    },
+    {
+      "stem": "src_002_20260818_150800",
+      "image_file": "src_002_20260818_150800.jpg",
+      "image_sha256": "7a9e8fe7ee23e2717124179c3ee8eeeef158477fe5086b8b4b52f317cb1192e4",
+      "has_label": true,
+      "label_sha256": "4a65f43456b75a5ab23c56b9aecf363bfe692654e099e9d001519f0e3e3dea5a"
+    },
+    {
+      "stem": "src_002_20260818_154800",
+      "image_file": "src_002_20260818_154800.jpg",
+      "image_sha256": "58012723ca73ec8d88d6d04898bc7ff968308c604c3d29ebf47832414d8b8796",
+      "has_label": true,
+      "label_sha256": "649662169afbc81e4bfc3a06b997f35ddaa378c9e41538afa02333c1b092eb97"
+    }
+  ]
+}
