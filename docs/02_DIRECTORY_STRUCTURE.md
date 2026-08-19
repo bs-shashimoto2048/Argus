@@ -13,7 +13,8 @@ Argus/
 │  │  └─ main.py        FastAPIエントリポイント
 │  ├─ runtime/          映像Runtime、InferenceScheduler
 │  ├─ reading/          Raw Reading→Confirmed Readingの時系列安定化・Validation
-│  ├─ scripts/          開発用スクリプト（テスト動画生成、Stabilizer前後比較レポート等）
+│  ├─ evaluation/       メーター読み取り精度評価のpure function（Full Reading Exact Match等）
+│  ├─ scripts/          開発用スクリプト（テスト動画生成、Stabilizer/Model前後比較レポート等）
 │  ├─ tests/            pytestテスト（tests/fixtures/にOCR用数字画像生成ヘルパー）
 │  ├─ pytest.ini        pytest marker設定（unit/integration/optional_inference/hardware）
 │  ├─ requirements.txt  Python依存関係（camera-only運用の最小構成）
@@ -30,7 +31,9 @@ Argus/
 │  └─ vite.config.ts    Vite設定とAPI proxy
 ├─ data/
 │  ├─ argus.db          SQLite DBとSQLite補助ファイル
-│  └─ models/           YOLOモデル配置先（例: meter_digits_v1.pt）
+│  ├─ models/           YOLOモデル配置先（例: meter_digits_v1.pt）とregistry.json（role等のmetadata）
+│  ├─ eval/             モデル評価用Test Set（gitignore対象、manifestのみbackend/tests/fixtures/へcommit）
+│  └─ dataset_candidates/  開発用データ収集モードの保存先（gitignore対象、既定無効）
 ├─ .github/workflows/   CI（ci.yml: 通常CI／inference-smoke.yml: 手動の重い依存Smoke Test）
 ├─ scripts/             開発用PowerShell起動スクリプト
 ├─ docs/                プロジェクトドキュメント
@@ -64,7 +67,11 @@ data/models/
 | `backend/runtime/inference_scheduler.py` | ROI/前処理/推論実行、ReadingStabilizer呼び出し、overlay生成 |
 | `backend/reading/stabilizer.py` | 多数決/連続一致によるConfirmed Readingの決定 |
 | `backend/reading/validator.py` | monotonic/rate/桁数のValidation（pure function） |
-| `backend/app/routers/reading.py` | Reading Diagnostics API |
+| `backend/app/routers/reading.py` | Reading Diagnostics API、開発用データ収集モード |
+| `backend/evaluation/metrics.py` | Full Reading Exact Match等のメーター読み取り精度指標（pure function） |
+| `backend/scripts/evaluate_meter_model.py` | Baseline/Candidateモデルの評価・Benchmark・Temporal評価スクリプト |
+| `backend/app/inference/model_catalog.py` | `data/models/registry.json`を読み込むModel Catalog |
+| `backend/app/routers/system.py` | Diagnostics API（`/api/system/inference`）、Model Catalog API（`/api/system/models`） |
 | `frontend/src/App.tsx` | Route、App Shell、Background |
 | `frontend/src/api/client.ts` | Frontend API呼び出し |
 | `frontend/src/pages/DashboardPage.tsx` | Dashboard画面 |
