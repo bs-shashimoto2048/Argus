@@ -157,3 +157,103 @@ def test_check_source_response_never_includes_plaintext_password(monkeypatch, sa
             json={"source_type": "url", "url": saved_history.url, "username": "saveduser", "history_id": saved_history.id},
         )
     assert "savedpass" not in response.text
+
+
+# --- Monitor保存時のpassword永続化(Issue #14追加要件) ---
+
+def test_saving_password_marks_has_password_true_and_never_returns_plaintext():
+    with TestClient(app) as client:
+        created = client.post("/api/monitors", json={"name": "test_password_persist", "display_name": "password persist"})
+        monitor_id = created.json()["id"]
+
+        saved = client.patch(
+            f"/api/monitors/{monitor_id}",
+            json={"source": {"source_type": "url", "url": "http://persist-test.invalid/live", "username": "u1", "password": "secret1"}},
+        )
+        assert saved.status_code == 200
+        assert saved.json()["source"]["has_password"] is True
+        assert "secret1" not in saved.text
+
+        # 再表示(GET)でもhas_password=trueを維持し、平文は含まれない。
+        fetched = client.get(f"/api/monitors/{monitor_id}")
+        assert fetched.json()["source"]["has_password"] is True
+        assert "secret1" not in fetched.text
+
+        client.delete(f"/api/monitors/{monitor_id}")
+
+
+def test_saving_without_password_key_preserves_previously_saved_password():
+    """passwordフィールド自体を送らない更新(例: 他の項目だけ変更)では、
+    保存済みpasswordが消えないこと(空欄=削除にしない)。"""
+    with TestClient(app) as client:
+        created = client.post("/api/monitors", json={"name": "test_password_preserve", "display_name": "password preserve"})
+        monitor_id = created.json()["id"]
+        client.patch(
+            f"/api/monitors/{monitor_id}",
+            json={"source": {"source_type": "url", "url": "http://preserve-test.invalid/live", "username": "u1", "password": "secret2"}},
+        )
+
+        # username・password両方とも変更しない別の更新(例: display_nameのみ変更)。
+        updated = client.patch(f"/api/monitors/{monitor_id}", json={"display_name": "renamed"})
+        assert updated.status_code == 200
+
+        fetched = client.get(f"/api/monitors/{monitor_id}")
+        assert fetched.json()["source"]["has_password"] is True
+
+        db = SessionLocal()
+        try:
+            from app.services.monitor_service import get_monitor
+
+            monitor = get_monitor(db, monitor_id)
+            assert decrypt(monitor.source.encrypted_password) == "secret2"
+        finally:
+            db.close()
+        client.delete(f"/api/monitors/{monitor_id}")
+
+
+def test_changing_username_without_new_password_clears_old_password():
+    """usernameだけを別の値へ変更し、新しいpassword/history_idを指定しない場合、
+    古いusernameに対応していたpasswordを新usernameへ誤って流用しない(クリアする)。"""
+    with TestClient(app) as client:
+        created = client.post("/api/monitors", json={"name": "test_username_change_clears", "display_name": "username change"})
+        monitor_id = created.json()["id"]
+        client.patch(
+            f"/api/monitors/{monitor_id}",
+            json={"source": {"source_type": "url", "url": "http://username-change-test.invalid/live", "username": "olduser", "password": "oldpass"}},
+        )
+
+        changed = client.patch(
+            f"/api/monitors/{monitor_id}",
+            json={"source": {"source_type": "url", "url": "http://username-change-test.invalid/live", "username": "newuser"}},
+        )
+        assert changed.status_code == 200
+        assert changed.json()["source"]["has_password"] is False
+
+        db = SessionLocal()
+        try:
+            from app.services.monitor_service import get_monitor
+
+            monitor = get_monitor(db, monitor_id)
+            assert monitor.source.encrypted_password is None
+        finally:
+            db.close()
+        client.delete(f"/api/monitors/{monitor_id}")
+
+
+def test_resaving_with_same_username_preserves_password():
+    """usernameを同じ値で送り直した場合は変更とみなさず、passwordを維持する。"""
+    with TestClient(app) as client:
+        created = client.post("/api/monitors", json={"name": "test_same_username_preserve", "display_name": "same username"})
+        monitor_id = created.json()["id"]
+        client.patch(
+            f"/api/monitors/{monitor_id}",
+            json={"source": {"source_type": "url", "url": "http://same-username-test.invalid/live", "username": "sameuser", "password": "samepass"}},
+        )
+
+        resaved = client.patch(
+            f"/api/monitors/{monitor_id}",
+            json={"source": {"source_type": "url", "url": "http://same-username-test.invalid/live", "username": "sameuser"}},
+        )
+        assert resaved.status_code == 200
+        assert resaved.json()["source"]["has_password"] is True
+        client.delete(f"/api/monitors/{monitor_id}")

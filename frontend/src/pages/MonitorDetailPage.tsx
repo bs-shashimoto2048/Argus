@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
-import type { Inference, Monitor, ReadingDiagnostics, Source } from "../types";
+import type { Inference, Monitor, ReadingDiagnostics, RuntimeDiagnostics, Source } from "../types";
 import { Brand } from "../components/Brand";
 import { InferenceSettings } from "../components/InferenceSettings";
 import { ReadingSettingsPanel } from "../components/ReadingSettingsPanel";
@@ -66,6 +66,7 @@ export function MonitorDetailPage() {
   const [error, setError] = useState("");
   const [editor, setEditor] = useState<"roi" | "preprocess" | null>(null);
   const [readingDiagnostics, setReadingDiagnostics] = useState<ReadingDiagnostics | null>(null);
+  const [runtimeDiagnostics, setRuntimeDiagnostics] = useState<RuntimeDiagnostics | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -93,6 +94,15 @@ export function MonitorDetailPage() {
     const poll = () => api.readingDiagnostics(monitorId).then(setReadingDiagnostics).catch(() => setReadingDiagnostics(null));
     poll();
     const timer = window.setInterval(poll, 5000);
+    return () => window.clearInterval(timer);
+  }, [monitorId]);
+
+  // Runtime診断(state/last_error/last_frame等)。映像Runtime停止中は409になるため失敗は無視する。
+  // credential/URLは含まれないため、そのまま画面表示してよい。
+  useEffect(() => {
+    const poll = () => api.runtimeDiagnostics(monitorId).then(setRuntimeDiagnostics).catch(() => setRuntimeDiagnostics(null));
+    poll();
+    const timer = window.setInterval(poll, 3000);
     return () => window.clearInterval(timer);
   }, [monitorId]);
 
@@ -178,6 +188,15 @@ export function MonitorDetailPage() {
             {readingDiagnostics.confirmed.raw_confidence != null && ` (${(readingDiagnostics.confirmed.raw_confidence * 100).toFixed(0)}%)`}
             {" / 一致 "}{readingDiagnostics.confirmed.agreement_count}/{readingDiagnostics.confirmed.raw_count}
             {readingDiagnostics.consecutive_failures > 0 && ` / 連続失敗 ${readingDiagnostics.consecutive_failures}`}
+          </small>
+        </div>}
+        {runtimeDiagnostics && <div>
+          <small>
+            映像Runtime: {runtimeDiagnostics.state}
+            {runtimeDiagnostics.frame_width != null && ` / ${runtimeDiagnostics.frame_width}x${runtimeDiagnostics.frame_height}`}
+            {runtimeDiagnostics.reconnect_count > 0 && ` / 再接続 ${runtimeDiagnostics.reconnect_count}回`}
+            {runtimeDiagnostics.last_error && ` / エラー: ${runtimeDiagnostics.last_error}`}
+            {runtimeDiagnostics.stale && ` / 映像停滞中`}
           </small>
         </div>}
       </section>

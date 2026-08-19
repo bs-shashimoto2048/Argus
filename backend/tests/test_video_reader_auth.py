@@ -3,8 +3,9 @@
 - URLへの一時認証埋め込み(_temporary_auth_url)のencoding/二重埋め込み防止
 - viewer URLのquery(imagepath等)から実stream URLを解決するresolve_stream_url
 - HTTP(S)事前probe(probe_http_status)のWWW-Authenticateによるscheme判定とstatus分類
-- Digest認証用の代替Reader(_DigestMjpegStream / _DigestCaptureAdapter)
-- check_detailed / _open のREAD_FAILED / STREAM_URL_INVALID_OR_UNSUPPORTED / digest fallback分岐
+- HTTP MJPEG用の代替Reader(_AuthenticatedMjpegStream / _HttpMjpegCaptureAdapter)
+  (認証方式を問わずcv2/FFmpegが読めない場合のfallback)
+- check_detailed / _open のREAD_FAILED / STREAM_URL_INVALID_OR_UNSUPPORTED / fallback分岐
 """
 from __future__ import annotations
 
@@ -17,8 +18,8 @@ from runtime.video_reader import (
     AuthProbeResult,
     ReaderConfig,
     VideoReader,
-    _DigestCaptureAdapter,
-    _DigestMjpegStream,
+    _AuthenticatedMjpegStream,
+    _HttpMjpegCaptureAdapter,
     _detect_challenge_scheme,
     _temporary_auth_url,
     probe_http_status,
@@ -278,9 +279,9 @@ def test_probe_http_status_digest_challenge_without_credentials_is_auth_failed(m
     assert result.auth_scheme == "digest"
 
 
-# --- _DigestMjpegStream / _DigestCaptureAdapter ---
+# --- _AuthenticatedMjpegStream / _HttpMjpegCaptureAdapter ---
 
-def test_digest_mjpeg_stream_reads_frame_from_multipart(monkeypatch):
+def test_authenticated_mjpeg_stream_reads_frame_from_multipart(monkeypatch):
     jpeg = b"\xff\xd8" + b"fake-jpeg-bytes" + b"\xff\xd9"
 
     class FakeResponse:
@@ -304,28 +305,80 @@ def test_digest_mjpeg_stream_reads_frame_from_multipart(monkeypatch):
     monkeypatch.setattr("runtime.video_reader.build_opener", lambda *a, **k: FakeOpener())
     monkeypatch.setattr("cv2.imdecode", lambda *_a, **_k: np.zeros((2, 2, 3), dtype=np.uint8))
 
-    stream = _DigestMjpegStream("http://example.test/mjpg", "user", "pass")
+    stream = _AuthenticatedMjpegStream("http://example.test/mjpg", "user", "pass")
     assert stream.open() is True
     assert stream.isOpened() is True
+    # open()時点で1フレーム確認済みのものがread()で返る(pending frame)。
     ok, frame = stream.read()
     assert ok is True
     assert frame is not None
 
 
-def test_digest_mjpeg_stream_open_failure_returns_false(monkeypatch):
+def test_authenticated_mjpeg_stream_works_without_credentials(monkeypatch):
+    """無認証のMJPEGソースでもfallbackとして機能すること(認証方式を問わない)。"""
+    jpeg = b"\xff\xd8" + b"fake-jpeg-bytes" + b"\xff\xd9"
+
+    class FakeResponse:
+        def __init__(self):
+            self.headers = {"Content-Type": "multipart/x-mixed-replace; boundary=frame"}
+            self._sent = False
+
+        def read(self, _n=None):
+            if self._sent:
+                return b""
+            self._sent = True
+            return jpeg
+
+        def close(self):
+            pass
+
+    class FakeOpener:
+        def open(self, request, timeout):
+            return FakeResponse()
+
+    monkeypatch.setattr("runtime.video_reader.build_opener", lambda *a, **k: FakeOpener())
+    monkeypatch.setattr("cv2.imdecode", lambda *_a, **_k: np.zeros((2, 2, 3), dtype=np.uint8))
+
+    stream = _AuthenticatedMjpegStream("http://example.test/mjpg", None, None)
+    assert stream.open() is True
+
+
+def test_authenticated_mjpeg_stream_open_failure_returns_false(monkeypatch):
     class FakeOpener:
         def open(self, request, timeout):
             raise HTTPError("http://example.test/mjpg", 401, "Unauthorized", {}, None)
 
     monkeypatch.setattr("runtime.video_reader.build_opener", lambda *a, **k: FakeOpener())
-    stream = _DigestMjpegStream("http://example.test/mjpg", "user", "wrong")
+    stream = _AuthenticatedMjpegStream("http://example.test/mjpg", "user", "wrong")
     assert stream.open() is False
     assert stream.isOpened() is False
     ok, frame = stream.read()
     assert ok is False and frame is None
 
 
-def test_digest_capture_adapter_proxies_to_stream():
+def test_authenticated_mjpeg_stream_open_fails_when_connected_but_no_frame_available(monkeypatch):
+    """HTTP接続自体は張れても映像データが得られない場合は「開けた」扱いにしない。"""
+    class FakeResponse:
+        def __init__(self):
+            self.headers = {"Content-Type": "multipart/x-mixed-replace; boundary=frame"}
+
+        def read(self, _n=None):
+            return b""  # 即EOF、フレームは一切来ない
+
+        def close(self):
+            pass
+
+    class FakeOpener:
+        def open(self, request, timeout):
+            return FakeResponse()
+
+    monkeypatch.setattr("runtime.video_reader.build_opener", lambda *a, **k: FakeOpener())
+    stream = _AuthenticatedMjpegStream("http://example.test/mjpg", None, None)
+    assert stream.open() is False
+    assert stream.isOpened() is False
+
+
+def test_http_mjpeg_capture_adapter_proxies_to_stream():
     class FakeStream:
         def __init__(self):
             self.closed = False
@@ -340,7 +393,7 @@ def test_digest_capture_adapter_proxies_to_stream():
             self.closed = True
 
     fake = FakeStream()
-    adapter = _DigestCaptureAdapter(fake)
+    adapter = _HttpMjpegCaptureAdapter(fake)
     assert adapter.isOpened() is True
     assert adapter.read() == (True, "frame")
     assert adapter.set(1, 2) is True
@@ -385,6 +438,7 @@ def test_check_detailed_returns_read_failed_when_open_succeeds_but_no_frame(monk
 
     monkeypatch.setattr("runtime.video_reader.probe_http_status", lambda *a, **k: AuthProbeResult(None, None))
     monkeypatch.setattr("cv2.VideoCapture", lambda *a, **k: FakeCapture())
+    monkeypatch.setattr(VideoReader, "_try_http_mjpeg_fallback", lambda self, resolved_url: None)
     reader = VideoReader(ReaderConfig(source_type="url", url="http://example.test/live"))
     result = reader.check_detailed(timeout=0.05)
     assert result.connected is False
@@ -408,9 +462,9 @@ def test_check_detailed_resolves_viewer_url_before_probing_and_reports_hint(monk
     assert result.resolved_url_sanitized == "http://example.test/mjpg/video.mjpg?camera=1"
 
 
-# --- _open: digest fallback（cv2/FFmpegが開けない/読めない場合のみ発動） ---
+# --- _open: HTTP MJPEG fallback（cv2/FFmpegが開けない/読めない場合のみ発動） ---
 
-def test_open_does_not_try_digest_fallback_when_cv2_already_works(monkeypatch):
+def test_open_does_not_try_http_mjpeg_fallback_when_cv2_already_works(monkeypatch):
     class FakeCv2Capture:
         def isOpened(self):
             return True
@@ -430,17 +484,19 @@ def test_open_does_not_try_digest_fallback_when_cv2_already_works(monkeypatch):
     monkeypatch.setattr("cv2.VideoCapture", lambda *a, **k: FakeCv2Capture())
     called = {"count": 0}
 
-    def fake_try_digest(self, resolved_url):
+    def fake_try_fallback(self, resolved_url):
         called["count"] += 1
         return None
 
-    monkeypatch.setattr(VideoReader, "_try_digest_fallback", fake_try_digest)
+    monkeypatch.setattr(VideoReader, "_try_http_mjpeg_fallback", fake_try_fallback)
     reader = VideoReader(ReaderConfig(source_type="url", url="http://example.test/mjpg", username="u", password="p"))
     reader._open()
     assert called["count"] == 0
 
 
-def test_open_skips_digest_fallback_without_credentials(monkeypatch):
+def test_open_tries_http_mjpeg_fallback_even_without_credentials(monkeypatch):
+    """機種差でcv2が読めない場合、認証情報の有無に関わらずfallbackを試す
+    (Issue #14: 3台目のような無認証/未検証の認証方式でも同様の問題が起こりうるため)。"""
     class FakeCv2Capture:
         def isOpened(self):
             return False
@@ -460,17 +516,36 @@ def test_open_skips_digest_fallback_without_credentials(monkeypatch):
     monkeypatch.setattr("cv2.VideoCapture", lambda *a, **k: FakeCv2Capture())
     called = {"count": 0}
 
-    def fake_try_digest(self, resolved_url):
+    def fake_try_fallback(self, resolved_url):
         called["count"] += 1
         return None
 
-    monkeypatch.setattr(VideoReader, "_try_digest_fallback", fake_try_digest)
+    monkeypatch.setattr(VideoReader, "_try_http_mjpeg_fallback", fake_try_fallback)
     reader = VideoReader(ReaderConfig(source_type="url", url="http://example.test/mjpg"))
+    reader._open()
+    assert called["count"] == 1
+
+
+def test_open_skips_http_mjpeg_fallback_for_local_camera(monkeypatch):
+    called = {"count": 0}
+
+    def fake_try_fallback(self, resolved_url):
+        called["count"] += 1
+        return None
+
+    monkeypatch.setattr(VideoReader, "_try_http_mjpeg_fallback", fake_try_fallback)
+
+    class FakeLocalCapture:
+        def set(self, *_a):
+            return True
+
+    monkeypatch.setattr("cv2.VideoCapture", lambda *a, **k: FakeLocalCapture())
+    reader = VideoReader(ReaderConfig(source_type="camera", device_id=0))
     reader._open()
     assert called["count"] == 0
 
 
-def test_open_falls_back_to_digest_when_cv2_cannot_open_and_digest_confirmed(monkeypatch):
+def test_open_falls_back_to_http_mjpeg_reader_when_cv2_cannot_open_and_fallback_confirmed(monkeypatch):
     class FakeCv2Capture:
         def isOpened(self):
             return False
@@ -489,9 +564,9 @@ def test_open_falls_back_to_digest_when_cv2_cannot_open_and_digest_confirmed(mon
 
     monkeypatch.setattr("cv2.VideoCapture", lambda *a, **k: FakeCv2Capture())
 
-    fake_digest_capture = object()
-    monkeypatch.setattr(VideoReader, "_try_digest_fallback", lambda self, resolved_url: fake_digest_capture)
+    fake_fallback_capture = object()
+    monkeypatch.setattr(VideoReader, "_try_http_mjpeg_fallback", lambda self, resolved_url: fake_fallback_capture)
 
     reader = VideoReader(ReaderConfig(source_type="url", url="http://example.test/mjpg", username="u", password="p"))
     cap = reader._open()
-    assert cap is fake_digest_capture
+    assert cap is fake_fallback_capture

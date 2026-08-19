@@ -35,6 +35,20 @@ export type ModelCatalogEntry = {
   recommended_imgsz?: number;
   notes?: string;
 };
+export type RuntimeDiagnostics = {
+  source_type: string;
+  state: string;
+  frame_width: number|null;
+  frame_height: number|null;
+  source_fps: number|null;
+  last_frame_timestamp: number|null;
+  reconnect_count: number;
+  last_error: string|null;
+  frame_age: number|null;
+  stale: boolean;
+  inference_enabled: boolean;
+  inference_result: string|null;
+};
 export type RawReadingDiagnostic = {value:string|null;confidence:number|null;timestamp:string|null;engine:string;error:string|null;detection_count:number};
 export type ReadingDiagnostics = {
   enabled:boolean;

@@ -109,15 +109,23 @@ def update_monitor(db: Session, monitor_id: int, req):
             raise ValueError("URLを入力してください")
         if not monitor.source:
             monitor.source = VideoSource()
+        previous_username = monitor.source.username
         for key in ("source_type", "device_id", "url", "username"):
             if key in source_data:
                 setattr(monitor.source, key, source_data[key])
+        username_changed = "username" in source_data and source_data["username"] != previous_username
         if source_data.get("password"):
             monitor.source.encrypted_password = encrypt(source_data["password"])
         elif source_data.get("history_id"):
             history = db.get(UrlHistory, source_data["history_id"])
             if history and history.encrypted_password:
                 monitor.source.encrypted_password = history.encrypted_password
+        elif username_changed:
+            # usernameを別の値へ変更したのに新しいpassword/history指定が無い場合、
+            # 古いusernameに対応するpasswordを新usernameへ誤って流用しない
+            # (資格情報の組合せ不整合を防ぐ)。空欄=削除ではないが、username変更は
+            # 明示的な変更意思とみなし、新しいpasswordの入力を促すためクリアする。
+            monitor.source.encrypted_password = None
     if inference_data is not None:
         if "device" in inference_data:
             try:

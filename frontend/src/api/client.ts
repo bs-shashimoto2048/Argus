@@ -1,4 +1,4 @@
-import type {History,Monitor,Source,Inference,SystemInference,ReadingDiagnostics,ModelCatalogEntry} from "../types";
+import type {History,Monitor,Source,Inference,SystemInference,ReadingDiagnostics,ModelCatalogEntry,RuntimeDiagnostics} from "../types";
 const request=async<T>(url:string,init?:RequestInit):Promise<T>=>{const r=await fetch(url,{headers:{"Content-Type":"application/json",...(init?.headers||{})},...init});if(!r.ok){const body=await r.json().catch(()=>({}));throw new Error(body.detail||`HTTP ${r.status}`)}return r.status===204?undefined as T:r.json()};
 export const api={
  monitors:()=>request<{monitors:Monitor[]}>('/api/monitors'),
@@ -18,6 +18,7 @@ export const api={
  overlay:(id:number)=>`/api/monitors/${id}/overlay.jpg`,
  systemInference:()=>request<SystemInference>('/api/system/inference'),
  readingDiagnostics:(id:number)=>request<ReadingDiagnostics>(`/api/monitors/${id}/reading/diagnostics`),
+ runtimeDiagnostics:(id:number)=>request<RuntimeDiagnostics>(`/api/monitors/${id}/runtime`),
  systemModels:()=>request<{models:ModelCatalogEntry[]}>('/api/system/models'),
  roi:(id:number)=>request<import("../types").Roi>(`/api/monitors/${id}/roi`),
  saveRoi:(id:number,value:import("../types").Roi)=>request<import("../types").Roi>(`/api/monitors/${id}/roi`,{method:'PUT',body:JSON.stringify(value)}),

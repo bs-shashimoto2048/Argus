@@ -7,6 +7,7 @@ from dataclasses import dataclass, replace
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qsl, quote, unquote, urlsplit, urlunsplit
 from urllib.request import (
+    HTTPBasicAuthHandler,
     HTTPDigestAuthHandler,
     HTTPPasswordMgrWithDefaultRealm,
     Request,
@@ -25,7 +26,7 @@ _PROBE_SCHEMES = {"http", "https"}
 # を検出するための、明示的に「stream path」を意味すると分かるquery key。
 _STREAM_PATH_QUERY_KEYS = {"imagepath", "streampath", "stream_path", "streamurl", "stream_url"}
 
-_DIGEST_FALLBACK_PROBE_TIMEOUT = 5.0
+_HTTP_MJPEG_FALLBACK_TIMEOUT = 4.0
 _CV2_USABILITY_PROBE_TIMEOUT = 2.0
 
 
@@ -270,15 +271,21 @@ def probe_http_status(
     return AuthProbeResult(auth_result, detected_scheme)
 
 
-class _DigestMjpegStream:
-    """cv2.VideoCapture(FFmpeg)がDigest認証を扱えない環境向けの代替Reader。
+class _AuthenticatedMjpegStream:
+    """cv2.VideoCapture(FFmpeg)がHTTP MJPEGソースを扱えない環境向けの代替Reader。
 
-    urllib(HTTPDigestAuthHandler)で認証済みHTTP接続を維持し、multipart/x-mixed-replace
-    形式のMJPEGから逐次JPEGフレームを取り出す。単体JPEG(snapshot)応答の場合はread()の
-    たびに再取得する。既存のRTSP経路やBasic認証HTTP経路には一切影響しない、追加のfallback。
+    機種差(Content-Type/boundary表記ゆれ、redirect、keep-alive等)によりcv2/FFmpegが
+    フレームを取得できない場合の汎用fallback。認証方式(無認証/Basic/Digest)を問わず、
+    urllibのopenerに両方のauth handlerを登録しておくことで、サーバのWWW-Authenticate
+    challengeに応じてurllib側が適切な方式を自動選択する。multipart/x-mixed-replace形式の
+    MJPEGから逐次JPEGフレームを取り出し、単体JPEG(snapshot)応答の場合はread()のたびに
+    再取得する。既存のRTSP経路やcv2で正常に動く経路には一切影響しない、追加のfallback。
+
+    open()時点で実際に1フレーム取得できることまで確認してから「開けた」と判定する
+    (HTTP接続自体は張れても映像データが得られないケースを誤って成功扱いしないため)。
     """
 
-    def __init__(self, url: str, username: str, password: str, timeout: float = 8.0) -> None:
+    def __init__(self, url: str, username: str | None, password: str | None, timeout: float = 8.0) -> None:
         self.url = url
         self.username = username
         self.password = password
@@ -287,13 +294,29 @@ class _DigestMjpegStream:
         self._response = None
         self._buffer = b""
         self._multipart = False
+        self._pending_frame = None
 
     def _build_opener(self):
-        password_mgr = HTTPPasswordMgrWithDefaultRealm()
-        password_mgr.add_password(None, self.url, self.username, self.password)
-        return build_opener(HTTPDigestAuthHandler(password_mgr))
+        handlers = []
+        if self.username and self.password:
+            basic_mgr = HTTPPasswordMgrWithDefaultRealm()
+            basic_mgr.add_password(None, self.url, self.username, self.password)
+            digest_mgr = HTTPPasswordMgrWithDefaultRealm()
+            digest_mgr.add_password(None, self.url, self.username, self.password)
+            handlers = [HTTPBasicAuthHandler(basic_mgr), HTTPDigestAuthHandler(digest_mgr)]
+        return build_opener(*handlers)
 
     def open(self) -> bool:
+        if not self._connect():
+            return False
+        ok, frame = self._read_next_frame()
+        if not ok:
+            self.close()
+            return False
+        self._pending_frame = frame
+        return True
+
+    def _connect(self) -> bool:
         try:
             self._response = self._opener.open(Request(self.url, method="GET"), timeout=self.timeout)
         except Exception:
@@ -305,12 +328,20 @@ class _DigestMjpegStream:
         except Exception:
             content_type = ""
         self._multipart = "multipart" in content_type.lower()
+        self._buffer = b""
         return True
 
     def isOpened(self) -> bool:  # noqa: N802 (cv2.VideoCapture互換のnaming)
         return self._response is not None
 
     def read(self):
+        if self._pending_frame is not None:
+            frame = self._pending_frame
+            self._pending_frame = None
+            return True, frame
+        return self._read_next_frame()
+
+    def _read_next_frame(self):
         if self._response is None:
             return False, None
         try:
@@ -322,7 +353,7 @@ class _DigestMjpegStream:
                 # 単体snapshotは毎回取り直すため接続を作り直す。
                 self._response.close()
                 self._response = None
-                if not self.open():
+                if not self._connect():
                     return False, None
                 return (frame is not None), frame
 
@@ -349,6 +380,7 @@ class _DigestMjpegStream:
             return False, None
 
     def close(self) -> None:
+        self._pending_frame = None
         if self._response is not None:
             try:
                 self._response.close()
@@ -357,12 +389,12 @@ class _DigestMjpegStream:
             self._response = None
 
 
-class _DigestCaptureAdapter:
-    """_DigestMjpegStreamを、既存コードが依存するcv2.VideoCapture最小interfaceで包むadapter。
-    check_detailed/read/closeを変更せず両対応させるための互換層。
+class _HttpMjpegCaptureAdapter:
+    """_AuthenticatedMjpegStreamを、既存コードが依存するcv2.VideoCapture最小interfaceで
+    包むadapter。check_detailed/read/closeを変更せず両対応させるための互換層。
     """
 
-    def __init__(self, stream: _DigestMjpegStream) -> None:
+    def __init__(self, stream: _AuthenticatedMjpegStream) -> None:
         self._stream = stream
 
     def isOpened(self) -> bool:  # noqa: N802
@@ -426,27 +458,27 @@ class VideoReader:
         except Exception:
             pass
 
-        if self._should_try_digest_fallback(resolved_url) and not self._cv2_capture_usable(capture):
-            digest_capture = self._try_digest_fallback(resolved_url)
-            if digest_capture is not None:
+        if self._should_try_http_mjpeg_fallback(resolved_url) and not self._cv2_capture_usable(capture):
+            fallback_capture = self._try_http_mjpeg_fallback(resolved_url)
+            if fallback_capture is not None:
                 capture.release()
-                capture = digest_capture
+                capture = fallback_capture
 
         self.capture = capture
         return self.capture
 
-    def _should_try_digest_fallback(self, resolved_url: str) -> bool:
-        return (
-            urlsplit(resolved_url).scheme.lower() in _PROBE_SCHEMES
-            and bool(self.config.username)
-            and bool(self.config.password)
-        )
+    def _should_try_http_mjpeg_fallback(self, resolved_url: str) -> bool:
+        # 機種差(Content-Type/boundary表記ゆれ、redirect等)でcv2/FFmpegが読めないケースは
+        # 認証方式を問わず起こりうるため、http(s)ソースであれば認証情報の有無に関わらず
+        # fallbackの対象にする(cv2が既に動いている場合はそもそも呼ばれない、後述)。
+        return urlsplit(resolved_url).scheme.lower() in _PROBE_SCHEMES
 
     def _cv2_capture_usable(self, capture) -> bool:
         """cv2(FFmpeg)経由で実際にフレームを取得できるかを短時間だけ確認する。
-        Digest認証カメラはisOpened()がTrueでも実フレームを一切返さないことがあるため、
-        isOpened()だけでなく短い試し読みまで行う。成功時に読んだフレームは破棄してよい
-        (直後にread()が呼ばれても、live streamなら次フレームを取得できるだけ)。
+        認証方式やContent-Type/boundaryの機種差によりisOpened()がTrueでも実フレームを
+        一切返さないことがあるため、isOpened()だけでなく短い試し読みまで行う。成功時に
+        読んだフレームは破棄してよい(直後にread()が呼ばれても、live streamなら次フレーム
+        を取得できるだけ)。
         """
         if not capture.isOpened():
             return False
@@ -460,16 +492,16 @@ class VideoReader:
                 return True
         return False
 
-    def _try_digest_fallback(self, resolved_url: str):
-        probe = probe_http_status(
-            resolved_url, self.config.username, self.config.password, timeout=_DIGEST_FALLBACK_PROBE_TIMEOUT
-        )
-        if probe.error_code or probe.auth_scheme != "digest":
-            return None
-        stream = _DigestMjpegStream(resolved_url, self.config.username, self.config.password)
+    def _try_http_mjpeg_fallback(self, resolved_url: str):
+        """cv2/FFmpegがこのHTTP(S)ソースを開けない/読めない場合の代替経路。
+        認証の有無・方式(無認証/Basic/Digest)を問わず試す。実際に1フレーム取得できることを
+        _AuthenticatedMjpegStream.open()内で確認済みのものだけ採用するため、ここで
+        成功が返れば本当に映像が取得できている。
+        """
+        stream = _AuthenticatedMjpegStream(resolved_url, self.config.username, self.config.password, timeout=_HTTP_MJPEG_FALLBACK_TIMEOUT)
         if not stream.open():
             return None
-        return _DigestCaptureAdapter(stream)
+        return _HttpMjpegCaptureAdapter(stream)
 
     def read(self):
         if self.capture is None or not self.capture.isOpened():
