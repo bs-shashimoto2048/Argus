@@ -11,6 +11,10 @@ frontend/.vite/
 data/argus.db
 data/argus.db-*
 data/runtime/*.mp4
+data/eval/
+data/dataset_candidates/
+data/reports/*.json
+data/reports/*.md
 .env
 .env.*
 !.env.example

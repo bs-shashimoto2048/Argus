@@ -5,12 +5,15 @@ READMEの「未実装・既知の制限」とソースコードから確認で�
 （2026-08 追記: YOLO/EasyOCR/Tesseractの実推論、ROI編集、前処理編集、実推論結果・履歴は
 「Validate Real Camera and Inference Engines End-to-End」で実ライブラリ・実モデルにより
 検証済み。「Improve Meter Reading Accuracy and Temporal Stabilization」でRaw Reading→
-Confirmed Readingの時系列安定化・Validationを追加。以前ここに記載していた「未実装」は
+Confirmed Readingの時系列安定化・Validationを追加。「Build and Evaluate Production-Ready
+Meter Digit Detection Model」でArgus専用モデルの学習・評価・Model Registry(role付き)を追加
+(詳細: `docs/METER_DIGIT_MODEL_EVALUATION.md`)。以前ここに記載していた「未実装」は
 実態と合っていなかったため更新した。）
 
 ## 未実装
 
-- Argus専用に学習された高精度な数字検出モデル（現状は外部持ち込みモデルのSmoke Test止まりで、精度評価・追加学習は未実施。「Digit model required」）
+- Argus専用モデルは"Production Candidate"(`meter_digits_v2_candidate.pt`)まで到達したが、学習139枚・Test 21枚と小規模なため"Production-ready"とは断定していない(詳細: `docs/METER_DIGIT_MODEL_EVALUATION.md`)
+- 機械式カウンター方式のメーター(Domain B、`src_004`)は今回のCandidate学習対象外。専用データ収集・学習が別途必要
 - Alert、推論結果のグラフ表示・履歴分析（Confirmed Readingのみを見る構造は用意済み）
 - `datetime.utcnow()`のtimezone-aware化（DB層のdatetime列がnaive前提のため、部分的な修正はnaive/aware比較エラーの原因になりうる。今回のscopeでは見送り）
 

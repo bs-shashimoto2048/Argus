@@ -26,6 +26,15 @@ export type SystemInference = {
   tesseract:{python_package:boolean;executable:boolean;version?:string|null};
   devices:DeviceOption[];
 };
+export type ModelCatalogEntry = {
+  model_id: string;
+  role: "baseline"|"candidate"|"production"|"deprecated"|string;
+  exists: boolean;
+  recommended_conf?: number;
+  recommended_iou?: number;
+  recommended_imgsz?: number;
+  notes?: string;
+};
 export type RawReadingDiagnostic = {value:string|null;confidence:number|null;timestamp:string|null;engine:string;error:string|null;detection_count:number};
 export type ReadingDiagnostics = {
   enabled:boolean;

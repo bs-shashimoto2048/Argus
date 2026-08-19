@@ -123,6 +123,22 @@ cd backend
 py scripts/reading_stabilizer_report.py --sequence-preset noisy_meter
 ```
 
+## Model Registry / モデル評価
+
+`data/models/registry.json`が、配置済みモデルのmetadata（`role`: baseline/candidate/production/deprecated、精度要約、推奨conf/iou/imgsz等）を保持します。`GET /api/system/models`で取得でき、推論設定画面の「モデル」欄はこのAPIから選択肢を動的生成します（ファイルが存在しないモデルは「ファイル無し」と表示されます）。
+
+Argus専用の数字検出モデルの学習・評価（Full Reading Exact Match中心の評価、Baseline比較、Benchmark、Failure Analysis）は`docs/METER_DIGIT_MODEL_EVALUATION.md`にまとめています。評価は`backend/scripts/evaluate_meter_model.py`で再現できます（`full`/`benchmark`/`temporal`/`conf-sweep`モード）。実データセット・実ultralytics依存のため通常CIでは実行しません。
+
+```powershell
+cd backend
+.\.venv\Scripts\Activate.ps1
+py -m scripts.evaluate_meter_model full --model <モデルへの絶対パス> --device cpu --label my_model
+```
+
+### 開発用データ収集モード
+
+`POST /api/monitors/{id}/reading/capture`で、現在のframeとその推論結果をDataset候補として保存できます。誤操作防止のため既定で無効、環境変数`ARGUS_ENABLE_DATASET_CAPTURE=1`設定時のみ有効になります。保存先は`data/dataset_candidates/`（gitignore対象）で、password等のcredentialは含めません。
+
 ## Smoke Test
 
 ```powershell
@@ -199,11 +215,13 @@ ViteのFrontendポートは固定していません。5173が使用中なら5174
 - Diagnostics API（`GET /api/system/inference`）によるtorch/CUDA/各推論ライブラリの導入状況確認
 - Frontend Device選択肢の実環境（実GPU）連動
 - Raw Reading→Confirmed Readingの時系列安定化（多数決/連続一致）、monotonic/rate/桁数のValidation、Reading Diagnostics API
+- Argus専用数字検出モデルの学習・Full Reading Exact Match中心の評価（`docs/METER_DIGIT_MODEL_EVALUATION.md`）、Model Registry（`role`付き、`GET /api/system/models`）、Frontend Model選択肢の動的連動、開発用データ収集モード
 
 ## 未実装・既知の制限
 
-- Argus専用に学習された高精度な数字検出モデルは未整備（`data/models/meter_digits_v1.pt`は外部で学習済みの持ち込みモデルであり、精度評価は別途必要。「Digit model required」は継続課題）
-- 実際の物理メーター（積算ガスメーター等）を使ったConfirmed値の長時間安定性検証は未実施（この開発環境に物理メーターが無いため。合成シーケンスによる単体テストと、実カメラ・実YOLOでのNO_DETECTION連続時の`no_reading`遷移は実機で確認済み）
+- Argus専用数字検出モデルは"Production Candidate"（`meter_digits_v2_candidate.pt`）まで到達したが、学習139枚・Test 21枚と小規模なため"Production-ready"とは断定していない。追加データ収集後の再学習を推奨（詳細: `docs/METER_DIGIT_MODEL_EVALUATION.md`）
+- 機械式カウンター方式のメーター（Domain B）は今回のCandidate学習対象外。対応するには専用データ収集・学習が別途必要
+- 実際の物理メーター（積算ガスメーター等）を使ったConfirmed値の長時間安定性検証は未実施（この開発環境に物理メーターを継続設置できないため。既存の実メーター写真によるオフライン評価、実カメラ・実YOLOでのNO_DETECTION連続時の`no_reading`遷移は実機で確認済み）
 - Alert、グラフ・履歴分析（ConfirmedReadingのみを見る構造は用意済みだが、Alert本体・グラフ画面は未実装）
 - `datetime.utcnow()`のdeprecation警告が残っている（DB層のdatetime列が全体的にnaive datetime前提のため、部分的なtimezone-aware化はnaive/aware比較エラーを誘発するリスクがあり、今回のscopeでは見送り）
 - カメラ一覧はOpenCVで0〜4番を探索

@@ -1,0 +1,55 @@
+{
+  "models": [
+    {
+      "model_id": "meter_digits_v1.pt",
+      "role": "baseline",
+      "task": "detect",
+      "classes": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
+      "input_size": 640,
+      "source": "yolo_pipeline_studio/projects/meter/runs/train/imported_001/weights/best.pt (externally trained 7-segment digit YOLO model, name on import: 7sgm_yolo26s_20260326.pt; no training performed within this project for this weight)",
+      "training_dataset": "unknown (externally trained before import; not the Argus meter dataset)",
+      "training_date": "unknown (imported 2026-08-17 per yolo_pipeline_studio job.json; original training date not recorded)",
+      "device_compatibility": ["cpu", "cuda"],
+      "recommended_conf": 0.25,
+      "recommended_iou": 0.7,
+      "recommended_imgsz": 640,
+      "created_at": "2026-08-18",
+      "metrics_summary": {
+        "test_set": "meter_test_set_v2 (21 images, held-out physical meter unit/session)",
+        "exact_match_accuracy": 0.0,
+        "no_detection_rate": 0.095,
+        "digit_detection_accuracy": 0.628,
+        "digit_classification_accuracy": 0.813,
+        "cpu_warm_latency_ms": 92.9,
+        "gpu_warm_latency_ms": 9.74
+      },
+      "notes": "Argus初期baseline。docs/METER_DIGIT_MODEL_EVALUATION.md参照。held-out test setでExact Match 0%、主因はmissing_digit(検出漏れ)。"
+    },
+    {
+      "model_id": "meter_digits_v2_candidate.pt",
+      "role": "candidate",
+      "task": "detect",
+      "classes": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
+      "input_size": 640,
+      "source": "yolo_pipeline_studio project 'meter', train-job meter_digits_v2_candidate_003 (base model yolov8n.pt, fine-tuned from scratch within this project)",
+      "training_dataset": "yolo_pipeline_studio dataset meter_argus_train_v2 (163 real photos of one physical Aichi Tokei turbine gas meter, source src_003; 139 train / 24 val, seed=42)",
+      "training_date": "2026-08-19",
+      "training_config": {"model": "yolov8n.pt", "epochs": 100, "batch": 8, "imgsz": 640, "device": "cuda", "seed": 42, "augmentation_preset": "light (degrees=3, translate=0.05, scale=0.2, fliplr=0, flipud=0, mosaic=0.5)"},
+      "device_compatibility": ["cpu", "cuda"],
+      "recommended_conf": 0.25,
+      "recommended_iou": 0.7,
+      "recommended_imgsz": 640,
+      "created_at": "2026-08-19",
+      "metrics_summary": {
+        "test_set": "meter_test_set_v2 (21 images, held-out DIFFERENT physical meter unit/session than training)",
+        "exact_match_accuracy": 0.286,
+        "no_detection_rate": 0.048,
+        "digit_detection_accuracy": 0.759,
+        "digit_classification_accuracy": 0.864,
+        "cpu_warm_latency_ms": 48.9,
+        "gpu_warm_latency_ms": 8.18
+      },
+      "notes": "baselineを全指標で上回り、CPU/GPUとも高速・省メモリ(6.2MB vs 40MB, VRAM 12MB vs 71MB)。ただしTest Set 21枚・Train 139枚と小規模で統計的信頼区間は広く、Exact Match 28.6%は無監督のProduction運用に足る精度ではない。'Production Candidate'として位置づけ、追加データ収集後の再学習を推奨(docs/METER_DIGIT_MODEL_EVALUATION.md参照)。"
+    }
+  ]
+}

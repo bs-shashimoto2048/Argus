@@ -69,8 +69,9 @@ Runtimeが存在しない場合は409、最新フレームがない場合は503�
 | Method | Endpoint | Response |
 |---|---|---|
 | GET | `/api/monitors/{monitor_id}/reading/diagnostics` | Raw Reading直近N件、Confirmed値、agreement_count、consecutive_failures |
+| POST | `/api/monitors/{monitor_id}/reading/capture` | 現在frame+推論結果をDataset候補として保存（開発者向け、既定403） |
 
-Debug用途のAPIで、通常UIで常用する想定はありません。password/認証URL等は含みません。Runtime未稼働時は409です。
+Debug用途のAPIで、通常UIで常用する想定はありません。password/認証URL等は含みません。Runtime未稼働時は409です。`reading/capture`は`ARGUS_ENABLE_DATASET_CAPTURE=1`未設定時は常に403を返します（誤操作防止）。
 
 ## ROI / Preprocess
 
@@ -85,4 +86,5 @@ Debug用途のAPIで、通常UIで常用する想定はありません。passwor
 | Method | Endpoint | Response |
 |---|---|---|
 | GET | `/api/system/inference` | torch/CUDA/ultralytics/easyocr/tesseractの導入状況、実環境のdevice一覧 |
+| GET | `/api/system/models` | `data/models/registry.json`のModel Catalog（`role`/精度要約/推奨conf・iou・imgsz等） |
 
