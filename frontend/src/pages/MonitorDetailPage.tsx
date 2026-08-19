@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
-import type { Inference, Monitor, Source } from "../types";
+import type { Inference, Monitor, ReadingDiagnostics, Source } from "../types";
 import { Brand } from "../components/Brand";
 import { InferenceSettings } from "../components/InferenceSettings";
+import { ReadingSettingsPanel } from "../components/ReadingSettingsPanel";
 import { SourceSettings } from "../components/SourceSettings";
 import { VideoPreview } from "../components/VideoPreview";
 import { RoiEditor } from "../components/RoiEditor";
@@ -39,6 +40,12 @@ function inferenceErrorText(code: string, engine: string): string {
   return inferenceErrorMessages[code] ?? `推論エラー: ${code}`;
 }
 
+function currentValueText(monitor: Monitor): string {
+  // pending(まだConsensusが取れていない)はcurrent_valueが必ずnullのため専用文言を出す。
+  if (monitor.inference_status === "pending") return "判定中...";
+  return monitor.current_value ?? "--";
+}
+
 function formatDiff(current: string | null, previous: string | null): string {
   if (current == null || previous == null) return "--";
   const a = Number(current);
@@ -58,6 +65,7 @@ export function MonitorDetailPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [editor, setEditor] = useState<"roi" | "preprocess" | null>(null);
+  const [readingDiagnostics, setReadingDiagnostics] = useState<ReadingDiagnostics | null>(null);
 
   useEffect(() => {
     api.monitor(monitorId)
@@ -75,6 +83,14 @@ export function MonitorDetailPage() {
     const timer = window.setInterval(() => {
       api.monitor(monitorId).then(setMonitor).catch(() => undefined);
     }, 5000);
+    return () => window.clearInterval(timer);
+  }, [monitorId]);
+
+  // Raw値(Debug用)。推論Runtime停止中は404/409になるため失敗は無視する。
+  useEffect(() => {
+    const poll = () => api.readingDiagnostics(monitorId).then(setReadingDiagnostics).catch(() => setReadingDiagnostics(null));
+    poll();
+    const timer = window.setInterval(poll, 5000);
     return () => window.clearInterval(timer);
   }, [monitorId]);
 
@@ -123,7 +139,7 @@ export function MonitorDetailPage() {
     <div className="detail-layout">
       <section className="monitor-column">
         <div className="panel video-panel">
-          <div className="result-values-live" aria-live="polite"><span>現在値 <strong>{monitor.current_value ?? "--"}</strong></span><span>信頼度 <strong>{monitor.confidence == null ? "--" : `${(monitor.confidence * 100).toFixed(1)}%`}</strong></span><span>前回値 <strong>{monitor.previous_value ?? "--"}</strong></span></div>
+          <div className="result-values-live" aria-live="polite"><span>現在値 <strong>{currentValueText(monitor)}</strong></span><span>信頼度 <strong>{monitor.confidence == null ? "--" : `${(monitor.confidence * 100).toFixed(1)}%`}</strong></span><span>前回値 <strong>{monitor.previous_value ?? "--"}</strong></span></div>
           <div className="section-title">
             <span>モニター映像</span>
             <span className={`status-text ${monitor.status}`}>● {labels[monitor.status] || monitor.status}</span>
@@ -136,11 +152,19 @@ export function MonitorDetailPage() {
         </div>}
         {monitor.last_inference_error && <div className="alert error">{inferenceErrorText(monitor.last_inference_error, monitor.inference.engine)}</div>}
         <div className="result-panel reading-summary">
-          <div><small>現在値</small><strong>{monitor.current_value ?? "--"}</strong></div>
+          <div><small>現在値（Confirmed）</small><strong>{currentValueText(monitor)}</strong></div>
           <div><small>信頼度</small><strong>{monitor.confidence == null ? "--" : `${(monitor.confidence * 100).toFixed(1)}%`}</strong></div>
           <div><small>前回値</small><strong>{monitor.previous_value ?? "--"}</strong></div>
           <div><small>差分</small><strong>{formatDiff(monitor.current_value, monitor.previous_value)}</strong></div>
         </div>
+        {readingDiagnostics && <div>
+          <small>
+            Raw値: {readingDiagnostics.confirmed.raw_value ?? "--"}
+            {readingDiagnostics.confirmed.raw_confidence != null && ` (${(readingDiagnostics.confirmed.raw_confidence * 100).toFixed(0)}%)`}
+            {" / 一致 "}{readingDiagnostics.confirmed.agreement_count}/{readingDiagnostics.confirmed.raw_count}
+            {readingDiagnostics.consecutive_failures > 0 && ` / 連続失敗 ${readingDiagnostics.consecutive_failures}`}
+          </small>
+        </div>}
       </section>
 
       <aside className="settings-column">
@@ -151,6 +175,7 @@ export function MonitorDetailPage() {
           <h3>ROI（関心領域）</h3>
           <button className="secondary" onClick={() => setEditor("roi")}>ROIを編集</button>
         </section>
+        <ReadingSettingsPanel value={inference.reading} onChange={(reading) => setInference({ ...inference, reading })} />
         <InferenceSettings value={inference} onChange={setInference} />
         <div className="settings-actions"><button className="save-button" onClick={save}>設定を保存</button></div>
       </aside>
