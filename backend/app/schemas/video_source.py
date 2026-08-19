@@ -39,3 +39,6 @@ class SourceTestResponse(BaseModel):
     fps: float | None = None
     error_code: str | None = None
     message: str
+    # viewer URLのquery(imagepath等)から実stream URLを解決した場合の診断情報(sanitize済み、
+    # 元URLと同一の場合はNone)。credential/実IPは含まない。
+    resolved_url_hint: str | None = None

@@ -104,7 +104,8 @@ export function MonitorDetailPage() {
     setMessage("接続確認中...");
     try {
       const result = await api.testSource(monitorId, value);
-      setMessage(`${result.connected ? "●" : "×"} ${result.message}`);
+      const hint = result.resolved_url_hint ? `（実stream URL: ${result.resolved_url_hint} へ解決）` : "";
+      setMessage(`${result.connected ? "●" : "×"} ${result.message}${hint}`);
     } catch (reason) {
       setMessage(String(reason));
     }

@@ -26,7 +26,7 @@ export function SourceSettings({ source, onChange, onCheck }: { source: Source |
     </>}
     <h3>Basic認証</h3>
     <label>ユーザー名<input value={current.username ?? ""} onChange={(e) => update({ username: e.target.value })} /></label>
-    <label>パスワード<div className="password-row"><input type={showPassword ? "text" : "password"} value={password} placeholder={current.has_password ? "保存済み（変更時のみ入力）" : "未設定"} onChange={(e) => setPassword(e.target.value)} /><button type="button" className="icon-button" onClick={() => setShowPassword((v) => !v)}>{showPassword ? "◉" : "◉̸"}</button></div></label>
+    <label>パスワード{current.has_password && !password && <span className="password-saved-badge">🔒 保存済み</span>}<div className="password-row"><input type={showPassword ? "text" : "password"} value={password} placeholder={current.has_password ? "保存済み（変更時のみ入力）" : "未設定"} onChange={(e) => setPassword(e.target.value)} /><button type="button" className="icon-button" onClick={() => setShowPassword((v) => !v)}>{showPassword ? "◉" : "◉̸"}</button></div></label>
     <button className="secondary" onClick={() => onCheck({ ...current, password })}>接続確認</button>
   </section>;
 }

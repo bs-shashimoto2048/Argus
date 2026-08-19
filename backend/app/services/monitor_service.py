@@ -11,19 +11,32 @@ from .video_service import reader_config
 from runtime.runtime_manager import runtime_manager
 
 
-def resolve_check_password(db: Session, source: VideoSourceInput) -> str | None:
+def resolve_check_password(db: Session, source: VideoSourceInput, monitor: Monitor | None = None) -> str | None:
     """接続確認(check)で実際に使うpasswordを解決する。
 
-    クライアントが平文passwordを送っていればそれを優先する。未入力(保存済み認証情報を
-    再利用したいケース)で`history_id`が指定されていれば、URL履歴に保存済みの暗号化
-    passwordを復号して使う。どちらも無ければNone(認証情報無しで接続を試みる)。
+    優先順位:
+      1. クライアントが今回明示的に入力した平文password
+      2. `history_id`が指定されていれば、URL履歴に保存済みの暗号化passwordを復号
+      3. `monitor`（対象Monitor自身）に保存済みの暗号化passwordを復号
+         (Monitor Detail画面でpasswordを再入力せずに「接続確認」した場合の再利用)
+
+    2./3.のいずれも、usernameが今回変更されている場合は再利用しない(誤った
+    username/passwordの組合せで接続を試みることを避ける)。usernameが空欄
+    (未入力=変更していない)の場合は再利用してよい。
     """
     if source.password:
         return source.password
+
+    def _username_matches(saved_username: str | None) -> bool:
+        return not source.username or source.username == saved_username
+
     if source.history_id:
         history = db.get(UrlHistory, source.history_id)
-        if history and history.encrypted_password:
+        if history and history.encrypted_password and _username_matches(history.username):
             return decrypt(history.encrypted_password)
+    if monitor is not None and monitor.source and monitor.source.encrypted_password:
+        if _username_matches(monitor.source.username):
+            return decrypt(monitor.source.encrypted_password)
     return None
 
 

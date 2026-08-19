@@ -238,6 +238,7 @@ button.danger { background: var(--color-danger); }
 .settings-actions .save-button { margin: 0; }
 .result-values-live { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 8px; color: var(--color-text-secondary); font-size: 12px; }
 .result-values-live strong { color: var(--color-text); font-size: 15px; }
+.password-saved-badge { margin-left: 8px; font-size: 11px; font-weight: normal; color: var(--color-text-secondary); }
 .danger-zone { border-color: var(--color-danger-soft); }
 .danger-zone > button.danger { width: 100%; }
 .danger-confirm p { margin: 0 0 10px; font-size: 13px; color: var(--color-text); }
