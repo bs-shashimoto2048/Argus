@@ -6,7 +6,7 @@ from .core.config import settings
 from .core.database import Base, SessionLocal, engine
 from sqlalchemy import text
 from .models import Monitor
-from .routers import cameras, health, monitors, preprocess, roi, sources, streams, system
+from .routers import cameras, health, monitors, preprocess, reading, roi, sources, streams, system
 from runtime.runtime_manager import runtime_manager
 from runtime.video_reader import ReaderConfig
 from .services.secret_store import decrypt
@@ -40,6 +40,7 @@ async def lifespan(_app: FastAPI):
                 ("latest_results", "processing_time_ms", "FLOAT"),
                 ("latest_results", "last_error", "VARCHAR(128)"),
                 ("inference_results", "engine", "VARCHAR(32)"),
+                ("inference_settings", "reading", "JSON"),
             ):
                 table_columns = connection.execute(text(f"PRAGMA table_info({table})")).all()
                 if not any(row[1] == column for row in table_columns):
@@ -52,7 +53,7 @@ async def lifespan(_app: FastAPI):
             if monitor.enabled and monitor.source:
                 try:
                     inference = monitor.inference
-                    inference_settings = {"method": inference.method, "engine": inference.engine, "model_id": inference.model_id, "device": inference.device, "video_fps": inference.video_fps, "inference_fps": inference.inference_fps, "confidence": inference.confidence, "iou": inference.iou, "image_size": inference.image_size, "preprocessing": inference.preprocessing, "roi": inference.roi, "engine_options": inference.engine_options} if inference else None
+                    inference_settings = {"method": inference.method, "engine": inference.engine, "model_id": inference.model_id, "device": inference.device, "video_fps": inference.video_fps, "inference_fps": inference.inference_fps, "confidence": inference.confidence, "iou": inference.iou, "image_size": inference.image_size, "preprocessing": inference.preprocessing, "roi": inference.roi, "reading": inference.reading, "engine_options": inference.engine_options} if inference else None
                     runtime_manager.start_monitor(monitor.id, ReaderConfig(source_type=monitor.source.source_type, device_id=monitor.source.device_id, url=monitor.source.url, username=monitor.source.username, password=decrypt(monitor.source.encrypted_password), video_fps=monitor.inference.video_fps if monitor.inference else 15.0, inference_settings=inference_settings))
                 except Exception:
                     # 1台のRuntime起動失敗が他Monitor・アプリ全体の起動を止めないようにする。
@@ -71,4 +72,5 @@ app.include_router(sources.router)
 app.include_router(streams.router)
 app.include_router(preprocess.router)
 app.include_router(roi.router)
+app.include_router(reading.router)
 app.include_router(system.router)

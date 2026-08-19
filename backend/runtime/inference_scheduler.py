@@ -14,19 +14,26 @@ from app.inference.base import InferenceResult, ModelRegistry
 from app.inference.engines import create_engine
 from app.services.preprocess_service import apply, crop_roi
 from app.schemas.inference import Roi
+from reading.models import ConfirmedReading, ReadingSettings
+from reading.stabilizer import ReadingStabilizer
 
 
 class InferenceScheduler:
-    def __init__(self, monitor_id: int, buffer, settings: dict, model_registry: ModelRegistry, model_root: Path, on_result: Callable[[int, InferenceResult], None]) -> None:
+    def __init__(self, monitor_id: int, buffer, settings: dict, model_registry: ModelRegistry, model_root: Path, on_result: Callable[[int, ConfirmedReading], None]) -> None:
         self.monitor_id = monitor_id
         self.buffer = buffer
         self.settings = settings
         self.on_result = on_result
         self.engine = create_engine(settings, model_registry, model_root)
+        # Raw Reading -> Confirmed Readingへの時系列安定化。InferenceScheduler自体が
+        # Engine/Model/ROI/Preprocessing/Device変更や再起動のたびに新規構築されるため、
+        # ここに紐付けるだけでbufferのresetが自然に満たされる。
+        self.stabilizer = ReadingStabilizer(ReadingSettings.from_dict(settings.get("reading")))
         self._stop = Event()
         self._thread: Thread | None = None
         self._busy = Lock()
         self.latest_result: InferenceResult | None = None
+        self.latest_confirmed: ConfirmedReading | None = None
         self.latest_overlay: bytes | None = None
 
     @property
@@ -94,8 +101,12 @@ class InferenceScheduler:
                     cv2.putText(overlay, f"{detection.class_name or ''} {detection.confidence or 0:.2f}", (bx1, max(16, by1 - 4)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (37, 99, 235), 1)
             ok, encoded = cv2.imencode(".jpg", overlay)
             self.latest_overlay = encoded.tobytes() if ok else None
-            self.on_result(self.monitor_id, result)
+            confirmed = self.stabilizer.update(result)
+            self.latest_confirmed = confirmed
+            self.on_result(self.monitor_id, confirmed)
         except Exception:
             result = InferenceResult(error="INFERENCE_FAILED", processing_time_ms=(perf_counter() - started) * 1000)
             self.latest_result = result
-            self.on_result(self.monitor_id, result)
+            confirmed = self.stabilizer.update(result)
+            self.latest_confirmed = confirmed
+            self.on_result(self.monitor_id, confirmed)

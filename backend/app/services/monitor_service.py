@@ -38,7 +38,7 @@ def restart_runtime(monitor: Monitor, db: Session) -> None:
         password = decrypt(monitor.source.encrypted_password)
         fps = monitor.inference.video_fps if monitor.inference else 15.0
         inference = monitor.inference
-        inference_settings = {"method": inference.method, "engine": inference.engine, "model_id": inference.model_id, "device": inference.device, "video_fps": inference.video_fps, "inference_fps": inference.inference_fps, "confidence": inference.confidence, "iou": inference.iou, "image_size": inference.image_size, "preprocessing": inference.preprocessing, "roi": inference.roi, "engine_options": inference.engine_options} if inference else None
+        inference_settings = {"method": inference.method, "engine": inference.engine, "model_id": inference.model_id, "device": inference.device, "video_fps": inference.video_fps, "inference_fps": inference.inference_fps, "confidence": inference.confidence, "iou": inference.iou, "image_size": inference.image_size, "preprocessing": inference.preprocessing, "roi": inference.roi, "reading": inference.reading, "engine_options": inference.engine_options} if inference else None
         runtime_manager.start_monitor(monitor.id, reader_config(VideoSourceInput(source_type=monitor.source.source_type, device_id=monitor.source.device_id, url=monitor.source.url, username=monitor.source.username), password, fps, inference_settings))
     else:
         runtime_manager.stop_monitor(monitor.id)
@@ -96,7 +96,7 @@ def update_monitor(db: Session, monitor_id: int, req):
             except ValueError as exc:
                 raise ValueError(f"DEVICE_UNAVAILABLE: {exc}") from exc
         for key, value in inference_data.items():
-            if key in {"roi", "preprocessing"} and hasattr(value, "model_dump"):
+            if key in {"roi", "preprocessing", "reading"} and hasattr(value, "model_dump"):
                 value = value.model_dump()
             setattr(monitor.inference, key, value)
     monitor.updated_at = datetime.utcnow()
