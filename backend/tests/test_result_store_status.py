@@ -8,9 +8,9 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from app.inference.base import InferenceResult
 from app.main import app
 from app.services.result_store import save_result
+from reading.models import CandidateStatus, ConfirmedReading
 
 
 def test_monitor_status_becomes_read_error_on_inference_error():
@@ -19,10 +19,11 @@ def test_monitor_status_becomes_read_error_on_inference_error():
         assert created.status_code == 201, created.text
         monitor_id = created.json()["id"]
         try:
-            save_result(monitor_id, InferenceResult(value="123", confidence=0.9, engine="mock"))
+            save_result(monitor_id, ConfirmedReading(validation_status=CandidateStatus.CONFIRMED, value="123", confidence=0.9, engine="mock"))
             assert client.get(f"/api/monitors/{monitor_id}").json()["status"] == "normal"
 
-            save_result(monitor_id, InferenceResult(error="MODEL_NOT_CONFIGURED", engine="ultralytics"))
+            # 連続失敗が閾値へ到達しNO_READINGへ遷移した状態を模す。
+            save_result(monitor_id, ConfirmedReading(validation_status=CandidateStatus.NO_READING, raw_error="MODEL_NOT_CONFIGURED", engine="ultralytics"))
             body = client.get(f"/api/monitors/{monitor_id}").json()
             assert body["status"] == "read_error"
             assert body["last_inference_error"] == "MODEL_NOT_CONFIGURED"

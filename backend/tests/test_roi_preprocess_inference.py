@@ -69,7 +69,10 @@ def test_inference_scheduler_processes_latest_frame(monkeypatch, tmp_path):
     buffer = LatestFrameBuffer()
     buffer.put(encoded.tobytes())
     results = []
-    scheduler = InferenceScheduler(1, buffer, {"inference_fps": 10, "roi": {"x": 0, "y": 0, "width": 1, "height": 1}, "preprocessing": {}}, model_registry, tmp_path, lambda _id, value: results.append(value))
+    # required_matches=1: この既存テストの目的は「Schedulerが最新frameをEngineへ渡す」ことの
+    # 確認であり、複数tickにわたる時系列安定化(reading.stabilizer)の合意形成は対象外のため、
+    # 単発readingで即Confirmedになるよう設定する。
+    scheduler = InferenceScheduler(1, buffer, {"inference_fps": 10, "roi": {"x": 0, "y": 0, "width": 1, "height": 1}, "preprocessing": {}, "reading": {"window_size": 1, "required_matches": 1}}, model_registry, tmp_path, lambda _id, value: results.append(value))
     scheduler.start()
     scheduler._stop.wait(0.25)
     scheduler.stop()
