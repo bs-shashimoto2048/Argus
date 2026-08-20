@@ -33,6 +33,7 @@ export function DashboardPage() {
       <Brand />
       <div className="topbar-actions">
         <span className="live-badge">● Monitoring</span>
+        <span className="fps-badge" title="Dashboardのプレビュー表示FPS(video_fps/inference_fpsとは無関係)">表示 {settings.displayFps} FPS</span>
         <button className="icon-button" aria-label="Dashboard設定" title="Dashboard設定" onClick={() => setShowSettings(true)}>⚙</button>
       </div>
     </header>

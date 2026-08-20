@@ -3,6 +3,7 @@ import type { Monitor } from "../types";
 import { VideoPreview } from "./VideoPreview";
 import { useInView, usePageVisible } from "../hooks/useVisibility";
 import type { DashboardDisplayFps } from "../hooks/useDashboardSettings";
+import { formatTimeJst } from "../utils/datetime";
 
 const labels: Record<string, string> = {
   running: "正常",
@@ -43,7 +44,7 @@ export function MonitorCard({ monitor, onClick, displayFps }: Props) {
       <div className="card-values">
         <div><small>現在値</small><strong>{monitor.current_value ?? "--"}</strong></div>
         <div><small>信頼度</small><strong>{monitor.confidence == null ? "--" : `${(monitor.confidence * 100).toFixed(1)}%`}</strong></div>
-        <div><small>更新</small><strong>{monitor.last_updated ? new Date(monitor.last_updated).toLocaleTimeString() : "--"}</strong></div>
+        <div><small>更新</small><strong>{formatTimeJst(monitor.last_updated)}</strong></div>
       </div>
     </button>
   );
