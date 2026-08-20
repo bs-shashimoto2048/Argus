@@ -83,6 +83,10 @@ button.danger { background: var(--color-danger); }
 .breadcrumbs { font-size: 14px; }
 .topbar h1 { margin: 3px 0 0; font-size: clamp(21px, 2vw, 28px); }
 .live-badge { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 5px; padding: 5px 9px; border-radius: 999px; background: var(--color-primary-soft); color: var(--color-primary); font-size: 13px; font-weight: 700; white-space: nowrap; }
+.topbar-actions { display: flex; align-items: center; gap: 10px; }
+.dashboard-settings-modal { width: min(480px, 100%); }
+.dashboard-settings-modal .panel h3 { margin-bottom: 8px; }
+.dashboard-settings-modal select { max-width: 200px; }
 .summary { display: flex; align-items: center; flex-wrap: wrap; gap: 22px; padding: 16px 0; }
 .summary b { color: var(--color-text); margin-left: 4px; }
 .summary button { margin-left: auto; }

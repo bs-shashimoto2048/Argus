@@ -24,6 +24,23 @@ class RuntimeManager:
     def get_runtime(self, monitor_id: int) -> MonitorRuntime | None:
         with self._lock: return self._runtimes.get(monitor_id)
 
+    def active_local_camera_devices(self) -> set[int]:
+        """現在稼働中のlocal camera Monitorが使用しているdevice_idの集合。
+        カメラ列挙(/api/cameras)がこれらと同じdeviceを二重にopenして衝突・
+        native crashを招かないようにするために使う(Issue #14調査)。
+        """
+        with self._lock:
+            return {
+                runtime.config.device_id
+                for runtime in self._runtimes.values()
+                if runtime.config.source_type in ("camera", "local_camera") and runtime.config.device_id is not None
+            }
+
+    def count(self) -> int:
+        """現在稼働中のMonitorRuntime数(診断用)。"""
+        with self._lock:
+            return len(self._runtimes)
+
     # Public aliases kept close to the runtime domain API.
     def start(self, monitor_id: int, config: ReaderConfig) -> None:
         self.start_monitor(monitor_id, config)

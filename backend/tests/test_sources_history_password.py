@@ -82,7 +82,9 @@ def test_resolve_check_password_falls_back_to_monitor_saved_secret():
         monitor_id = created.json()["id"]
         saved = client.patch(
             f"/api/monitors/{monitor_id}",
-            json={"source": {"source_type": "url", "url": "http://monitor-secret-test.invalid/live", "username": "monuser", "password": "monpass"}},
+            # enabled=falseにして、実際のRuntime(実cv2/FFmpeg接続試行)を起動させない
+            # (password解決ロジックのみを検証するテストであり、実ネットワークI/Oは不要)。
+            json={"source": {"source_type": "url", "url": "http://monitor-secret-test.invalid/live", "username": "monuser", "password": "monpass"}, "enabled": False},
         )
         assert saved.status_code == 200
 
@@ -118,7 +120,7 @@ def test_monitor_source_test_endpoint_uses_monitor_saved_password(monkeypatch):
         monitor_id = created.json()["id"]
         client.patch(
             f"/api/monitors/{monitor_id}",
-            json={"source": {"source_type": "url", "url": "http://monitor-secret-test2.invalid/live", "username": "monuser2", "password": "monpass2"}},
+            json={"source": {"source_type": "url", "url": "http://monitor-secret-test2.invalid/live", "username": "monuser2", "password": "monpass2"}, "enabled": False},
         )
         response = client.post(
             f"/api/monitors/{monitor_id}/source/test",
@@ -168,7 +170,7 @@ def test_saving_password_marks_has_password_true_and_never_returns_plaintext():
 
         saved = client.patch(
             f"/api/monitors/{monitor_id}",
-            json={"source": {"source_type": "url", "url": "http://persist-test.invalid/live", "username": "u1", "password": "secret1"}},
+            json={"source": {"source_type": "url", "url": "http://persist-test.invalid/live", "username": "u1", "password": "secret1"}, "enabled": False},
         )
         assert saved.status_code == 200
         assert saved.json()["source"]["has_password"] is True
@@ -190,7 +192,7 @@ def test_saving_without_password_key_preserves_previously_saved_password():
         monitor_id = created.json()["id"]
         client.patch(
             f"/api/monitors/{monitor_id}",
-            json={"source": {"source_type": "url", "url": "http://preserve-test.invalid/live", "username": "u1", "password": "secret2"}},
+            json={"source": {"source_type": "url", "url": "http://preserve-test.invalid/live", "username": "u1", "password": "secret2"}, "enabled": False},
         )
 
         # username・password両方とも変更しない別の更新(例: display_nameのみ変更)。
@@ -219,12 +221,12 @@ def test_changing_username_without_new_password_clears_old_password():
         monitor_id = created.json()["id"]
         client.patch(
             f"/api/monitors/{monitor_id}",
-            json={"source": {"source_type": "url", "url": "http://username-change-test.invalid/live", "username": "olduser", "password": "oldpass"}},
+            json={"source": {"source_type": "url", "url": "http://username-change-test.invalid/live", "username": "olduser", "password": "oldpass"}, "enabled": False},
         )
 
         changed = client.patch(
             f"/api/monitors/{monitor_id}",
-            json={"source": {"source_type": "url", "url": "http://username-change-test.invalid/live", "username": "newuser"}},
+            json={"source": {"source_type": "url", "url": "http://username-change-test.invalid/live", "username": "newuser"}, "enabled": False},
         )
         assert changed.status_code == 200
         assert changed.json()["source"]["has_password"] is False
@@ -247,12 +249,12 @@ def test_resaving_with_same_username_preserves_password():
         monitor_id = created.json()["id"]
         client.patch(
             f"/api/monitors/{monitor_id}",
-            json={"source": {"source_type": "url", "url": "http://same-username-test.invalid/live", "username": "sameuser", "password": "samepass"}},
+            json={"source": {"source_type": "url", "url": "http://same-username-test.invalid/live", "username": "sameuser", "password": "samepass"}, "enabled": False},
         )
 
         resaved = client.patch(
             f"/api/monitors/{monitor_id}",
-            json={"source": {"source_type": "url", "url": "http://same-username-test.invalid/live", "username": "sameuser"}},
+            json={"source": {"source_type": "url", "url": "http://same-username-test.invalid/live", "username": "sameuser"}, "enabled": False},
         )
         assert resaved.status_code == 200
         assert resaved.json()["source"]["has_password"] is True
