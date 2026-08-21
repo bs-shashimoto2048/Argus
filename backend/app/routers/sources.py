@@ -8,7 +8,8 @@ router = APIRouter(prefix="/api", tags=["sources"])
 
 @router.post("/sources/check", response_model=ConnectionCheckResponse)
 def check_source(source: VideoSourceInput, db: Session = Depends(get_db)):
-    ok, message = video_service.check_source(source, source.password)
+    password = monitor_service.resolve_check_password(db, source)
+    ok, message = video_service.check_source(source, password)
     if ok and source.source_type == "url": monitor_service.save_verified_url(db, source)
     return ConnectionCheckResponse(success=ok, message=message, detail=None if ok else message)
 
@@ -16,13 +17,14 @@ def check_source(source: VideoSourceInput, db: Session = Depends(get_db)):
 @router.post("/monitors/{monitor_id}/source/test", response_model=SourceTestResponse)
 def test_monitor_source(monitor_id: int, source: VideoSourceInput, db: Session = Depends(get_db)):
     try:
-        monitor_service.get_monitor(db, monitor_id)
+        monitor = monitor_service.get_monitor(db, monitor_id)
     except ValueError as exc:
         raise HTTPException(404, str(exc)) from exc
-    result = video_service.check_source_detailed(source, source.password)
+    password = monitor_service.resolve_check_password(db, source, monitor)
+    result = video_service.check_source_detailed(source, password)
     if result.connected and source.source_type == "url":
         monitor_service.save_verified_url(db, source)
-    return SourceTestResponse(connected=result.connected, source_type=result.source_type, width=result.width, height=result.height, fps=result.fps, error_code=result.error_code, message=result.message)
+    return SourceTestResponse(connected=result.connected, source_type=result.source_type, width=result.width, height=result.height, fps=result.fps, error_code=result.error_code, message=result.message, resolved_url_hint=result.resolved_url_sanitized)
 @router.get("/url-history")
 def list_history(db: Session = Depends(get_db)): return {"items": source_service.histories(db)}
 @router.delete("/url-history/{history_id}", status_code=204)

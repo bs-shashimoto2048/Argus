@@ -11,6 +11,35 @@ from .video_service import reader_config
 from runtime.runtime_manager import runtime_manager
 
 
+def resolve_check_password(db: Session, source: VideoSourceInput, monitor: Monitor | None = None) -> str | None:
+    """接続確認(check)で実際に使うpasswordを解決する。
+
+    優先順位:
+      1. クライアントが今回明示的に入力した平文password
+      2. `history_id`が指定されていれば、URL履歴に保存済みの暗号化passwordを復号
+      3. `monitor`（対象Monitor自身）に保存済みの暗号化passwordを復号
+         (Monitor Detail画面でpasswordを再入力せずに「接続確認」した場合の再利用)
+
+    2./3.のいずれも、usernameが今回変更されている場合は再利用しない(誤った
+    username/passwordの組合せで接続を試みることを避ける)。usernameが空欄
+    (未入力=変更していない)の場合は再利用してよい。
+    """
+    if source.password:
+        return source.password
+
+    def _username_matches(saved_username: str | None) -> bool:
+        return not source.username or source.username == saved_username
+
+    if source.history_id:
+        history = db.get(UrlHistory, source.history_id)
+        if history and history.encrypted_password and _username_matches(history.username):
+            return decrypt(history.encrypted_password)
+    if monitor is not None and monitor.source and monitor.source.encrypted_password:
+        if _username_matches(monitor.source.username):
+            return decrypt(monitor.source.encrypted_password)
+    return None
+
+
 def _ensure_children(db: Session, monitor: Monitor) -> None:
     if not monitor.inference:
         monitor.inference = InferenceSettings()
@@ -106,15 +135,23 @@ def update_monitor(db: Session, monitor_id: int, req):
             raise ValueError("URLを入力してください")
         if not monitor.source:
             monitor.source = VideoSource()
+        previous_username = monitor.source.username
         for key in ("source_type", "device_id", "url", "username"):
             if key in source_data:
                 setattr(monitor.source, key, source_data[key])
+        username_changed = "username" in source_data and source_data["username"] != previous_username
         if source_data.get("password"):
             monitor.source.encrypted_password = encrypt(source_data["password"])
         elif source_data.get("history_id"):
             history = db.get(UrlHistory, source_data["history_id"])
             if history and history.encrypted_password:
                 monitor.source.encrypted_password = history.encrypted_password
+        elif username_changed:
+            # usernameを別の値へ変更したのに新しいpassword/history指定が無い場合、
+            # 古いusernameに対応するpasswordを新usernameへ誤って流用しない
+            # (資格情報の組合せ不整合を防ぐ)。空欄=削除ではないが、username変更は
+            # 明示的な変更意思とみなし、新しいpasswordの入力を促すためクリアする。
+            monitor.source.encrypted_password = None
     if inference_data is not None:
         if "device" in inference_data:
             try:

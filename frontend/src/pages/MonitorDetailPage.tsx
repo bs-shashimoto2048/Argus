@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
-import type { Inference, Monitor, ReadingDiagnostics, Source } from "../types";
+import type { Inference, Monitor, ReadingDiagnostics, RuntimeDiagnostics, Source } from "../types";
 import { Brand } from "../components/Brand";
 import { InferenceSettings } from "../components/InferenceSettings";
 import { ReadingSettingsPanel } from "../components/ReadingSettingsPanel";
@@ -66,6 +66,9 @@ export function MonitorDetailPage() {
   const [error, setError] = useState("");
   const [editor, setEditor] = useState<"roi" | "preprocess" | null>(null);
   const [readingDiagnostics, setReadingDiagnostics] = useState<ReadingDiagnostics | null>(null);
+  const [runtimeDiagnostics, setRuntimeDiagnostics] = useState<RuntimeDiagnostics | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     api.monitor(monitorId)
@@ -94,6 +97,15 @@ export function MonitorDetailPage() {
     return () => window.clearInterval(timer);
   }, [monitorId]);
 
+  // Runtime診断(state/last_error/last_frame等)。映像Runtime停止中は409になるため失敗は無視する。
+  // credential/URLは含まれないため、そのまま画面表示してよい。
+  useEffect(() => {
+    const poll = () => api.runtimeDiagnostics(monitorId).then(setRuntimeDiagnostics).catch(() => setRuntimeDiagnostics(null));
+    poll();
+    const timer = window.setInterval(poll, 3000);
+    return () => window.clearInterval(timer);
+  }, [monitorId]);
+
   if (!monitor || !inference) {
     return <main className="page"><div className="loading">読み込み中...</div></main>;
   }
@@ -102,9 +114,22 @@ export function MonitorDetailPage() {
     setMessage("接続確認中...");
     try {
       const result = await api.testSource(monitorId, value);
-      setMessage(`${result.connected ? "●" : "×"} ${result.message}`);
+      const hint = result.resolved_url_hint ? `（実stream URL: ${result.resolved_url_hint} へ解決）` : "";
+      setMessage(`${result.connected ? "●" : "×"} ${result.message}${hint}`);
     } catch (reason) {
       setMessage(String(reason));
+    }
+  };
+
+  const deleteMonitor = async () => {
+    setDeleting(true);
+    try {
+      await api.remove(monitorId);
+      navigate("/");
+    } catch (reason) {
+      setError(String(reason));
+      setConfirmingDelete(false);
+      setDeleting(false);
     }
   };
 
@@ -165,6 +190,15 @@ export function MonitorDetailPage() {
             {readingDiagnostics.consecutive_failures > 0 && ` / 連続失敗 ${readingDiagnostics.consecutive_failures}`}
           </small>
         </div>}
+        {runtimeDiagnostics && <div>
+          <small>
+            映像Runtime: {runtimeDiagnostics.state}
+            {runtimeDiagnostics.frame_width != null && ` / ${runtimeDiagnostics.frame_width}x${runtimeDiagnostics.frame_height}`}
+            {runtimeDiagnostics.reconnect_count > 0 && ` / 再接続 ${runtimeDiagnostics.reconnect_count}回`}
+            {runtimeDiagnostics.last_error && ` / エラー: ${runtimeDiagnostics.last_error}`}
+            {runtimeDiagnostics.stale && ` / 映像停滞中`}
+          </small>
+        </div>}
       </section>
 
       <aside className="settings-column">
@@ -178,6 +212,21 @@ export function MonitorDetailPage() {
         <ReadingSettingsPanel value={inference.reading} onChange={(reading) => setInference({ ...inference, reading })} />
         <InferenceSettings value={inference} onChange={setInference} />
         <div className="settings-actions"><button className="save-button" onClick={save}>設定を保存</button></div>
+
+        <section className="panel danger-zone">
+          <h3>Danger Zone</h3>
+          {!confirmingDelete ? (
+            <button className="danger" onClick={() => setConfirmingDelete(true)}>このモニターを削除</button>
+          ) : (
+            <div className="danger-confirm">
+              <p>「{monitor.display_name}」（{monitor.name}）を削除します。この操作は取り消せません。よろしいですか？</p>
+              <div className="danger-confirm-actions">
+                <button className="danger" onClick={deleteMonitor} disabled={deleting}>{deleting ? "削除中..." : "削除する"}</button>
+                <button className="secondary" onClick={() => setConfirmingDelete(false)} disabled={deleting}>キャンセル</button>
+              </div>
+            </div>
+          )}
+        </section>
       </aside>
     </div>
     {editor === "roi" && <RoiEditor monitorId={monitorId} initial={inference.roi} onClose={() => setEditor(null)} onSaved={(roi) => setInference({ ...inference, roi })} />}
