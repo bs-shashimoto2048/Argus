@@ -12,10 +12,19 @@ from PIL import Image
 
 from app.inference.base import InferenceResult, ModelRegistry
 from app.inference.engines import create_engine
+from app.inference.meter_interpreter import interpret_digits
 from app.services.preprocess_service import apply, crop_roi
 from app.schemas.inference import Roi
 from reading.models import ConfirmedReading, ReadingSettings
 from reading.stabilizer import ReadingStabilizer
+
+# ROIを設定して物体検出(object_detection/ultralytics)で推論する際、指定ROIの
+# 領域をそのまま(文脈なしで)crop・推論すると検出数が0になることを実機検証で確認した
+# (Issue #16)。数字表示部だけをタイトにcropすると、対象がフレームに対して学習時より
+# 不自然に大きく写り、モデルが検出できなくなる。ROI自体の幅/高さに対してこの比率だけ
+# 周囲へ余白を広げてcropすることで、モデルに十分な文脈を与えつつ、実測で検出が
+# 安定して復活することを確認した値(margin=1.0: 左右上下にROI自体のwidth/height分だけ広げる)。
+_ROI_INFERENCE_MARGIN = 1.0
 
 
 class InferenceScheduler:
@@ -78,20 +87,57 @@ class InferenceScheduler:
                 return
             full_height, full_width = raw.shape[:2]
             roi = Roi.model_validate(self.settings.get("roi") or {})
-            x1, y1 = int(full_width * roi.x), int(full_height * roi.y)
-            x2, y2 = max(x1 + 1, int(full_width * (roi.x + roi.width))), max(y1 + 1, int(full_height * (roi.y + roi.height)))
+            # ユーザーが指定した本来のROI(結果を絞り込む境界)。
+            roi_x1, roi_y1 = int(full_width * roi.x), int(full_height * roi.y)
+            roi_x2 = max(roi_x1 + 1, int(full_width * (roi.x + roi.width)))
+            roi_y2 = max(roi_y1 + 1, int(full_height * (roi.y + roi.height)))
+            # 物体検出(object_detection/ultralytics)のみ、モデルに文脈を与えるため
+            # margin付きでcropする(理由は_ROI_INFERENCE_MARGINのコメント参照)。
+            # OCR系(easyocr/tesseract)は対象外(全文字を読むため、ROI外の文字列が
+            # 混入するリスクがあり、この修正のスコープ外)。
+            is_object_detection = self.settings.get("method") == "object_detection"
+            if is_object_detection:
+                margin_x, margin_y = roi.width * _ROI_INFERENCE_MARGIN, roi.height * _ROI_INFERENCE_MARGIN
+                x1 = int(full_width * max(0.0, roi.x - margin_x))
+                y1 = int(full_height * max(0.0, roi.y - margin_y))
+                x2 = int(full_width * min(1.0, roi.x + roi.width + margin_x))
+                y2 = int(full_height * min(1.0, roi.y + roi.height + margin_y))
+                x1, y1 = min(x1, roi_x1), min(y1, roi_y1)
+                x2, y2 = max(x2, roi_x2), max(y2, roi_y2)
+            else:
+                x1, y1, x2, y2 = roi_x1, roi_y1, roi_x2, roi_y2
+            x2, y2 = max(x1 + 1, x2), max(y1 + 1, y2)
             crop = raw[y1:y2, x1:x2]
             pil = Image.fromarray(cv2.cvtColor(crop, cv2.COLOR_BGR2RGB))
             processed = apply(crop_roi(pil, None), self.settings.get("preprocessing") or {})
             image = cv2.cvtColor(np.asarray(processed), cv2.COLOR_RGB2BGR)
             result = self.engine.infer(image, self.settings)
             result.processing_time_ms = (perf_counter() - started) * 1000
+            sx = crop.shape[1] / max(1, image.shape[1])
+            sy = crop.shape[0] / max(1, image.shape[0])
             for detection in result.detections:
                 if detection.bbox:
                     bx1, by1, bx2, by2 = detection.bbox
-                    sx = crop.shape[1] / max(1, image.shape[1])
-                    sy = crop.shape[0] / max(1, image.shape[0])
                     detection.bbox = (x1 + bx1 * sx, y1 + by1 * sy, x1 + bx2 * sx, y1 + by2 * sy)
+            if is_object_detection and (x1, y1, x2, y2) != (roi_x1, roi_y1, roi_x2, roi_y2):
+                # margin付きcropで拾った、ユーザー指定ROI外の検出は結果へ反映しない
+                # (推論への文脈提供と、「ROI外は検出対象外」という利用者の意図の両立)。
+                in_roi = []
+                for detection in result.detections:
+                    if not detection.bbox:
+                        continue
+                    dx1, dy1, dx2, dy2 = detection.bbox
+                    cx, cy = (dx1 + dx2) / 2, (dy1 + dy2) / 2
+                    if roi_x1 <= cx <= roi_x2 and roi_y1 <= cy <= roi_y2:
+                        in_roi.append(detection)
+                if len(in_roi) != len(result.detections):
+                    result.detections = in_roi
+                    if in_roi:
+                        meter = interpret_digits(in_roi, self.settings.get("confidence", 0.25), (self.settings.get("reading") or {}).get("decimal_position"))
+                        result.value, result.confidence = meter.value, meter.confidence
+                        result.error = None
+                    else:
+                        result.value, result.confidence, result.error = None, None, "NO_DETECTION"
             self.latest_result = result
             overlay = raw.copy()
             for detection in result.detections:

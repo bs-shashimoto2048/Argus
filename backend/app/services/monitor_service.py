@@ -28,8 +28,18 @@ def _to_response(monitor: Monitor):
     return MonitorResponse(id=monitor.id, name=monitor.name, display_name=monitor.display_name, location=monitor.location, enabled=monitor.enabled, status=monitor.status, created_at=monitor.created_at, updated_at=monitor.updated_at, source=source, inference=monitor.inference, current_value=monitor.latest_result.value if monitor.latest_result else None, previous_value=monitor.latest_result.previous_value if monitor.latest_result else None, confidence=monitor.latest_result.confidence if monitor.latest_result else None, last_updated=monitor.latest_result.timestamp if monitor.latest_result else None, inference_status=monitor.latest_result.status if monitor.latest_result else "disabled", last_inference_error=monitor.latest_result.last_error if monitor.latest_result else None)
 
 
+def _build_inference_settings(inference: InferenceSettings | None) -> dict | None:
+    if not inference:
+        return None
+    return {"method": inference.method, "engine": inference.engine, "model_id": inference.model_id, "device": inference.device, "video_fps": inference.video_fps, "inference_fps": inference.inference_fps, "confidence": inference.confidence, "iou": inference.iou, "image_size": inference.image_size, "preprocessing": inference.preprocessing, "roi": inference.roi, "reading": inference.reading, "engine_options": inference.engine_options}
+
+
 def restart_runtime(monitor: Monitor, db: Session) -> None:
-    """稼働中Monitorの映像/推論Runtimeを最新設定で再構成する。
+    """稼働中Monitorの映像/推論Runtimeを最新設定で再構成する(source変更・enabled切替を含む)。
+
+    VideoReaderからの再接続を伴うため、source(URL/認証情報等)やenabledが変わった
+    可能性がある場合に使う。ROIなど推論設定だけの変更には restart_inference_only()
+    を使うこと(Issue #16: 不要な再接続で実カメラへの接続が失敗する回帰があったため)。
 
     PATCH /api/monitors/{id} だけでなく、ROI PUTなど設定を部分更新する
     他のRouterからも呼び出せるよう公開関数にしている。
@@ -37,11 +47,27 @@ def restart_runtime(monitor: Monitor, db: Session) -> None:
     if monitor.enabled and monitor.source:
         password = decrypt(monitor.source.encrypted_password)
         fps = monitor.inference.video_fps if monitor.inference else 15.0
-        inference = monitor.inference
-        inference_settings = {"method": inference.method, "engine": inference.engine, "model_id": inference.model_id, "device": inference.device, "video_fps": inference.video_fps, "inference_fps": inference.inference_fps, "confidence": inference.confidence, "iou": inference.iou, "image_size": inference.image_size, "preprocessing": inference.preprocessing, "roi": inference.roi, "reading": inference.reading, "engine_options": inference.engine_options} if inference else None
+        inference_settings = _build_inference_settings(monitor.inference)
         runtime_manager.start_monitor(monitor.id, reader_config(VideoSourceInput(source_type=monitor.source.source_type, device_id=monitor.source.device_id, url=monitor.source.url, username=monitor.source.username), password, fps, inference_settings))
     else:
         runtime_manager.stop_monitor(monitor.id)
+
+
+def restart_inference_only(monitor: Monitor, db: Session) -> None:
+    """推論設定(ROI/preprocessing/model/confidence等)だけを更新する場合に使う。
+
+    稼働中のVideoReader/VideoCapture接続には触れず、InferenceSchedulerだけを
+    差し替える(source/enabledは一切変更しない)。対象MonitorのRuntimeがまだ
+    起動していない場合は、通常のrestart_runtime()(source込みのフル起動)へ
+    フォールバックする。
+    """
+    if not (monitor.enabled and monitor.source):
+        restart_runtime(monitor, db)
+        return
+    fps = monitor.inference.video_fps if monitor.inference else 15.0
+    inference_settings = _build_inference_settings(monitor.inference)
+    if not runtime_manager.update_inference_settings(monitor.id, fps, inference_settings):
+        restart_runtime(monitor, db)
 
 
 def list_monitors(db: Session):
@@ -102,7 +128,12 @@ def update_monitor(db: Session, monitor_id: int, req):
     monitor.updated_at = datetime.utcnow()
     db.commit()
     monitor = get_monitor(db, monitor_id)
-    restart_runtime(monitor, db)
+    # source(URL/認証情報等)やenabledが変わっていなければ、VideoReaderを再接続せず
+    # 推論設定だけを差し替える(Issue #16: 不要な再接続による接続失敗を避ける)。
+    if source_data is None and "enabled" not in data:
+        restart_inference_only(monitor, db)
+    else:
+        restart_runtime(monitor, db)
     return _to_response(monitor)
 
 
