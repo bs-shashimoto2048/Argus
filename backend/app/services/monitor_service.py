@@ -186,9 +186,15 @@ def update_monitor(db: Session, monitor_id: int, req):
     monitor.updated_at = datetime.utcnow()
     db.commit()
     monitor = get_monitor(db, monitor_id)
-    # source(URL/認証情報等)やenabledが変わっていなければ、VideoReaderを再接続せず
-    # 推論設定だけを差し替える(Issue #16: 不要な再接続による接続失敗を避ける)。
-    if source_data is None and "enabled" not in data:
+    # display_name/location等の基本情報だけの変更(source/inference/enabledのいずれも
+    # 含まないPATCH)では、Runtime/VideoReader/InferenceSchedulerに一切触れない
+    # (Issue #20: 基本情報の変更だけでReadingStabilizerの状態がリセットされる等の
+    # 副作用を避ける)。source(URL/認証情報等)やenabledが変わっていなければ、
+    # VideoReaderを再接続せず推論設定だけを差し替える(Issue #16: 不要な再接続による
+    # 接続失敗を避ける)。
+    if source_data is None and inference_data is None and "enabled" not in data:
+        pass
+    elif source_data is None and "enabled" not in data:
         restart_inference_only(monitor, db)
     else:
         restart_runtime(monitor, db)
