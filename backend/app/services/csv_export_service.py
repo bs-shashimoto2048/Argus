@@ -20,6 +20,7 @@ Asia/Tokyoデータベース依存(Windows環境ではtzdata追加パッケー�
 from __future__ import annotations
 
 import csv
+import os
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -33,6 +34,16 @@ from ..models import CsvExportLog, Monitor, SystemSettings
 JST = timezone(timedelta(hours=9))
 
 CSV_HEADER = ["timestamp_jst", "monitor_id", "monitor_name", "display_name", "confirmed_value", "confidence", "status", "engine", "model_id"]
+
+# Issue #21: 日本語display_nameがExcelで文字化けする問題への対応。
+# CP932への変更はUnicode文字を失う可能性があるため避け、Excelがダブルクリックで
+# 正しく開けるUTF-8 with BOM(utf-8-sig相当)を採用する。ただし単一ファイル追記方式
+# のため、Pythonの"utf-8-sig"codecをそのまま追記(open(..., "a", encoding="utf-8-sig"))
+# に使うと、追記のたびに新しいStreamWriterがBOMを書き直し、ファイル途中にBOMが
+# 混入して壊れる(既知のutf-8-sigの落とし穴)。そのため、BOMは「ファイル生成/移行の
+# 一度きりの生バイト書込」でのみ扱い、実際の行の追記は常にプレーンな"utf-8"
+# (BOMを一切書かないcodec)で行う。
+_UTF8_BOM = b"\xef\xbb\xbf"
 
 # 本番/テストで出力先フォルダは共通(SystemSettings.csv_output_folder)だが、
 # ファイル名を分けることで同じフォルダへ両方追記できるようにする。
@@ -123,9 +134,36 @@ def _build_row(monitor: Monitor, hour_bucket: datetime) -> list[str]:
     return [format_timestamp_jst_for_csv(hour_bucket), str(monitor.id), monitor.name, monitor.display_name, confirmed_value, confidence, status, engine, model_id]
 
 
+def _ensure_bom_prefix(path: Path) -> None:
+    """既存の空でないファイルがBOM無しUTF-8の場合、内容を壊さずBOMを1度だけ付与する。
+
+    ファイル全体を読み直して書き戻す必要があるが、この操作は「このファイルで
+    初めてBOM無し状態を検出した時」の1回だけ発生する(以降はファイル先頭3byteの
+    確認だけで済み、行を追記するたびに毎回発生するわけではない)。書込先は
+    同一フォルダの一時ファイルにし、os.replace()で原子的に差し替えることで、
+    移行処理の途中でプロセスが落ちても元ファイルが破損した状態にならないようにする。
+    """
+    with open(path, "rb") as f:
+        head = f.read(len(_UTF8_BOM))
+    if head == _UTF8_BOM:
+        return
+    with open(path, "rb") as f:
+        existing = f.read()
+    tmp_path = path.with_name(path.name + ".bom-migrate.tmp")
+    with open(tmp_path, "wb") as f:
+        f.write(_UTF8_BOM)
+        f.write(existing)
+    os.replace(tmp_path, path)
+
+
 def _append_csv_row(output_folder: str, filename: str, row: list[str]) -> None:
     """1行をfilenameへ追記する(header未書込のファイルには初回のみheaderを書く)。
-    排他(_write_lock)により、header判定から書込までを1つの操作として直列化する。
+    排他(_write_lock)により、BOM付与判定〜書込までを1つの操作として直列化する。
+
+    BOM(Excelでの日本語文字化け対策、Issue #21)は新規/空ファイル作成時に生バイトで
+    1度だけ書き込み、既存の(BOM無し)ファイルには_ensure_bom_prefix()で1度だけ
+    付与する。行データ自体の書込は常にプレーンな"utf-8"(BOMを書かないcodec)を
+    使うため、追記のたびにBOMがファイル途中へ混入することはない。
     """
     folder = Path(output_folder)
     if not folder.is_dir():
@@ -134,6 +172,11 @@ def _append_csv_row(output_folder: str, filename: str, row: list[str]) -> None:
     with _write_lock:
         try:
             is_new = not path.exists() or path.stat().st_size == 0
+            if is_new:
+                with open(path, "wb") as f:
+                    f.write(_UTF8_BOM)
+            else:
+                _ensure_bom_prefix(path)
             with open(path, "a", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
                 if is_new:

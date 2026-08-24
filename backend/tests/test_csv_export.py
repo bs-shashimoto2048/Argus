@@ -197,7 +197,7 @@ def test_export_writes_fixed_production_filename_with_header(db, tmp_path):
     path = tmp_path / "argus_hourly_readings.csv"
     assert path.exists()
     assert not (tmp_path / "argus_hourly_readings_test.csv").exists()  # テスト用ファイルは作られない
-    lines = path.read_text(encoding="utf-8").strip().splitlines()
+    lines = path.read_text(encoding="utf-8-sig").strip().splitlines()
     assert lines[0] == ",".join(svc.CSV_HEADER)
     row = lines[1].split(",")
     assert row[0] == svc.format_timestamp_jst_for_csv(hour)  # "YYYY/MM/DD HH:mm:ss"形式(Excel等で確認しやすい表記)
@@ -217,7 +217,7 @@ def test_export_all_monitors_appends_one_row_each_to_same_production_file(db, tm
 
     files = list(tmp_path.glob("*.csv"))
     assert len(files) == 1 and files[0].name == "argus_hourly_readings.csv"
-    data_lines = files[0].read_text(encoding="utf-8").strip().splitlines()[1:]
+    data_lines = files[0].read_text(encoding="utf-8-sig").strip().splitlines()[1:]
     assert len(data_lines) == 2
     ids_in_file = {line.split(",")[1] for line in data_lines}
     assert ids_in_file == {str(m1.id), str(m2.id)}
@@ -232,7 +232,7 @@ def test_export_same_hour_is_deduped_no_second_row(db, tmp_path):
     assert second.status == "skipped_already_exported"
 
     path = tmp_path / "argus_hourly_readings.csv"
-    assert len(path.read_text(encoding="utf-8").strip().splitlines()[1:]) == 1  # 二重出力されていない
+    assert len(path.read_text(encoding="utf-8-sig").strip().splitlines()[1:]) == 1  # 二重出力されていない
 
 
 def test_export_different_hours_append_separate_rows(db, tmp_path):
@@ -243,7 +243,7 @@ def test_export_different_hours_append_separate_rows(db, tmp_path):
     svc.export_monitor_for_hour(db, monitor, hour2, str(tmp_path))
 
     path = tmp_path / "argus_hourly_readings.csv"
-    assert len(path.read_text(encoding="utf-8").strip().splitlines()[1:]) == 2
+    assert len(path.read_text(encoding="utf-8-sig").strip().splitlines()[1:]) == 2
 
 
 def test_restart_equivalent_does_not_duplicate(isolated_session_factory, tmp_path):
@@ -263,7 +263,7 @@ def test_restart_equivalent_does_not_duplicate(isolated_session_factory, tmp_pat
     assert outcome1.status == "written"
     assert outcome2.status == "skipped_already_exported"
     path = tmp_path / "argus_hourly_readings.csv"
-    assert len(path.read_text(encoding="utf-8").strip().splitlines()) == 2  # header + 1行のみ
+    assert len(path.read_text(encoding="utf-8-sig").strip().splitlines()) == 2  # header + 1行のみ
 
 
 def test_read_error_status_is_recorded_with_empty_value(db, tmp_path):
@@ -276,7 +276,7 @@ def test_read_error_status_is_recorded_with_empty_value(db, tmp_path):
     assert outcome.status == "written"
 
     path = tmp_path / "argus_hourly_readings.csv"
-    row = path.read_text(encoding="utf-8").strip().splitlines()[1].split(",")
+    row = path.read_text(encoding="utf-8-sig").strip().splitlines()[1].split(",")
     assert row[4] == ""  # confirmed_valueは空(Noneを出力しない)
     assert row[6] == "read_error"
 
@@ -309,7 +309,7 @@ def test_test_export_can_run_repeatedly_without_dedup(db, tmp_path):
     assert second.status == "written"  # dedupされない、何度でも追記できる
 
     path = tmp_path / "argus_hourly_readings_test.csv"
-    lines = path.read_text(encoding="utf-8").strip().splitlines()
+    lines = path.read_text(encoding="utf-8-sig").strip().splitlines()
     assert lines[0] == ",".join(svc.CSV_HEADER)  # headerは初回のみ
     assert len(lines) == 3  # header + 2行
 
@@ -337,8 +337,8 @@ def test_production_and_test_files_coexist_independently(db, tmp_path):
     svc.export_monitor_for_test(monitor, hour, str(tmp_path))
     svc.export_monitor_for_test(monitor, hour, str(tmp_path))
 
-    prod_lines = (tmp_path / "argus_hourly_readings.csv").read_text(encoding="utf-8").strip().splitlines()
-    test_lines = (tmp_path / "argus_hourly_readings_test.csv").read_text(encoding="utf-8").strip().splitlines()
+    prod_lines = (tmp_path / "argus_hourly_readings.csv").read_text(encoding="utf-8-sig").strip().splitlines()
+    test_lines = (tmp_path / "argus_hourly_readings_test.csv").read_text(encoding="utf-8-sig").strip().splitlines()
     assert len(prod_lines) - 1 == 1  # 本番はdedupにより1行のみ
     assert len(test_lines) - 1 == 2  # テストは2回とも追記される
 
@@ -353,11 +353,11 @@ def test_changing_output_folder_leaves_old_file_untouched(db, tmp_path):
     hour = svc.hour_bucket_jst()
 
     svc.export_monitor_for_test(monitor, hour, str(folder_a))
-    snapshot_a = (folder_a / "argus_hourly_readings_test.csv").read_text(encoding="utf-8")
+    snapshot_a = (folder_a / "argus_hourly_readings_test.csv").read_text(encoding="utf-8-sig")
 
     svc.export_monitor_for_test(monitor, hour, str(folder_b))
 
-    assert (folder_a / "argus_hourly_readings_test.csv").read_text(encoding="utf-8") == snapshot_a  # 旧ファイルは不変
+    assert (folder_a / "argus_hourly_readings_test.csv").read_text(encoding="utf-8-sig") == snapshot_a  # 旧ファイルは不変
     assert (folder_b / "argus_hourly_readings_test.csv").exists()  # 新フォルダに新規作成
 
 
@@ -412,7 +412,7 @@ def test_concurrent_appends_to_same_file_do_not_corrupt_or_duplicate_header(db, 
 
     assert all(o.status == "written" for o in outcomes)
     path = tmp_path / "argus_hourly_readings_test.csv"
-    lines = path.read_text(encoding="utf-8").strip().splitlines()
+    lines = path.read_text(encoding="utf-8-sig").strip().splitlines()
     assert lines.count(",".join(svc.CSV_HEADER)) == 1  # headerは1回だけ
     assert len(lines) - 1 == 20  # 20行とも欠落・重複なく書き込まれている
     for line in lines[1:]:
@@ -512,5 +512,5 @@ def test_api_run_now_writes_test_file_and_does_not_affect_production_status(clie
     run_response_2 = client.post("/api/system/csv-export/run-now")
     outcomes_2 = run_response_2.json()["outcomes"]
     assert any(o["monitor_id"] == monitor.id and o["status"] == "written" for o in outcomes_2)
-    lines = (tmp_path / "argus_hourly_readings_test.csv").read_text(encoding="utf-8").strip().splitlines()
+    lines = (tmp_path / "argus_hourly_readings_test.csv").read_text(encoding="utf-8-sig").strip().splitlines()
     assert len(lines) - 1 == 2  # header 1 + データ2行
