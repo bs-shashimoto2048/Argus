@@ -129,6 +129,13 @@ button.danger { background: var(--color-danger); }
 .card-values { display: grid; grid-template-columns: minmax(0, 1.3fr) repeat(2, minmax(0, 1fr)); gap: 10px; padding: 13px 14px; border-top: 1px solid var(--color-border); }
 .card-values small, .result-panel small { display: block; color: var(--color-text-secondary); font-size: 12px; }
 .card-values strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; }
+/* Issue #25: 現在値/信頼度/更新時刻の視覚的優先順位を明確にする(日常監視で
+   数値を短時間で読み取れることを優先)。既存のstatus判定ロジックは変更せず、
+   表示色の切替にのみmonitor.statusを使う。 */
+.card-value-primary strong { font-size: clamp(19px, 2.3vw, 25px); font-weight: 800; color: var(--color-primary); font-variant-numeric: tabular-nums; }
+.card-value-confidence strong { font-size: 15px; font-weight: 700; color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
+.card-value-confidence.status-normal strong, .card-value-confidence.status-running strong { color: var(--color-success); }
+.card-value-updated strong { font-size: 13px; font-weight: 600; color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
 .empty, .form-card, .panel { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 9px; box-shadow: var(--shadow-sm); }
 .empty { grid-column: 1 / -1; padding: 34px 22px; text-align: center; }
 .alert { margin: 14px 0; padding: 10px 13px; border-radius: 7px; border: 1px solid transparent; }
