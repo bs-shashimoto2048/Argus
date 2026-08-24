@@ -147,6 +147,12 @@ def update_monitor(db: Session, monitor_id: int, req):
     data = req.model_dump(exclude_unset=True)
     source_data = data.pop("source", None)
     inference_data = data.pop("inference", None)
+    # Issue #25: nameのUNIQUE制約はDB上も存在するが、create_monitor()と同様に
+    # 保存前に明示的な重複チェックを行い、分かりやすいエラーメッセージを返す
+    # (自分自身のnameと同じ値への変更=実質変更なしは許容する)。
+    if "name" in data and data["name"] != monitor.name:
+        if db.scalar(select(Monitor).where(Monitor.name == data["name"], Monitor.id != monitor_id)):
+            raise ValueError("モニター名は既に使用されています")
     for key, value in data.items():
         setattr(monitor, key, value)
     if source_data is not None:
