@@ -177,7 +177,11 @@ def test_name_patch_updates_successfully_and_reflects_in_api():
             client.delete(f"/api/monitors/{monitor_id}")
 
 
-def test_name_patch_rejects_duplicate_name():
+def test_name_patch_rejects_duplicate_name(monkeypatch):
+    # 2つのMonitorを同時に稼働させるテストなので、実カメラ(device_id=0)への
+    # 二重接続を避けるためVideoReaderをモック化する(name一意性の確認にVideoReader
+    # の実挙動は不要)。
+    monkeypatch.setattr("runtime.monitor_runtime.VideoReader", _FakeReader)
     with TestClient(app) as client:
         id_a = _create_running_monitor(client, "name_dup_test_a")
         id_b = _create_running_monitor(client, "name_dup_test_b")
@@ -282,7 +286,11 @@ def test_name_patch_does_not_restart_runtime_or_recreate_inference_scheduler(mon
             client.delete(f"/api/monitors/{monitor_id}")
 
 
-def test_name_change_does_not_affect_other_monitor():
+def test_name_change_does_not_affect_other_monitor(monkeypatch):
+    # 2つのMonitorを同時に稼働させるテストなので、実カメラ(device_id=0)への
+    # 二重接続を避けるためVideoReaderをモック化する(他Monitorへの非影響確認に
+    # VideoReaderの実挙動は不要)。
+    monkeypatch.setattr("runtime.monitor_runtime.VideoReader", _FakeReader)
     with TestClient(app) as client:
         id_a = _create_running_monitor(client, "name_isolation_test_a")
         id_b = _create_running_monitor(client, "name_isolation_test_b")
