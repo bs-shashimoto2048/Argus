@@ -14,6 +14,21 @@ class Roi(BaseModel):
         return self
 
 
+class RoiUpdateRequest(Roi):
+    """PUT /api/monitors/{id}/roi のリクエストボディ。ROI本体に加え、object_detection時の
+    roi_mode/context_marginも同じ画面(ROI Editor)から一括保存できるようにする(Issue #16)。
+    未指定(None)の場合はDB上の既存値を変更しない。
+    """
+
+    roi_mode: Literal["filter_only", "crop_context"] | None = None
+    context_margin: float | None = Field(default=None, ge=0.0, le=4.0)
+
+
+class RoiUpdateResponse(Roi):
+    roi_mode: Literal["filter_only", "crop_context"]
+    context_margin: float
+
+
 class PreprocessSettings(BaseModel):
     grayscale: bool = False
     binary: bool = False
@@ -60,6 +75,16 @@ class InferenceSettingsInput(BaseModel):
     image_size: int = Field(640, gt=0, le=4096)
     preprocessing: PreprocessSettings = Field(default_factory=PreprocessSettings)
     roi: Roi = Field(default_factory=Roi)
+    # ROIの意味づけ(Issue #16実機比較で決定): object_detectionのみ有効な選択肢。
+    #   filter_only  : Full Frameで推論し、ROI内に中心があるDetectionだけ結果採用する(既定・推奨)。
+    #                  学習時と同じ文脈/スケールを保てるため、実機3台でmargin方式より
+    #                  検出性能が同等以上だった(詳細はREADME/docs参照)。
+    #   crop_context : ROI周辺へcontext_margin分だけ広げてcropしてから推論する(詳細設定)。
+    # OCR(easyocr/tesseract)はroi_modeの影響を受けず、常にROIそのものをcropする(従来通り)。
+    roi_mode: Literal["filter_only", "crop_context"] = "filter_only"
+    # crop_context時のROI拡張比率(ROI自体のwidth/height比)。実機比較で0.25/0.5では文脈不足
+    # (検出0件になるケースがあった)、1.0で安定したためこれを既定値とする。
+    context_margin: float = Field(1.0, ge=0.0, le=4.0)
     reading: ReadingSettings = Field(default_factory=ReadingSettings)
     engine_options: dict = Field(default_factory=dict)
     @model_validator(mode="after")

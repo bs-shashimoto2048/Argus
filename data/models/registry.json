@@ -52,6 +52,24 @@
       "notes": "baselineを全指標で上回り、CPU/GPUとも高速・省メモリ(6.2MB vs 40MB, VRAM 12MB vs 71MB)。ただしTest Set 21枚・Train 139枚と小規模で統計的信頼区間は広く、Exact Match 28.6%は無監督のProduction運用に足る精度ではない。'Production Candidate'として位置づけ、追加データ収集後の再学習を推奨(docs/METER_DIGIT_MODEL_EVALUATION.md参照)。今回(v3評価)でも引き続きroleはcandidateのまま維持する(理由はmeter_digits_v3_candidate.ptのnotes参照)。"
     },
     {
+      "model_id": "meter_digits_v2_candidate_001_best.pt",
+      "role": "candidate",
+      "task": "detect",
+      "classes": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
+      "input_size": 640,
+      "source": "yolo_pipeline_studio project 'meter', train-job meter_digits_v2_candidate_001 (base model yolov8n.pt, fine-tuned from scratch within this project)",
+      "training_dataset": "yolo_pipeline_studio dataset meter_argus_eval_v1 (dataset_name per job.json; distinct from meter_digits_v2_candidate.pt's meter_argus_train_v2)",
+      "training_date": "2026-08-19",
+      "training_config": {"model": "yolov8n.pt", "epochs": 100, "batch": 8, "imgsz": 640, "device": "cuda", "seed": 42, "augmentation_preset": "standard (degrees=5.0, translate=0.1, scale=0.5, fliplr=0.5, mosaic=1.0)"},
+      "device_compatibility": ["cpu", "cuda"],
+      "recommended_conf": 0.25,
+      "recommended_iou": 0.7,
+      "recommended_imgsz": 640,
+      "created_at": "2026-08-21",
+      "metrics_summary": null,
+      "notes": "meter_digits_v2_candidate.pt(train-job _003)とは別の学習run(train-job _001, dataset_name=meter_argus_eval_v1、augmentation_presetもstandardでv2/v3のlightとは異なる)のbest.ptを、実カメラMonitorでのROI不具合調査用にArgusへ配置。held-out test setでの正式な評価(metrics_summary)はまだ実施していないため、この時点ではnullとしている。role=candidateのまま維持し、production自動昇格はしていない。既存のmeter_digits_v2_candidate.ptは変更・置き換えていない。"
+    },
+    {
       "model_id": "meter_digits_v3_candidate.pt",
       "role": "rejected_candidate",
       "task": "detect",

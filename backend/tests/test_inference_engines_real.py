@@ -69,6 +69,26 @@ def test_yolo_respects_confidence_iou_image_size(monkeypatch):
     assert captured["device"] == "cpu"
 
 
+CUSTOM_MODEL_ID = "meter_digits_v2_candidate_001_best.pt"
+
+
+def test_custom_model_meter_digits_v2_candidate_001_loads_and_runs_end_to_end():
+    """Issue #16: Argusへ正式配置したcustom model(meter_digits_v2_candidate_001_best.pt)が
+    baselineと同様にresolve・load・推論まで実行できることを確認する回帰テスト。
+    """
+    if not (MODEL_ROOT / CUSTOM_MODEL_ID).is_file():
+        pytest.skip(f"custom model not found at {MODEL_ROOT / CUSTOM_MODEL_ID}; Issue #16の配置手順を参照")
+    image = generate_digit_image("002560")
+    engine = YoloInferenceEngine(CUSTOM_MODEL_ID, "cpu", confidence=0.25, iou=0.7, image_size=640, registry=ModelRegistry(), model_root=MODEL_ROOT)
+    result = engine.infer(image)
+
+    assert result.engine == "ultralytics"
+    assert result.model_id == CUSTOM_MODEL_ID
+    assert result.error != "MODEL_NOT_FOUND", "配置済みのcustom modelがMODEL_NOT_FOUNDにならないこと"
+    assert result.error != "MODEL_NOT_CONFIGURED"
+    assert result.error in (None, "NO_DETECTION")
+
+
 def test_model_registry_reuses_real_model_across_requests():
     _require_digit_model()
     registry = ModelRegistry()

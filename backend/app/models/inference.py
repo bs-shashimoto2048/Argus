@@ -17,6 +17,9 @@ class InferenceSettings(Base):
     image_size: Mapped[int] = mapped_column(Integer, default=640)
     preprocessing: Mapped[dict] = mapped_column(JSON, default=dict)
     roi: Mapped[dict] = mapped_column(JSON, default=lambda: {"x": 0, "y": 0, "width": 1, "height": 1})
+    # Issue #16: ROIの意味づけ(object_detectionのみ有効)。既定はfilter_only(推奨)。
+    roi_mode: Mapped[str] = mapped_column(String(32), default="filter_only")
+    context_margin: Mapped[float] = mapped_column(Float, default=1.0)
     reading: Mapped[dict] = mapped_column(JSON, default=dict)
     engine_options: Mapped[dict] = mapped_column(JSON, default=dict)
     monitor = relationship("Monitor", back_populates="inference")

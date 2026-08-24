@@ -16,17 +16,35 @@ export function PreprocessEditor({ monitorId, roi, initial, onClose, onSaved }: 
   return <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="前処理編集">
     <div className="modal preprocess-editor">
       <div className="modal-head"><h2>前処理を編集</h2><button className="icon-button" onClick={onClose}>×</button></div>
-      <div className="preprocess-preview"><div><small>Original</small><img src={`${api.preview(monitorId)}?preprocess=${tick}`} alt="Original" /></div><div><small>Processed</small>{processed ? <img src={processed} alt="Processed" /> : <div className="no-video">Preview待機中</div>}</div></div>
-      <div className="preprocess-grid">
-        <label><input type="checkbox" checked={settings.grayscale} onChange={(e) => update("grayscale", e.target.checked)} /> Grayscale</label>
-        <label><input type="checkbox" checked={settings.binary} onChange={(e) => update("binary", e.target.checked)} /> Binary</label>
-        <label>Threshold<input type="number" min="0" max="255" value={settings.threshold} onChange={(e) => update("threshold", Number(e.target.value))} /></label>
-        <label><input type="checkbox" checked={settings.invert} onChange={(e) => update("invert", e.target.checked)} /> Invert</label>
-        <label>Brightness<input type="number" step="0.1" min="0.1" max="3" value={settings.brightness} onChange={(e) => update("brightness", Number(e.target.value))} /></label>
-        <label>Contrast<input type="number" step="0.1" min="0.1" max="3" value={settings.contrast} onChange={(e) => update("contrast", Number(e.target.value))} /></label>
-        <label><input type="checkbox" checked={settings.clahe} onChange={(e) => update("clahe", e.target.checked)} /> CLAHE</label>
-        <label><input type="checkbox" checked={settings.sharpen} onChange={(e) => update("sharpen", e.target.checked)} /> Sharpen</label>
-        <label>Resize width<input type="number" min="32" max="4096" value={settings.resize ?? ""} onChange={(e) => update("resize", e.target.value ? Number(e.target.value) : null)} /></label>
+      <div className="preprocess-preview">
+        <div><small>Original</small><img src={`${api.preview(monitorId)}?preprocess=${tick}`} alt="Original" /></div>
+        <div><small>Processed</small>{processed ? <img src={processed} alt="Processed" /> : <div className="no-video">Preview待機中</div>}</div>
+      </div>
+      <div className="preprocess-controls">
+        <fieldset className="preprocess-group">
+          <legend>色変換</legend>
+          <label className="check-field"><input type="checkbox" checked={settings.grayscale} onChange={(e) => update("grayscale", e.target.checked)} /> Grayscale</label>
+          <label className="check-field"><input type="checkbox" checked={settings.invert} onChange={(e) => update("invert", e.target.checked)} /> Invert</label>
+        </fieldset>
+        <fieldset className="preprocess-group">
+          <legend>二値化</legend>
+          <label className="check-field"><input type="checkbox" checked={settings.binary} onChange={(e) => update("binary", e.target.checked)} /> Binary</label>
+          <label className="num-field">Threshold<input type="number" min="0" max="255" value={settings.threshold} disabled={!settings.binary} onChange={(e) => update("threshold", Number(e.target.value))} /></label>
+        </fieldset>
+        <fieldset className="preprocess-group">
+          <legend>明るさ・コントラスト</legend>
+          <label className="num-field">Brightness<input type="number" step="0.1" min="0.1" max="3" value={settings.brightness} onChange={(e) => update("brightness", Number(e.target.value))} /></label>
+          <label className="num-field">Contrast<input type="number" step="0.1" min="0.1" max="3" value={settings.contrast} onChange={(e) => update("contrast", Number(e.target.value))} /></label>
+        </fieldset>
+        <fieldset className="preprocess-group">
+          <legend>強調</legend>
+          <label className="check-field"><input type="checkbox" checked={settings.clahe} onChange={(e) => update("clahe", e.target.checked)} /> CLAHE</label>
+          <label className="check-field"><input type="checkbox" checked={settings.sharpen} onChange={(e) => update("sharpen", e.target.checked)} /> Sharpen</label>
+        </fieldset>
+        <fieldset className="preprocess-group">
+          <legend>リサイズ</legend>
+          <label className="num-field">Resize width<input type="number" min="32" max="4096" value={settings.resize ?? ""} placeholder="未設定" onChange={(e) => update("resize", e.target.value ? Number(e.target.value) : null)} /></label>
+        </fieldset>
       </div>
       <div className="modal-actions"><button className="secondary" onClick={onClose}>キャンセル</button><button className="primary" onClick={() => { onSaved(settings); onClose(); }}>設定を保存</button></div>
     </div>

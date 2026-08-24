@@ -1,14 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
-import type { Roi } from "../types";
+import type { Roi, RoiMode } from "../types";
 
-type Props = { monitorId: number; initial: Roi; onClose: () => void; onSaved: (roi: Roi) => void };
+type Props = {
+  monitorId: number;
+  initial: Roi;
+  // object_detection時のみROIモードのUIを表示する(OCR等ではroi_modeは無関係)。
+  isObjectDetection: boolean;
+  initialRoiMode: RoiMode;
+  initialContextMargin: number;
+  onClose: () => void;
+  onSaved: (roi: Roi, roiMode: RoiMode, contextMargin: number) => void;
+};
 type Mode = "move" | "nw" | "ne" | "sw" | "se";
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
-export function RoiEditor({ monitorId, initial, onClose, onSaved }: Props) {
+export function RoiEditor({ monitorId, initial, isObjectDetection, initialRoiMode, initialContextMargin, onClose, onSaved }: Props) {
   const [roi, setRoi] = useState<Roi>(initial);
+  const [roiMode, setRoiMode] = useState<RoiMode>(initialRoiMode);
+  const [contextMargin, setContextMargin] = useState(initialContextMargin);
   const [tick, setTick] = useState(0);
   const [saving, setSaving] = useState(false);
   const frameRef = useRef<HTMLDivElement>(null);
@@ -40,7 +51,16 @@ export function RoiEditor({ monitorId, initial, onClose, onSaved }: Props) {
     setRoi({ x: left, y: top, width: right - left, height: bottom - top });
   };
   const stop = () => { interaction.current = null; };
-  const save = async () => { setSaving(true); try { const saved = await api.saveRoi(monitorId, roi); onSaved(saved); onClose(); } finally { setSaving(false); } };
+  const save = async () => {
+    setSaving(true);
+    try {
+      const saved = await api.saveRoi(monitorId, { ...roi, ...(isObjectDetection ? { roi_mode: roiMode, context_margin: contextMargin } : {}) });
+      onSaved(roi, saved.roi_mode, saved.context_margin);
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="ROI編集">
     <div className="modal roi-editor">
@@ -57,6 +77,25 @@ export function RoiEditor({ monitorId, initial, onClose, onSaved }: Props) {
         </svg>
       </div>
       <div className="roi-values"><span>x {roi.x.toFixed(3)}</span><span>y {roi.y.toFixed(3)}</span><span>w {roi.width.toFixed(3)}</span><span>h {roi.height.toFixed(3)}</span></div>
+      {isObjectDetection && <div className="roi-mode-picker">
+        <label className="roi-mode-option">
+          <input type="radio" name="roi-mode" checked={roiMode === "filter_only"} onChange={() => setRoiMode("filter_only")} />
+          検出結果をROI内に限定（推奨）
+        </label>
+        <label className="roi-mode-option">
+          <input type="radio" name="roi-mode" checked={roiMode === "crop_context"} onChange={() => setRoiMode("crop_context")} />
+          ROI周辺を切り出して推論（詳細設定）
+        </label>
+        {roiMode === "crop_context" && <label className="roi-margin-field">
+          context margin（ROI自体の幅/高さに対する拡張比率）
+          <input type="number" min={0} max={4} step={0.05} value={contextMargin} onChange={(event) => setContextMargin(Number(event.target.value))} />
+        </label>}
+        <p className="muted roi-mode-hint">
+          {roiMode === "filter_only"
+            ? "Full Frameで推論し、ROI内に中心があるDetectionだけ採用します（学習時と同じ文脈で推論できるため推奨）。"
+            : "ROIの周辺へ文脈を確保するため広げてcropしてから推論します（ROIがタイトすぎると検出できない場合の詳細設定）。"}
+        </p>
+      </div>}
       <div className="modal-actions"><button className="secondary" onClick={() => setRoi({ x: 0, y: 0, width: 1, height: 1 })}>リセット</button><button className="secondary" onClick={onClose}>キャンセル</button><button className="primary" onClick={save} disabled={saving}>{saving ? "保存中..." : "保存"}</button></div>
     </div>
   </div>;

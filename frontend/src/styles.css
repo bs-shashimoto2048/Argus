@@ -82,7 +82,15 @@ button.danger { background: var(--color-danger); }
 .subtitle, .muted, .breadcrumbs { color: var(--color-text-secondary); }
 .breadcrumbs { font-size: 14px; }
 .topbar h1 { margin: 3px 0 0; font-size: clamp(21px, 2vw, 28px); }
+/* 設定変更・デバッグ時に対象Monitorを取り違えないための識別バッジ(Issue #16)。
+   監視情報(現在値等)より目立たせず、控えめな位置・サイズに留める。 */
+.monitor-id-badge { margin-top: 2px; color: var(--color-text-secondary); font-size: 12px; font-variant-numeric: tabular-nums; }
 .live-badge { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 5px; padding: 5px 9px; border-radius: 999px; background: var(--color-primary-soft); color: var(--color-primary); font-size: 13px; font-weight: 700; white-space: nowrap; }
+.topbar-actions { display: flex; align-items: center; gap: 10px; }
+.fps-badge { display: inline-flex; align-items: center; padding: 5px 9px; border-radius: 999px; background: var(--color-surface); border: 1px solid var(--color-border-strong); color: var(--color-text-secondary); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.dashboard-settings-modal { width: min(480px, 100%); }
+.dashboard-settings-modal .panel h3 { margin-bottom: 8px; }
+.dashboard-settings-modal select { max-width: 200px; }
 .summary { display: flex; align-items: center; flex-wrap: wrap; gap: 22px; padding: 16px 0; }
 .summary b { color: var(--color-text); margin-left: 4px; }
 .summary button { margin-left: auto; }
@@ -120,7 +128,24 @@ button.danger { background: var(--color-danger); }
 .detail-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); align-items: start; gap: 18px; margin-top: 20px; }
 .detail-layout > section, .detail-layout > aside { min-width: 0; }
 .video-panel { padding: 12px; }
-.video-panel .video-image { width: 100%; height: clamp(280px, calc(100vh - 375px), 620px); min-height: 0; aspect-ratio: 16 / 9; background: #f1f3f6; object-fit: contain; }
+.video-panel.nested { padding: 0; }
+/* 幅主導のサイズ決定: widthはcontainer幅いっぱい、heightはaspect-ratioから自動算出する
+   (heightを別途固定しないことで、object-fit:containによる不要な左右余白/縮小を防ぐ)。 */
+.video-panel .video-image { display: block; width: 100%; height: auto; min-height: 0; aspect-ratio: 16 / 9; max-height: 76vh; background: #0f172a; object-fit: contain; }
+.video-panel .no-video { width: 100%; height: auto; min-height: 0; aspect-ratio: 16 / 9; max-height: 76vh; background: #0f172a; color: #cbd5e1; }
+.video-image-clickable { cursor: zoom-in; }
+/* 推論オーバーレイの描画色(ROI/内部推論crop範囲/検出bbox)を説明する凡例。
+   Overlay自体はBackend(InferenceScheduler)側で描画するBGR色に合わせている。 */
+.overlay-legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 8px; font-size: 12px; color: var(--color-text-secondary); }
+.overlay-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.legend-swatch { display: inline-block; width: 14px; height: 3px; border-radius: 1px; }
+.legend-roi { background: repeating-linear-gradient(90deg, #00bfff 0 5px, transparent 5px 8px); }
+.legend-margin { background: repeating-linear-gradient(90deg, #ffa500 0 5px, transparent 5px 8px); }
+.legend-detection { background: #eb6325; }
+.pipeline-diagnostics .diagnostics-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.pipeline-diagnostics .diagnostics-table td { padding: 4px 8px; border-bottom: 1px solid var(--color-border); }
+.pipeline-diagnostics .diagnostics-table td:first-child { color: var(--color-text-secondary); white-space: nowrap; }
+.pipeline-diagnostics .diagnostics-table td:last-child { font-variant-numeric: tabular-nums; }
 .section-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; font-weight: 700; }
 .status-text { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 999px; background: var(--color-surface-subtle); font-size: 13px; color: var(--color-text-secondary); white-space: nowrap; }
 .status-text.normal, .status-text.running { background: var(--color-success-soft); }
@@ -166,78 +191,86 @@ button.danger { background: var(--color-danger); }
   .monitor-grid { grid-template-columns: 1fr; }
   .detail-layout aside { display: block; }
   .detail-layout aside > .panel, .detail-layout aside > .save-button { margin-bottom: 12px; }
-  .video-panel .video-image { height: clamp(230px, 60vw, 430px); }
   .result-panel { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .future { grid-template-columns: minmax(0, 1fr); }
   .future button { width: 100%; }
 }
 
-/* Monitor Detail: viewport-fit layout. The page owns the viewport and only
-   the settings column is allowed to scroll on desktop. */
-.monitor-detail-page {
-  height: 100vh;
-  min-height: 0;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-.monitor-detail-page > .alert { flex: 0 0 auto; }
-.monitor-detail-page .detail-layout {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: hidden;
-  align-items: stretch;
-}
-.monitor-column {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  height: 100%;
-}
-.monitor-column .video-panel {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
-  min-height: 260px;
-  max-height: none;
-  margin-bottom: 0;
-  overflow: hidden;
-}
-.monitor-column .video-panel > .video-image,
-.monitor-column .video-panel > .no-video {
-  flex: 1 1 auto;
-  min-height: 0;
-  height: auto;
-  max-height: 100%;
-}
-.reading-summary {
-  flex: 0 0 auto;
-  margin-top: 12px;
-}
+/* Monitor Detail: 映像/Overlayの視認性を優先したレイアウト(Issue #16 UI改善)。
+   画像は幅主導(container幅いっぱい・aspect-ratioで高さ自動)で拡大表示し、
+   ページ全体は必要に応じて自然にスクロールする(無理に100vh固定へ収めない)。
+   Backend/API呼び出し・取得頻度には一切影響しない、表示レイアウトのみの変更。 */
+.monitor-detail-page { display: flex; flex-direction: column; }
+.detail-layout { align-items: start; }
+.detail-layout.settings-collapsed { grid-template-columns: minmax(0, 1fr); }
+.detail-layout.settings-collapsed > .settings-column { display: none; }
+
+.monitor-column { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.monitor-column .video-panel { margin-bottom: 0; }
+
+/* コンパクトな状態表示バー(現在値/信頼度/前回値/差分/Monitor状態)。
+   通常時に最も重要な情報を、映像の面積を奪わず一覧できるようにする。 */
+.status-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; padding: 12px 16px; }
+.status-item { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.status-item small { color: var(--color-text-secondary); font-size: 11px; }
+.status-item strong { font-size: 16px; font-variant-numeric: tabular-nums; }
+.status-item.primary strong { font-size: 24px; color: var(--color-primary); }
+.status-item.raw-pending strong { color: var(--color-warning); }
+.status-bar .status-text { margin-left: auto; }
+.status-note { margin: -6px 0 0; font-size: 11.5px; line-height: 1.5; }
+.overlay-caption { margin: 8px 0 0; font-size: 12px; }
+
+/* 折りたたみ可能な「推論デバッグ」セクション(推論入力/Pipeline診断)。既存の<details>を
+   カード風に見せるだけで、内容・取得ロジックは既存のVideoPreview/診断表示と同じ。 */
+.debug-details summary { cursor: pointer; list-style: none; font-weight: 700; }
+.debug-details summary::-webkit-details-marker { display: none; }
+.debug-details summary::before { content: "▶ "; display: inline-block; font-size: 12px; }
+.debug-details[open] summary::before { content: "▼ "; }
+.debug-details .debug-body { margin-top: 14px; }
+.debug-details .video-panel.nested { margin-bottom: 14px; }
+.debug-line { margin-bottom: 8px; color: var(--color-text-secondary); font-size: 12px; }
+.pipeline-diagnostics { margin-top: 4px; }
+
 .settings-column {
   min-width: 0;
-  min-height: 0;
-  max-height: 100%;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding-right: 4px;
-  scrollbar-gutter: stable;
 }
 .settings-column .panel { margin-bottom: 10px; }
 .settings-column .panel label { margin: 8px 0; }
 .settings-column .panel input,
 .settings-column .panel select { padding: 7px 8px; }
-.settings-actions {
-  position: sticky;
-  bottom: 0;
-  z-index: 2;
-  padding: 8px 0 2px;
-  background: rgb(255 255 255 / 96%);
-}
+.settings-actions { padding: 8px 0 2px; }
 .settings-actions .save-button { margin: 0; }
-.result-values-live { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 8px; color: var(--color-text-secondary); font-size: 12px; }
-.result-values-live strong { color: var(--color-text); font-size: 15px; }
+.password-saved-badge { margin-left: 8px; font-size: 11px; font-weight: normal; color: var(--color-text-secondary); }
+
+/* Object Detection時の「実行エンジン」表示(select不要・read-only、Issue #16)。
+   engineをユーザーが選択する必要が無いことを明示するため、通常のlabel+selectとは
+   見た目を変える(枠のある値表示)。 */
+.readonly-field { margin: 10px 0; padding: 8px 9px; background: var(--color-surface-subtle); border: 1px solid var(--color-border); border-radius: 6px; font-size: 13px; }
+.readonly-field small { display: block; margin-bottom: 2px; color: var(--color-text-secondary); font-size: 11px; }
+.readonly-field strong { font-weight: 600; color: var(--color-text); }
+
+/* 右ペイン各セクションの開閉(Issue #16 UI改善)。閉じた状態でも見出しは常に表示し、
+   本文はdisplay:noneで隠すのみ(unmountしない)。フォーム値・API呼び出しには影響しない。 */
+.collapsible-panel { padding: 0; overflow: hidden; }
+.collapsible-header { display: flex; align-items: center; gap: 8px; width: 100%; padding: clamp(15px, 1.6vw, 21px); background: none; border: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.collapsible-header:hover { background: var(--color-surface-subtle); }
+.collapsible-header h3 { margin: 0; padding-left: 9px; border-left: 3px solid var(--color-primary); font-size: 15px; }
+.collapsible-header .chevron { flex: 0 0 auto; width: 1em; font-size: 11px; color: var(--color-text-secondary); }
+.collapsible-body { padding: 0 clamp(15px, 1.6vw, 21px) clamp(15px, 1.6vw, 21px); }
+.collapsible-body h3 { margin: 14px 0 11px; padding-left: 9px; border-left: 3px solid var(--color-primary); font-size: 15px; }
+.collapsible-body h3:first-child { margin-top: 0; }
+
+/* 画像拡大表示(lightbox)。既存のVideoPreview/画像取得ロジック・API呼び出しを
+   そのまま再利用する(拡大用の別Backend endpointは追加しない)。 */
+.lightbox-backdrop { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: 24px; background: rgba(15, 23, 42, 0.72); }
+.lightbox { position: relative; width: min(96vw, 1500px); max-height: 92vh; }
+.lightbox .video-image { width: 100%; height: auto; max-height: 92vh; object-fit: contain; display: block; background: #0f172a; }
+.lightbox-close { position: absolute; top: -16px; right: -16px; width: 34px; height: 34px; border-radius: 999px; border: none; background: var(--color-surface); color: var(--color-text); font-size: 18px; line-height: 1; box-shadow: var(--shadow-md); cursor: pointer; }
+.danger-zone { border-color: var(--color-danger-soft); }
+.danger-zone button.danger { width: 100%; }
+.danger-confirm p { margin: 0 0 10px; font-size: 13px; color: var(--color-text); }
+.danger-confirm-actions { display: flex; gap: 8px; }
+.danger-confirm-actions button { flex: 1; }
 
 .modal-backdrop { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 20px; background: rgba(15, 23, 42, 0.35); }
 .modal { width: min(860px, 100%); max-height: min(88vh, 760px); overflow: auto; padding: 20px; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-surface); box-shadow: 0 18px 50px rgba(15, 23, 42, 0.16); }
@@ -250,30 +283,36 @@ button.danger { background: var(--color-danger); }
 .roi-rect { fill: rgba(37, 99, 235, 0.14); stroke: #2563eb; stroke-width: 0.006; cursor: move; }
 .roi-handle { fill: #fff; stroke: #2563eb; stroke-width: 0.006; cursor: nwse-resize; }
 .roi-values { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px; color: var(--color-text-secondary); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; }
+.roi-mode-picker { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--color-border); }
+.roi-mode-option { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: 13px; color: var(--color-text); cursor: pointer; }
+.roi-mode-option input { width: auto; margin: 0; }
+.roi-margin-field { display: flex; align-items: center; gap: 8px; margin: 8px 0 4px 24px; font-size: 12px; color: var(--color-text-secondary); }
+.roi-margin-field input { width: 80px; margin: 0; }
+.roi-mode-hint { margin: 6px 0 0; font-size: 12px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
-.preprocess-preview { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 14px 0; }
+/* 前処理Modal(Issue #16 UI改善)。Backendの前処理order/algorithm/payloadは変更しない、
+   表示レイアウトのみの変更。Original/Processedを可能な限り大きく、左右比較を基本形とする。 */
+.modal.preprocess-editor { width: min(1180px, 96vw); }
+.preprocess-preview { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 14px 0; }
 .preprocess-preview > div { min-width: 0; }
-.preprocess-preview small { display: block; margin-bottom: 5px; color: var(--color-text-secondary); }
-.preprocess-preview img { width: 100%; aspect-ratio: 16 / 9; object-fit: contain; background: #0f172a; }
-.preprocess-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-.preprocess-grid label { display: grid; gap: 5px; color: var(--color-text-secondary); font-size: 12px; }
-.preprocess-grid label:has(input[type="checkbox"]) { display: flex; align-items: center; gap: 6px; }
-@media (max-width: 700px) { .preprocess-preview, .preprocess-grid { grid-template-columns: 1fr; } .modal-actions { flex-wrap: wrap; } }
+.preprocess-preview small { display: block; margin-bottom: 6px; color: var(--color-text-secondary); font-size: 11px; text-transform: uppercase; letter-spacing: .03em; }
+.preprocess-preview img { display: block; width: 100%; height: auto; max-height: 62vh; object-fit: contain; background: #0f172a; border-radius: 6px; }
+.preprocess-preview .no-video { width: 100%; aspect-ratio: 16 / 9; }
+/* 数値/チェックボックスを関連項目ごとにfieldsetでグルーピングし、入力欄は必要な幅だけに留める
+   (Grayscale/Invert・Binary+Threshold・Brightness/Contrast・CLAHE/Sharpen・Resize widthの5group)。 */
+.preprocess-controls { display: flex; flex-wrap: wrap; gap: 12px; margin: 4px 0 0; }
+.preprocess-group { flex: 1 1 200px; min-width: 160px; margin: 0; padding: 6px 12px 10px; border: 1px solid var(--color-border); border-radius: 8px; }
+.preprocess-group legend { padding: 0 6px; font-size: 11px; font-weight: 700; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: .03em; }
+.preprocess-group .check-field { display: flex; align-items: center; gap: 6px; margin: 6px 0; color: var(--color-text); font-size: 13px; }
+.preprocess-group .num-field { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0; color: var(--color-text); font-size: 13px; }
+.preprocess-group .num-field input { flex: 0 0 auto; width: 72px; min-width: 0; padding: 6px 8px; }
+.preprocess-group .num-field input:disabled { opacity: .5; }
+@media (max-width: 860px) { .preprocess-preview { grid-template-columns: 1fr; } .preprocess-group { flex-basis: 100%; } .modal-actions { flex-wrap: wrap; } }
 
 @media (max-width: 980px) {
-  .monitor-detail-page {
-    height: auto;
-    min-height: 100vh;
-    overflow: visible;
-  }
-  .monitor-detail-page .detail-layout {
-    flex: 0 0 auto;
-    min-height: auto;
-    overflow: visible;
-  }
-  .monitor-column { height: auto; }
-  .monitor-column .video-panel { min-height: 260px; }
-  .monitor-column .video-panel > .video-image,
-  .monitor-column .video-panel > .no-video { height: clamp(230px, 52vw, 480px); flex: 0 0 auto; }
-  .settings-column { max-height: none; overflow: visible; padding-right: 0; }
+  /* 狭い画面: 映像 → Overlay → 設定の順で自然に縦積みする(グリッド自体は
+     line 178の.detail-layoutで既に1列化済み)。画像の最大高さだけ控えめにする。 */
+  .video-panel .video-image,
+  .video-panel .no-video { max-height: 60vh; }
+  .status-bar { gap: 6px 14px; }
 }
