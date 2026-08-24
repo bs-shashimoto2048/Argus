@@ -13,3 +13,11 @@ export function formatTimeJst(value: string | null | undefined): string {
   if (!value) return "--";
   return parseUtcTimestamp(value).toLocaleTimeString("ja-JP", { timeZone: "Asia/Tokyo" });
 }
+
+// 日本時間(JST)の日付+時刻表示(例: "2026/8/24 13:31:43")。formatTimeJstは時刻のみのため、
+// 日付も併せて表示したい場所(CSV出力画面のMonitorごとの最終出力日時等)ではこちらを使う。
+// ブラウザのタイムゾーン設定に依存せず、常にJSTで表示する。
+export function formatDateTimeJst(value: string | null | undefined): string {
+  if (!value) return "--";
+  return parseUtcTimestamp(value).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" });
+}
