@@ -92,10 +92,13 @@ export function MonitorDetailPage() {
     basic: false, source: false, preprocess: false, roi: false, reading: false, inference: false, danger: false,
   });
   const toggleSection = (key: SectionKey) => setOpenSections((current) => ({ ...current, [key]: !current[key] }));
-  // Issue #20: 基本情報(display_name/location)専用のフォーム状態。source/inferenceとは
-  // 別のstateにして、保存時にsource/inferenceを一切含まないPATCHを送る(Backendが
-  // Runtime/VideoReader/InferenceSchedulerへ触れないための条件と対応させる)。
-  const [basicInfo, setBasicInfo] = useState<{ display_name: string; location: string }>({ display_name: "", location: "" });
+  // Issue #20/#25: 基本情報(name/display_name/location)専用のフォーム状態。
+  // source/inferenceとは別のstateにして、保存時にsource/inferenceを一切含まない
+  // PATCHを送る(Backendが Runtime/VideoReader/InferenceSchedulerへ触れないための
+  // 条件と対応させる)。nameはIssue #25で編集可能になった(内部識別名だが、
+  // 実行時の識別には常にMonitor ID(id)が使われ、nameを参照する経路が無いことを
+  // 確認済み。UNIQUE制約・フォーマット制約(^[A-Za-z0-9_-]+$)はBackend側で検証)。
+  const [basicInfo, setBasicInfo] = useState<{ name: string; display_name: string; location: string }>({ name: "", display_name: "", location: "" });
   const [savingBasicInfo, setSavingBasicInfo] = useState(false);
 
   useEffect(() => {
@@ -111,7 +114,7 @@ export function MonitorDetailPage() {
         setMonitor(value);
         setSource(value.source);
         setInference(value.inference);
-        setBasicInfo({ display_name: value.display_name, location: value.location });
+        setBasicInfo({ name: value.name, display_name: value.display_name, location: value.location });
       })
       .catch((reason: Error) => setError(reason.message));
   }, [monitorId]);
@@ -190,15 +193,17 @@ export function MonitorDetailPage() {
     }
   };
 
-  // Issue #20: 基本情報(表示名/設置場所)の保存。source/inferenceキーを一切含まない
-  // PATCHを送ることで、Backend側がRuntime/VideoReader/InferenceSchedulerに触れない
-  // 経路(update_monitorの基本情報のみ判定)を通るようにする。
+  // Issue #20/#25: 基本情報(内部名/表示名/設置場所)の保存。source/inferenceキーを
+  // 一切含まないPATCHを送ることで、Backend側がRuntime/VideoReader/
+  // InferenceSchedulerに触れない経路(update_monitorの基本情報のみ判定)を
+  // 通るようにする。nameの重複/フォーマットエラーはBackendのvalidationに委ね、
+  // 失敗時は既存のerror表示にそのまま乗せる。
   const saveBasicInfo = async () => {
     setSavingBasicInfo(true);
     try {
-      const updated = await api.update(monitorId, { display_name: basicInfo.display_name, location: basicInfo.location });
+      const updated = await api.update(monitorId, { name: basicInfo.name, display_name: basicInfo.display_name, location: basicInfo.location });
       setMonitor(updated);
-      setBasicInfo({ display_name: updated.display_name, location: updated.location });
+      setBasicInfo({ name: updated.name, display_name: updated.display_name, location: updated.location });
       setMessage("基本情報を保存しました");
       setError("");
     } catch (reason) {
@@ -327,13 +332,18 @@ export function MonitorDetailPage() {
       <aside className="settings-column">
         <CollapsibleSection title="基本情報" open={openSections.basic} onToggle={() => toggleSection("basic")}>
           <div className="readonly-field"><small>Monitor ID</small><strong>{monitor.id}</strong></div>
-          <div className="readonly-field"><small>内部名/識別名（name）</small><strong>{monitor.name}</strong></div>
+          <label>
+            内部名（name）
+            <input required pattern="[A-Za-z0-9_-]+" value={basicInfo.name} onChange={(e) => setBasicInfo({ ...basicInfo, name: e.target.value })} placeholder="gas_meter_01" />
+          </label>
           <p className="muted" style={{ fontSize: "0.74rem", margin: "-4px 0 10px" }}>
-            内部識別名はCSV出力の列等、他機能から参照されるため作成後は変更できません。表示名・設置場所は自由に変更できます。
+            半角英数字・アンダースコア・ハイフンのみ（例: <code>gas_meter_01</code>）。他のMonitorと重複できません。
+            実行時の識別には常にMonitor IDが使われるため、変更してもRuntime・映像・CSVの過去行には影響しません
+            （CSVの新しい追記行から新しい内部名が反映されます）。
           </p>
           <label>表示名<input required value={basicInfo.display_name} onChange={(e) => setBasicInfo({ ...basicInfo, display_name: e.target.value })} /></label>
           <label>設置場所<input value={basicInfo.location} onChange={(e) => setBasicInfo({ ...basicInfo, location: e.target.value })} /></label>
-          <div className="settings-actions"><button className="save-button" onClick={saveBasicInfo} disabled={savingBasicInfo || !basicInfo.display_name.trim()}>{savingBasicInfo ? "保存中..." : "基本情報を保存"}</button></div>
+          <div className="settings-actions"><button className="save-button" onClick={saveBasicInfo} disabled={savingBasicInfo || !basicInfo.display_name.trim() || !/^[A-Za-z0-9_-]+$/.test(basicInfo.name)}>{savingBasicInfo ? "保存中..." : "基本情報を保存"}</button></div>
         </CollapsibleSection>
         <SourceSettings source={source} onChange={setSource} onCheck={check} open={openSections.source} onToggleOpen={() => toggleSection("source")} />
         <CollapsibleSection title="前処理" open={openSections.preprocess} onToggle={() => toggleSection("preprocess")}>

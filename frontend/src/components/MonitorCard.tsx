@@ -41,10 +41,14 @@ export function MonitorCard({ monitor, onClick, displayFps }: Props) {
       <div className="preview-wrap">
         {monitor.source ? <VideoPreview monitorId={monitor.id} intervalMs={intervalMs} paused={paused} /> : <div className="no-video">映像ソース未設定</div>}
       </div>
+      {/* Issue #25: 日常監視で数値を短時間で読み取れるよう、3項目の視覚的な優先順位を
+          明確にする(現在値を最も強調、信頼度はstatus連動色、更新時刻は控えめだが
+          明瞭に)。status判定ロジック自体は変更せず、既存のmonitor.statusを
+          表示色の切替にのみ使う。 */}
       <div className="card-values">
-        <div><small>現在値</small><strong>{monitor.current_value ?? "--"}</strong></div>
-        <div><small>信頼度</small><strong>{monitor.confidence == null ? "--" : `${(monitor.confidence * 100).toFixed(1)}%`}</strong></div>
-        <div><small>更新</small><strong>{formatTimeJst(monitor.last_updated)}</strong></div>
+        <div className="card-value-primary"><small>現在値</small><strong>{monitor.current_value ?? "--"}</strong></div>
+        <div className={`card-value-confidence status-${monitor.status}`}><small>信頼度</small><strong>{monitor.confidence == null ? "--" : `${(monitor.confidence * 100).toFixed(1)}%`}</strong></div>
+        <div className="card-value-updated"><small>更新</small><strong>{formatTimeJst(monitor.last_updated)}</strong></div>
       </div>
     </button>
   );

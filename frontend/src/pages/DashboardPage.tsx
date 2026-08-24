@@ -30,7 +30,8 @@ export function DashboardPage() {
 
   return <main className="page">
     <header className="topbar">
-      <Brand />
+      {/* Issue #25: Dashboardではキャラクターアイコンを非表示にする(他画面のBrandは変更なし)。 */}
+      <Brand showIcon={false} />
       <div className="topbar-actions">
         <span className="live-badge">● Monitoring</span>
         <span className="fps-badge" title="Dashboardのプレビュー表示FPS(video_fps/inference_fpsとは無関係)">表示 {settings.displayFps} FPS</span>

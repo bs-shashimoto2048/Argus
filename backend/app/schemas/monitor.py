@@ -9,6 +9,11 @@ class MonitorCreate(BaseModel):
     location: str = Field(default="", max_length=160)
 
 class MonitorUpdate(BaseModel):
+    # Issue #25: nameを編集可能にする。実行時の識別には常にMonitor ID(id)が使われ、
+    # nameは表示/CSV出力/UNIQUE制約のみに関わることを確認済み(RuntimeManager/
+    # ルーティング/ファイルパス生成のいずれもnameへ依存していない)。フォーマットは
+    # MonitorCreate.nameと同一の制約を維持する。
+    name: str | None = Field(default=None, min_length=1, max_length=80, pattern=r"^[A-Za-z0-9_-]+$")
     display_name: str | None = Field(default=None, min_length=1, max_length=160)
     location: str | None = Field(default=None, max_length=160)
     enabled: bool | None = None
