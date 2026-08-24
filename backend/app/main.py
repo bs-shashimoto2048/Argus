@@ -6,8 +6,9 @@ from .core.config import settings
 from .core.database import Base, SessionLocal, engine
 from sqlalchemy import text
 from .models import Monitor
-from .routers import cameras, health, monitors, preprocess, reading, roi, sources, streams, system
+from .routers import cameras, csv_export, health, monitors, preprocess, reading, roi, sources, streams, system
 from runtime.runtime_manager import runtime_manager
+from runtime.csv_export_worker import csv_export_worker
 from runtime.video_reader import ReaderConfig
 from .services.secret_store import decrypt
 from .services.result_store import save_result
@@ -62,7 +63,9 @@ async def lifespan(_app: FastAPI):
                     logger.exception("monitor %s のRuntime起動に失敗しました。このMonitorは停止状態のまま起動を継続します。", monitor.id)
     finally:
         db.close()
+    csv_export_worker.start()
     yield
+    csv_export_worker.stop()
     runtime_manager.stop_all()
 
 app = FastAPI(title=settings.app_name, version=settings.version, lifespan=lifespan)
@@ -76,3 +79,4 @@ app.include_router(preprocess.router)
 app.include_router(roi.router)
 app.include_router(reading.router)
 app.include_router(system.router)
+app.include_router(csv_export.router)

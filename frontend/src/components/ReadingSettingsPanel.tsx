@@ -23,6 +23,12 @@ export function ReadingSettingsPanel({ value, onChange, open, onToggleOpen }: { 
           <label>最低信頼度<input type="number" min="0" max="1" step=".05" value={value.min_confidence ?? ""} placeholder="未設定" onChange={(e) => set({ min_confidence: numOrNull(e.target.value) })} /></label>
           <label>期待桁数<input type="number" min="1" value={value.expected_digits ?? ""} placeholder="未設定" onChange={(e) => set({ expected_digits: numOrNull(e.target.value) === null ? null : Math.trunc(Number(e.target.value)) })} /></label>
         </div>
+        {/* Issue #17: 期待桁数の直後に配置。Backend既存仕様(reading/canonicalizer.py)のUI露出のみで、
+            意味は変えていない: 右からn桁を小数部として切り出す(文字列操作、Leading Zeroは保持)。 */}
+        <label>小数点位置（右から桁数）<input type="number" min="0" value={value.decimal_position ?? ""} placeholder="未設定" onChange={(e) => set({ decimal_position: numOrNull(e.target.value) })} /></label>
+        <p className="muted" style={{ fontSize: "0.76rem", margin: "-6px 0 10px" }}>
+          例: 2 を指定すると "12345" は "123.45" として扱われます。Leading Zeroは保持されます（例: "002560" → "0025.60"）。未設定（空欄）の場合は小数点を挿入しません。
+        </p>
         <label>
           <input type="checkbox" checked={value.monotonic} onChange={(e) => set({ monotonic: e.target.checked })} /> 値の減少を許可しない
         </label>
@@ -38,7 +44,6 @@ export function ReadingSettingsPanel({ value, onChange, open, onToggleOpen }: { 
               <option value="consecutive">連続一致（Consecutive）</option>
             </select>
           </label>
-          <label>小数点位置（右から桁数）<input type="number" min="0" value={value.decimal_position ?? ""} placeholder="未設定" onChange={(e) => set({ decimal_position: numOrNull(e.target.value) })} /></label>
           <label>
             <input type="checkbox" checked={value.allow_rollover} onChange={(e) => set({ allow_rollover: e.target.checked })} /> Rollover（最大値から0への巻き戻り）を許可する
           </label>

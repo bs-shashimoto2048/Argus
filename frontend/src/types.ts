@@ -67,6 +67,9 @@ export type RuntimeDiagnostics = {
   inference_result: string|null;
   pipeline: PipelineDiagnostics|null;
 };
+export type CsvExportMonitorStatus = {monitor_id:number;display_name:string;last_exported_hour:string|null;last_exported_at:string|null;last_error:string|null};
+export type CsvExportStatus = {enabled:boolean;output_folder:string|null;worker_running:boolean;last_tick_at:string|null;last_test_run_at:string|null;monitors:CsvExportMonitorStatus[]};
+export type CsvExportRunOutcome = {monitor_id:number;display_name:string;status:"written"|"skipped_already_exported"|"error";detail:string|null};
 export type RawReadingDiagnostic = {value:string|null;confidence:number|null;timestamp:string|null;engine:string;error:string|null;detection_count:number};
 export type ReadingDiagnostics = {
   enabled:boolean;

@@ -1,5 +1,6 @@
 import { DASHBOARD_DISPLAY_FPS_OPTIONS } from "../hooks/useDashboardSettings";
 import type { DashboardDisplayFps, DashboardSettings } from "../hooks/useDashboardSettings";
+import { CsvExportSettingsPanel } from "./CsvExportSettingsPanel";
 
 type Props = {
   settings: DashboardSettings;
@@ -29,6 +30,9 @@ export function DashboardSettingsModal({ settings, onChange, onClose }: Props) {
           ブラウザを閉じても保持されます。
         </p>
       </section>
+      {/* CSV出力(Issue #17)は表示設定(Frontend-only/localStorage)とは独立させ、
+          Backendで永続化・出力する(CsvExportSettingsPanel内でBackend APIを直接叩く)。 */}
+      <CsvExportSettingsPanel />
       <div className="modal-actions"><button className="primary" onClick={onClose}>閉じる</button></div>
     </div>
   </div>;
