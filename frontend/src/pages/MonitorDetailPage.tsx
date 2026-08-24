@@ -57,7 +57,7 @@ function formatDiff(current: string | null, previous: string | null): string {
 
 // 右ペインの各設定セクションを独立して開閉するための共通ラッパー。
 // 閉じてもDOMからは外さず(display:noneのみ)、フォーム値・API呼び出しに一切影響しない。
-type SectionKey = "source" | "preprocess" | "roi" | "reading" | "inference" | "danger";
+type SectionKey = "basic" | "source" | "preprocess" | "roi" | "reading" | "inference" | "danger";
 
 function CollapsibleSection({ title, open, onToggle, className, children }: { title: string; open: boolean; onToggle: () => void; className?: string; children: React.ReactNode }) {
   return <section className={`panel collapsible-panel${className ? ` ${className}` : ""}`}>
@@ -89,9 +89,14 @@ export function MonitorDetailPage() {
   // 右ペイン各セクションの開閉状態(Frontend表示のみ・永続化なし)。
   // 日常監視では設定編集の頻度が低いため、初期状態は全セクション折りたたみ(画面を短く保つ)。
   const [openSections, setOpenSections] = useState<Record<SectionKey, boolean>>({
-    source: false, preprocess: false, roi: false, reading: false, inference: false, danger: false,
+    basic: false, source: false, preprocess: false, roi: false, reading: false, inference: false, danger: false,
   });
   const toggleSection = (key: SectionKey) => setOpenSections((current) => ({ ...current, [key]: !current[key] }));
+  // Issue #20: 基本情報(display_name/location)専用のフォーム状態。source/inferenceとは
+  // 別のstateにして、保存時にsource/inferenceを一切含まないPATCHを送る(Backendが
+  // Runtime/VideoReader/InferenceSchedulerへ触れないための条件と対応させる)。
+  const [basicInfo, setBasicInfo] = useState<{ display_name: string; location: string }>({ display_name: "", location: "" });
+  const [savingBasicInfo, setSavingBasicInfo] = useState(false);
 
   useEffect(() => {
     if (!lightbox) return undefined;
@@ -106,6 +111,7 @@ export function MonitorDetailPage() {
         setMonitor(value);
         setSource(value.source);
         setInference(value.inference);
+        setBasicInfo({ display_name: value.display_name, location: value.location });
       })
       .catch((reason: Error) => setError(reason.message));
   }, [monitorId]);
@@ -181,6 +187,24 @@ export function MonitorDetailPage() {
       setError("");
     } catch (reason) {
       setError(String(reason));
+    }
+  };
+
+  // Issue #20: 基本情報(表示名/設置場所)の保存。source/inferenceキーを一切含まない
+  // PATCHを送ることで、Backend側がRuntime/VideoReader/InferenceSchedulerに触れない
+  // 経路(update_monitorの基本情報のみ判定)を通るようにする。
+  const saveBasicInfo = async () => {
+    setSavingBasicInfo(true);
+    try {
+      const updated = await api.update(monitorId, { display_name: basicInfo.display_name, location: basicInfo.location });
+      setMonitor(updated);
+      setBasicInfo({ display_name: updated.display_name, location: updated.location });
+      setMessage("基本情報を保存しました");
+      setError("");
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setSavingBasicInfo(false);
     }
   };
 
@@ -301,6 +325,16 @@ export function MonitorDetailPage() {
       </section>
 
       <aside className="settings-column">
+        <CollapsibleSection title="基本情報" open={openSections.basic} onToggle={() => toggleSection("basic")}>
+          <div className="readonly-field"><small>Monitor ID</small><strong>{monitor.id}</strong></div>
+          <div className="readonly-field"><small>内部名/識別名（name）</small><strong>{monitor.name}</strong></div>
+          <p className="muted" style={{ fontSize: "0.74rem", margin: "-4px 0 10px" }}>
+            内部識別名はCSV出力の列等、他機能から参照されるため作成後は変更できません。表示名・設置場所は自由に変更できます。
+          </p>
+          <label>表示名<input required value={basicInfo.display_name} onChange={(e) => setBasicInfo({ ...basicInfo, display_name: e.target.value })} /></label>
+          <label>設置場所<input value={basicInfo.location} onChange={(e) => setBasicInfo({ ...basicInfo, location: e.target.value })} /></label>
+          <div className="settings-actions"><button className="save-button" onClick={saveBasicInfo} disabled={savingBasicInfo || !basicInfo.display_name.trim()}>{savingBasicInfo ? "保存中..." : "基本情報を保存"}</button></div>
+        </CollapsibleSection>
         <SourceSettings source={source} onChange={setSource} onCheck={check} open={openSections.source} onToggleOpen={() => toggleSection("source")} />
         <CollapsibleSection title="前処理" open={openSections.preprocess} onToggle={() => toggleSection("preprocess")}>
           <button className="secondary" onClick={() => setEditor("preprocess")}>前処理を編集</button>
