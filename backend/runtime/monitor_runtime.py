@@ -104,6 +104,10 @@ class MonitorRuntime:
             "stale": self.buffer.age() is not None and self.buffer.age() > self.stale_after_seconds,
             "inference_enabled": bool(self.inference_scheduler and self.inference_scheduler.enabled),
             "inference_result": self.inference_scheduler.latest_result.value if self.inference_scheduler and self.inference_scheduler.latest_result else None,
+            # Issue #16: ROI/crop/前処理/検出数のpipeline diagnostics(secretを含まない)。
+            # 実際のInferenceScheduler._infer_latest()が算出した値をそのまま返す
+            # (診断専用の別経路では再計算しない)。
+            "pipeline": self.inference_scheduler.latest_diagnostics if self.inference_scheduler and self.inference_scheduler.latest_diagnostics else None,
         }
 
     def _run(self) -> None:

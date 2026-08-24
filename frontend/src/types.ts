@@ -14,7 +14,8 @@ export type ReadingSettings = {
   allow_rollover:boolean;
   rollover_max:number|null;
 };
-export type Inference = {method:"object_detection"|"ocr";engine:"ultralytics"|"easyocr"|"tesseract";model_id:string|null;device:string;video_fps:number;inference_fps:number;confidence:number;iou:number;image_size:number;preprocessing:Record<string,unknown>;roi:{x:number;y:number;width:number;height:number};reading:ReadingSettings;engine_options:Record<string,unknown>};
+export type RoiMode = "filter_only"|"crop_context";
+export type Inference = {method:"object_detection"|"ocr";engine:"ultralytics"|"easyocr"|"tesseract";model_id:string|null;device:string;video_fps:number;inference_fps:number;confidence:number;iou:number;image_size:number;preprocessing:Record<string,unknown>;roi:{x:number;y:number;width:number;height:number};roi_mode:RoiMode;context_margin:number;reading:ReadingSettings;engine_options:Record<string,unknown>};
 export type Roi = {x:number;y:number;width:number;height:number};
 export type Monitor = {id:number;name:string;display_name:string;location:string;enabled:boolean;status:Status;created_at:string;updated_at:string;source:Source|null;inference:Inference;current_value:string|null;previous_value:string|null;confidence:number|null;last_updated:string|null;inference_status:string;last_inference_error:string|null};
 export type History = {id:number;url:string;username:string|null;last_verified_at:string;has_password:boolean};
@@ -35,6 +36,22 @@ export type ModelCatalogEntry = {
   recommended_imgsz?: number;
   notes?: string;
 };
+export type PipelineDiagnostics = {
+  frame_width: number;
+  frame_height: number;
+  roi_mode: RoiMode|null;
+  context_margin: number|null;
+  roi_normalized: Roi;
+  roi_pixel: [number, number, number, number];
+  inference_crop_pixel: [number, number, number, number];
+  crop_shape: [number, number];
+  preprocess_output_shape: [number, number];
+  model_input_shape: [number, number];
+  raw_detection_count: number;
+  roi_filtered_detection_count: number;
+  engine: string;
+  model_id: string|null;
+};
 export type RuntimeDiagnostics = {
   source_type: string;
   state: string;
@@ -48,6 +65,7 @@ export type RuntimeDiagnostics = {
   stale: boolean;
   inference_enabled: boolean;
   inference_result: string|null;
+  pipeline: PipelineDiagnostics|null;
 };
 export type RawReadingDiagnostic = {value:string|null;confidence:number|null;timestamp:string|null;engine:string;error:string|null;detection_count:number};
 export type ReadingDiagnostics = {

@@ -57,10 +57,29 @@ def _to_response(monitor: Monitor):
     return MonitorResponse(id=monitor.id, name=monitor.name, display_name=monitor.display_name, location=monitor.location, enabled=monitor.enabled, status=monitor.status, created_at=monitor.created_at, updated_at=monitor.updated_at, source=source, inference=monitor.inference, current_value=monitor.latest_result.value if monitor.latest_result else None, previous_value=monitor.latest_result.previous_value if monitor.latest_result else None, confidence=monitor.latest_result.confidence if monitor.latest_result else None, last_updated=monitor.latest_result.timestamp if monitor.latest_result else None, inference_status=monitor.latest_result.status if monitor.latest_result else "disabled", last_inference_error=monitor.latest_result.last_error if monitor.latest_result else None)
 
 
+def _normalize_engine(method: str, engine: str) -> str:
+    """method(推論方法)とengine(実行エンジン)の意味的な矛盾を保存時に防ぐ。
+
+    app/inference/engines.py::create_engine()は、method=="object_detection" かつ
+    engine=="ultralytics" の場合のみYOLOへ分岐し、それ以外はengineの値だけで
+    OCRエンジン(tesseract/easyocr)を選ぶ(methodは見ない)。そのため、この正規化を
+    通さずに method=object_detection / engine=tesseract のような値をDBへ保存すると、
+    UI上は「Object Detection」に見えるのに実際にはTesseractInferenceEngineが動く、
+    という不整合が発生し得る(Issue #16実UI確認で発覚)。
+    create_engine()自体や推論処理・ROI処理は変更せず、設定の永続化(保存)時点だけで
+    この不変条件(object_detection→必ずultralytics、ocr→必ずtesseract/easyocr)を保証する。
+    """
+    if method == "object_detection":
+        return "ultralytics"
+    if engine in ("tesseract", "easyocr"):
+        return engine
+    return "easyocr"
+
+
 def _build_inference_settings(inference: InferenceSettings | None) -> dict | None:
     if not inference:
         return None
-    return {"method": inference.method, "engine": inference.engine, "model_id": inference.model_id, "device": inference.device, "video_fps": inference.video_fps, "inference_fps": inference.inference_fps, "confidence": inference.confidence, "iou": inference.iou, "image_size": inference.image_size, "preprocessing": inference.preprocessing, "roi": inference.roi, "reading": inference.reading, "engine_options": inference.engine_options}
+    return {"method": inference.method, "engine": inference.engine, "model_id": inference.model_id, "device": inference.device, "video_fps": inference.video_fps, "inference_fps": inference.inference_fps, "confidence": inference.confidence, "iou": inference.iou, "image_size": inference.image_size, "preprocessing": inference.preprocessing, "roi": inference.roi, "roi_mode": inference.roi_mode, "context_margin": inference.context_margin, "reading": inference.reading, "engine_options": inference.engine_options}
 
 
 def restart_runtime(monitor: Monitor, db: Session) -> None:
@@ -162,6 +181,8 @@ def update_monitor(db: Session, monitor_id: int, req):
             if key in {"roi", "preprocessing", "reading"} and hasattr(value, "model_dump"):
                 value = value.model_dump()
             setattr(monitor.inference, key, value)
+        # method/engineの意味的な矛盾(例: object_detection + tesseract)を保存前に正規化する。
+        monitor.inference.engine = _normalize_engine(monitor.inference.method, monitor.inference.engine)
     monitor.updated_at = datetime.utcnow()
     db.commit()
     monitor = get_monitor(db, monitor_id)
