@@ -187,6 +187,24 @@ ViteのFrontendポートは固定していません。5173が使用中なら5174
 - Frontend: Vite起動時に表示されたURL
 - SQLite: `data/argus.db`
 
+## LAN内アクセス（同一社内LAN上の別PCから閲覧・設定する場合）
+
+大規模な本番公開は想定せず、「担当者がたまに別の社内PCから状況確認・設定変更を行う」用途の最小構成です（Issue #26）。
+
+- Frontend（Vite dev server）は`frontend/vite.config.ts`の`server.host: true`により、既定で全ネットワークインターフェース（`0.0.0.0`）へbindします。
+- Backendは`--host`を指定しない限りUvicorn既定の`127.0.0.1`のみへbindし、LANから直接到達できません。
+- Frontendの`/api/**`はVite proxy（`vite.config.ts`の`server.proxy`）経由で同一PC上のBackend（`localhost`）へ転送されます。Frontend側のコードは相対パスのみを使用しており、`localhost`/`127.0.0.1`のハードコードはありません。そのため、**LAN側のクライアントはFrontendの1つのURLだけ**でDashboard/Monitor Detail/設定画面/プレビュー・Overlay配信まで利用できます。Backendのポートへ直接アクセスする必要はなく、そのポートをLANへ公開する必要もありません。
+
+手順:
+
+1. Argusを起動しているPCのLAN IPを確認する（`ipconfig`のIPv4アドレス）。
+2. 別PCのブラウザで `http://<ArgusPCのLAN IP>:<Frontendポート>` を開く。
+3. Windows Firewallの受信規則で、**Frontendのポート（TCP）だけ**をPrivate/Domainネットワークに限定して許可する。**Publicネットワークでは許可しないこと。** なお、Private/Domainプロファイル自体が無効化されている環境では、そもそも受信規則が無くても到達できてしまうため、社内ネットワークの実際のFirewallプロファイル状態を事前に確認すること（`Get-NetConnectionProfile` / `Get-NetFirewallProfile`）。
+
+**セキュリティ上の注意（未実装の認証について）**: Argusには現時点でユーザー認証・権限制御が実装されていません。LANアクセスを許可すると、同一LAN上でFrontendのURLへ到達できる誰もが、閲覧だけでなくMonitorの追加・削除、ROI/推論/CSV出力設定の変更まで行える状態になります。多人数が常時アクセスする運用や、信頼できない端末が同居するネットワークでの利用は推奨しません。閲覧専用モードや簡易認証の追加は別Issueとして検討してください。
+
+Internet公開・VPN越し公開・Reverse proxy/HTTPSの本格導入・AD/SSO等の認証基盤・本番サーバー化（Windows Service化等）は本構成の対象外です。
+
 ## 映像ソース
 
 ローカルカメラはWindowsではOpenCVの`CAP_DSHOW`を使用して探索します。ネットワーク映像はURL方式を選び、`rtsp://`、`http://`、MJPEG等のOpenCV対応URLを入力してください。接続確認では実際に1フレームを取得します。
@@ -228,3 +246,4 @@ ViteのFrontendポートは固定していません。5173が使用中なら5174
 - URL認証はOpenCVが受け付ける一時的なURL形式に変換して接続します。機器やOpenCVビルドによっては別途プロキシ等が必要です。
 - 暗号鍵未設定時は開発用固定キーのため、本番環境では必ず`ARGUS_SECRET_KEY`を設定してください。
 - Engine/Device切り替えは対象Monitorのruntime（映像取得含む）を再構成する方式のため、切り替え中は該当Monitorの映像に一瞬の断が生じる（他Monitorには影響しない）。
+- ユーザー認証・権限制御は未実装。LANアクセスを許可すると、到達可能な誰もが閲覧だけでなく設定変更まで行えるため注意が必要（詳細は「LAN内アクセス」参照、Issue #26）。
