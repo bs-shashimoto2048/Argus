@@ -82,6 +82,9 @@ def test_raw_sequence_converges_to_confirmed_value_via_http_api(monkeypatch):
             assert body is not None
             assert body["current_value"] == "002560", body
             assert body["inference_status"] in ("ok", "low_confidence")
-            assert body["status"] == "normal"
+            # Issue #29: status(Monitor.status)は映像Runtime接続状態専用。_FakeReaderは
+            # 常にframe読み取りに成功するため、実RuntimeがConfirmed済みでも"running"になる
+            # (読取結果とは独立、値は絶対に"normal"にはならない)。
+            assert body["status"] == "running"
         finally:
             client.delete(f"/api/monitors/{monitor_id}")

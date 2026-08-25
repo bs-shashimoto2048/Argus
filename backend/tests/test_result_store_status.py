@@ -1,8 +1,15 @@
-"""result_store.save_result がMonitor.status(Dashboardのバッジ)を
-推論エラー時にも正しく更新することを確認する回帰テスト。
+"""result_store.save_result が読取・推論状態(inference_status、DB上はLatestResult.status)を
+推論エラー時にも正しく更新すること、かつMonitor.status(映像Runtime接続状態専用の
+カラム)には一切書き込まないことを確認する回帰テスト。
 
-修正前は`if monitor and not result.error:`の条件により、推論エラー時に
-Monitor.statusが更新されず、Dashboard側で「読取不能」バッジが表示されなかった。
+元々(Issue #29以前)は`if monitor and not result.error:`の条件により、推論エラー時に
+Monitor.statusが更新されず、Dashboard側で「読取不能」バッジが表示されなかった。その後の
+修正でMonitor.statusにも読取状態(normal/warning/read_error)を書き込むようにしたが、これは
+RuntimeManager/MonitorRuntimeが書き込む映像Runtime接続状態(connecting/running/
+reconnecting/stopped/error)と同じカラムを奪い合う形になり、Runtime再構築時に旧Runtimeの
+callbackが書き込んだ古い状態と競合する不整合を招いた(Issue #29)。現在はMonitor.statusを
+映像Runtime接続状態専用とし、読取・推論状態はLatestResult.status(API: inference_status)
+だけで表現する。
 """
 from __future__ import annotations
 
@@ -13,20 +20,28 @@ from app.services.result_store import save_result
 from reading.models import CandidateStatus, ConfirmedReading
 
 
-def test_monitor_status_becomes_read_error_on_inference_error():
+def test_inference_status_becomes_read_error_on_inference_error_without_touching_video_status():
     with TestClient(app) as client:
         created = client.post("/api/monitors", json={"name": "result_store_status_test", "display_name": "テスト", "location": "試験室"})
         assert created.status_code == 201, created.text
         monitor_id = created.json()["id"]
         try:
+            # Runtimeを起動していないため、Monitor.status(映像状態)は既定値のまま。
+            # save_result()の呼び出し前後でこの値が変わらないことをもって、
+            # 読取状態の更新がMonitor.statusへ波及しないことを確認する。
+            baseline_status = client.get(f"/api/monitors/{monitor_id}").json()["status"]
+
             save_result(monitor_id, ConfirmedReading(validation_status=CandidateStatus.CONFIRMED, value="123", confidence=0.9, engine="mock"))
-            assert client.get(f"/api/monitors/{monitor_id}").json()["status"] == "normal"
+            body = client.get(f"/api/monitors/{monitor_id}").json()
+            assert body["inference_status"] == "ok"
+            assert body["status"] == baseline_status
 
             # 連続失敗が閾値へ到達しNO_READINGへ遷移した状態を模す。
             save_result(monitor_id, ConfirmedReading(validation_status=CandidateStatus.NO_READING, raw_error="MODEL_NOT_CONFIGURED", engine="ultralytics"))
             body = client.get(f"/api/monitors/{monitor_id}").json()
-            assert body["status"] == "read_error"
+            assert body["inference_status"] == "read_error"
             assert body["last_inference_error"] == "MODEL_NOT_CONFIGURED"
+            assert body["status"] == baseline_status
             # previous_valueは推論失敗を挟んでも失われないこと。
             assert body["current_value"] == "123"
         finally:
@@ -84,7 +99,7 @@ def test_previous_value_history_untouched_by_no_reading_between_confirms():
 
             save_result(monitor_id, ConfirmedReading(validation_status=CandidateStatus.NO_READING, raw_error="NO_DETECTION", engine="mock"))
             after = client.get(f"/api/monitors/{monitor_id}").json()
-            assert after["status"] == "read_error"
+            assert after["inference_status"] == "read_error"
             # current_value/previous_valueともにNO_READINGでは変化しないこと。
             assert after["current_value"] == "201"
             assert after["previous_value"] == "200"

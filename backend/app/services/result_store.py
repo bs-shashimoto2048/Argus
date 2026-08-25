@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 
 from ..core.database import SessionLocal
-from ..models import InferenceResult, LatestResult, Monitor
+from ..models import InferenceResult, LatestResult
 from reading.models import CandidateStatus, ConfirmedReading
 
 # LatestResult.value/previous_value/statusを更新する(=運用値として採用する)status。
@@ -58,15 +58,16 @@ def save_result(monitor_id: int, confirmed: ConfirmedReading) -> None:
         latest.processing_time_ms = confirmed.processing_time_ms
         latest.timestamp = datetime.utcnow()
 
-        monitor = db.get(Monitor, monitor_id)
-        if monitor:
-            if status == CandidateStatus.CONFIRMED:
-                monitor.status = "normal"
-            elif status == CandidateStatus.LOW_CONFIDENCE:
-                monitor.status = "warning"
-            elif status == CandidateStatus.NO_READING:
-                monitor.status = "read_error"
-            # pending/rejected系はMonitor.status(video状態と共有の粗いbadge)を変更しない。
+        # Issue #29: Monitor.statusは映像Runtime接続状態(connecting/running/
+        # reconnecting/stopped/error、RuntimeManager経由でMonitorRuntimeのみが
+        # 書き込む)専用のカラムとする。読取・推論状態は上のlatest.status(API上は
+        # inference_status)だけで表現し、ここでMonitor.statusへは一切書き込まない。
+        # 以前はここでCONFIRMED->"normal"/LOW_CONFIDENCE->"warning"/NO_READING->
+        # "read_error"をMonitor.statusへも書き込んでいたが、この関数(save_result)は
+        # 推論tickのたびに(RuntimeManagerの映像状態更新より遥かに高頻度で)呼ばれるため、
+        # 実質的にMonitor.statusが常に読取状態で上書きされてしまい、かつRuntime再構築時に
+        # 旧Runtimeのcallbackが書き込んだ"stopped"等と競合すると、映像が実際にはrunning中
+        # でも状態バッジが停止中のまま残る不整合が生じていた。
 
         if status in _ACCEPTED_STATUSES or status == CandidateStatus.NO_READING:
             effective_value = confirmed.value if status in _ACCEPTED_STATUSES else None
