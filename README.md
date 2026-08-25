@@ -171,16 +171,21 @@ Backend（既存API契約の既定ポートは8000。使用中なら開発用ス
 .\scripts\start_backend_dev.ps1
 ```
 
-Frontend:
+Frontend（先にBackendを起動しておくこと。Backendが選んだポートを`start_frontend_dev.ps1`が自動検出するため、`ARGUS_BACKEND_URL`を手動設定する必要はない）:
 
 ```powershell
-cd frontend
-# Backendが8000以外の場合だけ指定。未指定時はhttp://localhost:8000
-$env:ARGUS_BACKEND_URL = "http://localhost:8001"
-npm run dev
+.\scripts\start_frontend_dev.ps1
 ```
 
-ViteのFrontendポートは固定していません。5173が使用中なら5174、以降の空きポートをViteが自動選択します。`strictPort`は使用していません。
+Backendを別の起動方法（`start_backend_dev.ps1`を経由しない等）で動かしている場合や、自動検出を上書きしたい場合だけ、`-BackendUrl`で明示指定できる:
+
+```powershell
+.\scripts\start_frontend_dev.ps1 -BackendUrl "http://localhost:8001"
+```
+
+`frontend`ディレクトリで直接`npm run dev`を実行する場合は、これまでどおり`$env:ARGUS_BACKEND_URL`を自分でBackendの実際のポートに合わせて設定すること（未設定時は`http://localhost:8000`にフォールバックする）。
+
+ViteのFrontendポートは`5180`に固定しています(`strictPort: true`)。LANアクセスするクライアントが知っているURLは1つだけなので、ポートが自動で他の値へ流れて利用者に気づかれないまま古いURLが無効になる事態を防ぐため(Issue #26)。5180が既に使用中の場合はVite側がエラーで起動失敗するので、先に該当プロセスを終了させること。
 
 - Backend: 起動時に表示されたURL
 - APIドキュメント: Backend URL + `/docs`
