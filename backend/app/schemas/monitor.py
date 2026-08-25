@@ -35,6 +35,10 @@ class MonitorResponse(BaseModel):
     previous_value: str | None = None
     confidence: float | None = None
     last_updated: datetime | None = None
+    # Issue #28: 前回確定値の信頼度・確定日時(current_value側のconfidence/
+    # last_updatedとは別に、previous_value時点のものを保持する)。
+    previous_confidence: float | None = None
+    previous_confirmed_at: datetime | None = None
     inference_status: str = "disabled"
     last_inference_error: str | None = None
     model_config = {"from_attributes": True}

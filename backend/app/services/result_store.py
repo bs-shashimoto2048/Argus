@@ -26,9 +26,16 @@ def save_result(monitor_id: int, confirmed: ConfirmedReading) -> None:
         status = confirmed.validation_status
         if status in _ACCEPTED_STATUSES:
             if confirmed.value is not None and latest.value != confirmed.value:
+                # Issue #28: 値が入れ替わる瞬間、旧value自体だけでなく、その値が
+                # 確定した時点の信頼度・確定日時も「前回値側」として退避する
+                # (previous_confidence/previous_confirmed_atは今回追加した専用カラム。
+                # ReadingStabilizer/Validatorの判定ロジックには一切触れない)。
                 latest.previous_value = latest.value
+                latest.previous_confidence = latest.confidence
+                latest.previous_confirmed_at = latest.confirmed_at
             if confirmed.value is not None:
                 latest.value = confirmed.value
+                latest.confirmed_at = confirmed.confirmed_at
             latest.confidence = confirmed.confidence
             latest.status = "ok" if status == CandidateStatus.CONFIRMED else "low_confidence"
             latest.last_error = None

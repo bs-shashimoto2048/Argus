@@ -31,3 +31,63 @@ def test_monitor_status_becomes_read_error_on_inference_error():
             assert body["current_value"] == "123"
         finally:
             client.delete(f"/api/monitors/{monitor_id}")
+
+
+def test_previous_value_confidence_and_confirmed_at_are_recorded_on_value_change():
+    """Issue #28: 前回確定値の文字列(previous_value)だけでなく、その値が確定した
+    時点の信頼度(previous_confidence)・確定日時(previous_confirmed_at)も、値が
+    入れ替わる瞬間にLatestResultへ退避されることを確認する。ReadingStabilizer/
+    Validatorの判定ロジックには一切触れない(save_resultの保存処理のみの検証)。"""
+    from datetime import datetime, timezone
+
+    with TestClient(app) as client:
+        created = client.post("/api/monitors", json={"name": "previous_value_history_test", "display_name": "テスト", "location": "試験室"})
+        assert created.status_code == 201, created.text
+        monitor_id = created.json()["id"]
+        try:
+            first_confirmed_at = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+            save_result(monitor_id, ConfirmedReading(validation_status=CandidateStatus.CONFIRMED, value="100", confidence=0.7, confirmed_at=first_confirmed_at, engine="mock"))
+            body = client.get(f"/api/monitors/{monitor_id}").json()
+            # 1回目のConfirmedでは、まだ「前回値」は存在しない。
+            assert body["current_value"] == "100"
+            assert body["confidence"] == 0.7
+            assert body["previous_value"] is None
+            assert body["previous_confidence"] is None
+            assert body["previous_confirmed_at"] is None
+
+            second_confirmed_at = datetime(2026, 1, 1, 0, 5, 0, tzinfo=timezone.utc)
+            save_result(monitor_id, ConfirmedReading(validation_status=CandidateStatus.CONFIRMED, value="101", confidence=0.9, confirmed_at=second_confirmed_at, engine="mock"))
+            body = client.get(f"/api/monitors/{monitor_id}").json()
+            # 値が入れ替わった瞬間、旧値(100)側の信頼度・確定日時がprevious_*へ退避される。
+            assert body["current_value"] == "101"
+            assert body["confidence"] == 0.9
+            assert body["previous_value"] == "100"
+            assert body["previous_confidence"] == 0.7
+            assert body["previous_confirmed_at"].startswith("2026-01-01T00:00:00")
+        finally:
+            client.delete(f"/api/monitors/{monitor_id}")
+
+
+def test_previous_value_history_untouched_by_no_reading_between_confirms():
+    """NO_READING(read_error)を挟んでも、前回値側の信頼度・確定日時は上書きされず、
+    直前のConfirmed時点の値のまま保持されることを確認する(Issue #28)。"""
+    with TestClient(app) as client:
+        created = client.post("/api/monitors", json={"name": "previous_value_no_reading_test", "display_name": "テスト", "location": "試験室"})
+        assert created.status_code == 201, created.text
+        monitor_id = created.json()["id"]
+        try:
+            save_result(monitor_id, ConfirmedReading(validation_status=CandidateStatus.CONFIRMED, value="200", confidence=0.8, engine="mock"))
+            save_result(monitor_id, ConfirmedReading(validation_status=CandidateStatus.CONFIRMED, value="201", confidence=0.6, engine="mock"))
+            before = client.get(f"/api/monitors/{monitor_id}").json()
+            assert before["previous_value"] == "200"
+            assert before["previous_confidence"] == 0.8
+
+            save_result(monitor_id, ConfirmedReading(validation_status=CandidateStatus.NO_READING, raw_error="NO_DETECTION", engine="mock"))
+            after = client.get(f"/api/monitors/{monitor_id}").json()
+            assert after["status"] == "read_error"
+            # current_value/previous_valueともにNO_READINGでは変化しないこと。
+            assert after["current_value"] == "201"
+            assert after["previous_value"] == "200"
+            assert after["previous_confidence"] == 0.8
+        finally:
+            client.delete(f"/api/monitors/{monitor_id}")
