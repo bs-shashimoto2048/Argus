@@ -10,18 +10,7 @@ import { SourceSettings } from "../components/SourceSettings";
 import { VideoPreview } from "../components/VideoPreview";
 import { RoiEditor } from "../components/RoiEditor";
 import { PreprocessEditor } from "../components/PreprocessEditor";
-
-const labels: Record<string, string> = {
-  running: "正常",
-  reconnecting: "再接続中",
-  error: "映像取得エラー",
-  stopped: "停止中",
-  connecting: "接続中",
-  normal: "正常",
-  warning: "要確認",
-  connection_error: "通信異常",
-  read_error: "読取不能",
-};
+import { combinedMonitorStatus, monitorStatusLabels } from "../utils/monitorStatus";
 
 // 推論エラーコード -> ユーザー向け日本語メッセージ。Pythonの例外や内部詳細は表示しない。
 // Issue #28調査: MODEL_NOT_CONFIGUREDはBackend(app/inference/engines.py)では
@@ -264,7 +253,10 @@ export function MonitorDetailPage() {
             <div className="reading-summary-label">現在値</div>
             <div className="status-item primary"><small>現在値（確定）</small><strong>{currentValueText(monitor)}</strong></div>
             <div className="status-item"><small>信頼度</small><strong>{monitor.confidence == null ? "--" : `${(monitor.confidence * 100).toFixed(1)}%`}</strong></div>
-            <div className="status-item"><small>状態</small><span className={`status-text ${monitor.status}`}>● {labels[monitor.status] || monitor.status}</span></div>
+            {/* Issue #29: monitor.status(映像Runtime接続状態)とmonitor.inference_status(読取・
+                推論状態)を合成した表示にする(Dashboardのバッジと同じルール)。詳細な内訳は
+                下部「推論デバッグ」の映像Runtime診断行で個別に確認できる。 */}
+            <div className="status-item"><small>状態</small><span className={`status-text ${combinedMonitorStatus(monitor)}`}>● {monitorStatusLabels[combinedMonitorStatus(monitor)]}</span></div>
             {rawDiffersFromConfirmed && <div className="status-item raw-pending"><small>最新推論値（未確定）</small><strong>{rawInferenceValue}</strong></div>}
           </div>
           <div className="reading-summary-divider" aria-hidden="true" />

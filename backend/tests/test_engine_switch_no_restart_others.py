@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import time
 
+import numpy as np
 import pytest
 
 from runtime.runtime_manager import RuntimeManager
@@ -17,11 +18,24 @@ pytestmark = pytest.mark.integration
 
 
 class _FakeReader:
+    """常にframe読み取りに成功するFake VideoReader(Issue #33)。
+
+    以前はread()が常に(False, None)を返す実装だったため、MonitorRuntime._run()の
+    「読取失敗が続くとreader.close()して再接続する」ロジックが自然発火してしまい、
+    このテストが検証したい「他Monitorのruntimeはreader.close()されない」という
+    assertionが、対象Monitor(1)側のEngine構築(create_engine呼び出し等)の遅さで
+    time.sleep(0.05)の前提が崩れるたびに、無関係な自己再接続とタイミングが重なって
+    誤ってFailするようになっていた(CI Windows runnerで再現性100%)。
+    読取を常に成功させ、この自己再接続の発火条件自体を無くすことで、
+    「他Monitorが再構成されないこと」だけを安定して検証できるようにする。
+    """
+
     def __init__(self, _config):
         self.closed = False
+        self.source_fps = None
 
     def read(self):
-        return False, None
+        return True, np.zeros((2, 2, 3), dtype=np.uint8)
 
     def close(self):
         self.closed = True
