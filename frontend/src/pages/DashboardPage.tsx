@@ -6,6 +6,7 @@ import { Brand } from "../components/Brand";
 import { MonitorCard } from "../components/MonitorCard";
 import { DashboardSettingsModal } from "../components/DashboardSettingsModal";
 import { useDashboardSettings } from "../hooks/useDashboardSettings";
+import { combinedMonitorStatus } from "../utils/monitorStatus";
 
 export function DashboardPage() {
   const [monitors, setMonitors] = useState<Monitor[]>([]);
@@ -22,11 +23,17 @@ export function DashboardPage() {
     return () => window.clearInterval(timer);
   }, []);
 
-  const counts = useMemo(() => ({
-    normal: monitors.filter((m) => ["normal", "running"].includes(m.status)).length,
-    warning: monitors.filter((m) => m.status === "warning").length,
-    error: monitors.filter((m) => ["connection_error", "read_error", "error"].includes(m.status)).length,
-  }), [monitors]);
+  // Issue #29: monitor.status(映像Runtime接続状態)とmonitor.inference_status(読取・推論状態)を
+  // 合成した表示状態で集計する(Monitor Card/Detailと同じルール)。合成前のmonitor.statusだけを
+  // 見ると、映像がrunning中でも読取がread_error/low_confidenceであることを見落とす。
+  const counts = useMemo(() => {
+    const displayStatuses = monitors.map(combinedMonitorStatus);
+    return {
+      normal: displayStatuses.filter((status) => status === "normal").length,
+      warning: displayStatuses.filter((status) => status === "warning").length,
+      error: displayStatuses.filter((status) => status === "read_error" || status === "error").length,
+    };
+  }, [monitors]);
 
   return <main className="page">
     <header className="topbar">

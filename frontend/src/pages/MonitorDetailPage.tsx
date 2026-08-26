@@ -3,28 +3,26 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { Inference, Monitor, ReadingDiagnostics, RuntimeDiagnostics, Source } from "../types";
 import { Brand } from "../components/Brand";
+import { formatDateTimeJst } from "../utils/datetime";
 import { InferenceSettings } from "../components/InferenceSettings";
 import { ReadingSettingsPanel } from "../components/ReadingSettingsPanel";
 import { SourceSettings } from "../components/SourceSettings";
 import { VideoPreview } from "../components/VideoPreview";
 import { RoiEditor } from "../components/RoiEditor";
 import { PreprocessEditor } from "../components/PreprocessEditor";
-
-const labels: Record<string, string> = {
-  running: "正常",
-  reconnecting: "再接続中",
-  error: "映像取得エラー",
-  stopped: "停止中",
-  connecting: "接続中",
-  normal: "正常",
-  warning: "要確認",
-  connection_error: "通信異常",
-  read_error: "読取不能",
-};
+import { combinedMonitorStatus, monitorStatusLabels } from "../utils/monitorStatus";
 
 // 推論エラーコード -> ユーザー向け日本語メッセージ。Pythonの例外や内部詳細は表示しない。
+// Issue #28調査: MODEL_NOT_CONFIGUREDはBackend(app/inference/engines.py)では
+// 「model_id未設定」ではなく「ultralyticsライブラリをimportできない」場合にのみ
+// 発生するコードであり、かつLatestResult.last_errorは値が変わる(=新たにConfirmed
+// できる)まで更新されず残り続ける("粘着性")。そのため、モデルを後から正しく設定
+// しても、ROI内で検出が続かない限りこの文言が残り「設定済みなのに未設定と表示
+// される」という誤解を招いていた。実際に「model_idが空」であることは以下の
+// modelMissing(現在のinference設定を直接参照)で別途判定して表示するため、この
+// メッセージ自体はコードの実際の意味に合わせて表現を改める。
 const inferenceErrorMessages: Record<string, string> = {
-  MODEL_NOT_CONFIGURED: "モデルが設定されていません",
+  MODEL_NOT_CONFIGURED: "ultralyticsライブラリを利用できません（Backend環境エラー。モデル自体の設定とは別の問題です）",
   MODEL_NOT_FOUND: "指定されたモデルファイルが見つかりません",
   DEVICE_UNAVAILABLE: "指定されたDevice（GPU/CPU）が利用できません",
   OCR_ENGINE_UNAVAILABLE: "OCRエンジンがインストールされていません",
@@ -86,6 +84,10 @@ export function MonitorDetailPage() {
   // 表示レイアウトのみの状態(取得データ・API呼び出し頻度には影響しない)。
   const [settingsOpen, setSettingsOpen] = useState(true);
   const [lightbox, setLightbox] = useState<"video" | "overlay" | "inferenceInput" | null>(null);
+  // Issue #28: 「モニター映像」「推論オーバーレイ」を縦に2枚並べず、タブで1枚だけ
+  // 表示する(ページの縦スクロールを削減するため)。非表示側はunmountされるので、
+  // 見えていない方のpolling(VideoPreviewのsetInterval)も自動的に止まる。
+  const [videoTab, setVideoTab] = useState<"video" | "overlay">("video");
   // 右ペイン各セクションの開閉状態(Frontend表示のみ・永続化なし)。
   // 日常監視では設定編集の頻度が低いため、初期状態は全セクション折りたたみ(画面を短く保つ)。
   const [openSections, setOpenSections] = useState<Record<SectionKey, boolean>>({
@@ -176,6 +178,11 @@ export function MonitorDetailPage() {
   // どちらも既存の5秒/3秒ポーリングで取得済みのデータのみを使用し、新規API呼び出しは発生しない。
   const rawInferenceValue = runtimeDiagnostics?.inference_result ?? null;
   const rawDiffersFromConfirmed = rawInferenceValue != null && rawInferenceValue !== monitor.current_value;
+  // Issue #28調査: last_inference_error(DB由来、値が変わるまで残り続ける)だけを見ると、
+  // 「model_idを設定し直した後もMODEL_NOT_CONFIGUREDの表示が残る」という誤解を招く。
+  // 実際に現在のinference設定でmodel_idが空かどうかは、この派生値で直接判定する
+  // (object_detection+ultralyticsのときだけ意味を持つ組み合わせ)。
+  const modelMissing = monitor.inference.method === "object_detection" && monitor.inference.engine === "ultralytics" && !monitor.inference.model_id;
 
   const save = async () => {
     try {
@@ -216,7 +223,10 @@ export function MonitorDetailPage() {
   return <main className="page monitor-detail-page">
     <header className="topbar">
       <div>
-        <Brand />
+        {/* Issue #28: Dashboardと同様、Monitor Detailのヘッダーからもキャラクターアイコンを
+            非表示にする(showIcon=false)。文字ロゴ(ARGUS)自体はBrand内で維持され、
+            アセットファイルも削除しない(Brand.tsxのpropで画面ごとに表示を切り替えるだけ)。 */}
+        <Brand showIcon={false} />
         <div className="breadcrumbs">Argus / メーター詳細</div>
         <h1>{monitor.display_name}</h1>
         {/* 設定変更・デバッグ時に対象Monitorを取り違えないよう、display_nameとIDを常時明示する(Issue #16)。 */}
@@ -234,51 +244,76 @@ export function MonitorDetailPage() {
 
     <div className={`detail-layout${settingsOpen ? "" : " settings-collapsed"}`}>
       <section className="monitor-column">
-        <div className="panel status-bar" aria-live="polite">
-          <div className="status-item primary"><small>現在値（確定）</small><strong>{currentValueText(monitor)}</strong></div>
-          <div className="status-item"><small>信頼度</small><strong>{monitor.confidence == null ? "--" : `${(monitor.confidence * 100).toFixed(1)}%`}</strong></div>
-          <div className="status-item"><small>前回値</small><strong>{monitor.previous_value ?? "--"}</strong></div>
-          <div className="status-item"><small>差分</small><strong>{formatDiff(monitor.current_value, monitor.previous_value)}</strong></div>
-          {rawDiffersFromConfirmed && <div className="status-item raw-pending"><small>最新推論値（未確定）</small><strong>{rawInferenceValue}</strong></div>}
-          <span className={`status-text ${monitor.status}`}>● {labels[monitor.status] || monitor.status}</span>
+        {/* Issue #28: 現在値/前回値を左右2グループに分けたサマリー(1画面に収める
+            ためのレイアウト方針の一部)。取得元は既存の5秒ポーリングのみで、
+            APIコール自体は追加していない(previous_confidence/previous_confirmed_atは
+            MonitorResponseの新規フィールドとして同じレスポンスに含まれる)。 */}
+        <div className="panel reading-summary" aria-live="polite">
+          <div className="reading-summary-group current">
+            <div className="reading-summary-label">現在値</div>
+            <div className="status-item primary"><small>現在値（確定）</small><strong>{currentValueText(monitor)}</strong></div>
+            <div className="status-item"><small>信頼度</small><strong>{monitor.confidence == null ? "--" : `${(monitor.confidence * 100).toFixed(1)}%`}</strong></div>
+            {/* Issue #29: monitor.status(映像Runtime接続状態)とmonitor.inference_status(読取・
+                推論状態)を合成した表示にする(Dashboardのバッジと同じルール)。詳細な内訳は
+                下部「推論デバッグ」の映像Runtime診断行で個別に確認できる。 */}
+            <div className="status-item"><small>状態</small><span className={`status-text ${combinedMonitorStatus(monitor)}`}>● {monitorStatusLabels[combinedMonitorStatus(monitor)]}</span></div>
+            {rawDiffersFromConfirmed && <div className="status-item raw-pending"><small>最新推論値（未確定）</small><strong>{rawInferenceValue}</strong></div>}
+          </div>
+          <div className="reading-summary-divider" aria-hidden="true" />
+          <div className="reading-summary-group previous">
+            <div className="reading-summary-label">前回値</div>
+            <div className="status-item"><small>前回値</small><strong>{monitor.previous_value ?? "--"}</strong></div>
+            <div className="status-item"><small>信頼度</small><strong>{monitor.previous_confidence == null ? "--" : `${(monitor.previous_confidence * 100).toFixed(1)}%`}</strong></div>
+            <div className="status-item"><small>確定日時</small><strong>{monitor.previous_confirmed_at ? formatDateTimeJst(monitor.previous_confirmed_at) : "--"}</strong></div>
+            <div className="status-item"><small>差分</small><strong>{formatDiff(monitor.current_value, monitor.previous_value)}</strong></div>
+          </div>
         </div>
         <p className="muted status-note">
           「現在値（確定）」は読取安定化により確定した値です（直近{monitor.inference.reading.window_size}回中{monitor.inference.reading.required_matches}回以上一致で更新）。
-          一致が取れていない間は直前の確定値を保持するため、最新の推論結果と一時的に異なる場合があります。
+          一致が取れていない間は直前の確定値を保持するため、最新の推論結果と一時的に異なる場合があります。「前回値」は直前に確定していた値（Raw推論の途中経過ではありません）。
         </p>
-        {monitor.last_inference_error && <div className="alert error">{inferenceErrorText(monitor.last_inference_error, monitor.inference.engine)}</div>}
+        {modelMissing && <div className="alert error">モデルが設定されていません。右側の「推論設定」でモデルを選択してください。</div>}
+        {monitor.last_inference_error && !modelMissing && <div className="alert error">{inferenceErrorText(monitor.last_inference_error, monitor.inference.engine)}</div>}
 
-        <div className="panel video-panel">
-          <div className="section-title"><span>モニター映像</span></div>
-          {!monitor.source ? (
-            <div className="no-video large">映像ソースを設定してください</div>
-          ) : lightbox === "video" ? (
-            <div className="no-video large">拡大表示中（×で閉じると再表示されます）</div>
-          ) : (
-            <VideoPreview monitorId={monitor.id} large onImageClick={() => setLightbox("video")} />
-          )}
-        </div>
-
-        {monitor.source && <div className="panel video-panel">
-          <div className="section-title"><span>推論オーバーレイ</span></div>
-          <VideoPreview monitorId={monitor.id} overlay paused={lightbox === "overlay"} onImageClick={() => setLightbox("overlay")} />
-          <div className="overlay-legend">
-            <span><i className="legend-swatch legend-roi" />ユーザー指定ROI</span>
-            {runtimeDiagnostics?.pipeline?.roi_mode === "crop_context" && <span><i className="legend-swatch legend-margin" />内部推論crop範囲(context margin適用後)</span>}
-            <span><i className="legend-swatch legend-detection" />検出bbox</span>
+        {/* Issue #28: 「モニター映像」「推論オーバーレイ」を縦2枚並べる構造を廃止し、
+            同じ映像領域をタブで1枚だけ表示する。非アクティブ側はunmountされるため、
+            表示していない方のpolling(VideoPreview内のsetInterval)も自動的に止まる。 */}
+        <div className="panel video-panel primary-video">
+          <div className="video-tabs" role="tablist">
+            <button type="button" role="tab" aria-selected={videoTab === "video"} className={`video-tab${videoTab === "video" ? " active" : ""}`} onClick={() => setVideoTab("video")}>モニター映像</button>
+            <button type="button" role="tab" aria-selected={videoTab === "overlay"} className={`video-tab${videoTab === "overlay" ? " active" : ""}`} onClick={() => setVideoTab("overlay")} disabled={!monitor.source}>推論オーバーレイ</button>
           </div>
-          {runtimeDiagnostics?.pipeline && (
-            runtimeDiagnostics.pipeline.engine === "ultralytics" ? (
-              <p className="muted overlay-caption">
-                検出 {runtimeDiagnostics.pipeline.roi_filtered_detection_count}/{runtimeDiagnostics.pipeline.raw_detection_count} 件（ROI内/全体）
-              </p>
+          <div className="primary-video-body">
+            {!monitor.source ? (
+              <div className="no-video large">映像ソースを設定してください</div>
+            ) : lightbox === videoTab ? (
+              <div className="no-video large">拡大表示中（×で閉じると再表示されます）</div>
+            ) : videoTab === "video" ? (
+              <VideoPreview monitorId={monitor.id} large onImageClick={() => setLightbox("video")} />
             ) : (
-              <p className="muted overlay-caption">
-                このエンジン（{runtimeDiagnostics.pipeline.engine}）は文字ごとの位置を検出しないため、bboxは表示されません（検出bbox=0は仕様どおりです）。
-              </p>
-            )
-          )}
-        </div>}
+              <VideoPreview monitorId={monitor.id} overlay onImageClick={() => setLightbox("overlay")} />
+            )}
+          </div>
+          {videoTab === "overlay" && monitor.source && <>
+            <div className="overlay-legend">
+              <span><i className="legend-swatch legend-roi" />ユーザー指定ROI</span>
+              {runtimeDiagnostics?.pipeline?.roi_mode === "crop_context" && <span><i className="legend-swatch legend-margin" />内部推論crop範囲(context margin適用後)</span>}
+              <span><i className="legend-swatch legend-detection" />検出bbox</span>
+            </div>
+            {runtimeDiagnostics?.pipeline && (
+              runtimeDiagnostics.pipeline.engine === "ultralytics" ? (
+                <p className="muted overlay-caption">
+                  検出 {runtimeDiagnostics.pipeline.roi_filtered_detection_count}/{runtimeDiagnostics.pipeline.raw_detection_count} 件（ROI内/全体）
+                  {runtimeDiagnostics.pipeline.raw_detection_count === 0 && "（全体でも検出0件のため、bboxは表示されません）"}
+                </p>
+              ) : (
+                <p className="muted overlay-caption">
+                  このエンジン（{runtimeDiagnostics.pipeline.engine}）は文字ごとの位置を検出しないため、bboxは表示されません（検出bbox=0は仕様どおりです）。
+                </p>
+              )
+            )}
+          </>}
+        </div>
 
         {monitor.source && <details className="panel debug-details">
           <summary>推論デバッグ（推論入力 / Pipeline診断）</summary>

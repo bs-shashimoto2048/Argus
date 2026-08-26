@@ -1,4 +1,7 @@
-export type Status = "stopped"|"connecting"|"running"|"reconnecting"|"normal"|"warning"|"error"|"connection_error"|"read_error";
+// Issue #29: statusは映像Runtime接続状態専用(RuntimeManager/MonitorRuntimeのみが書き込む)。
+// 読取・推論状態はinference_status(InferenceStatus)で別途表現する(互いに上書きしない)。
+export type Status = "stopped"|"connecting"|"running"|"reconnecting"|"error";
+export type InferenceStatus = "disabled"|"pending"|"ok"|"low_confidence"|"read_error";
 export type Source = {source_type:"camera"|"local_camera"|"url";device_id:number|null;url:string|null;username:string|null;has_password:boolean;history_id?:number};
 export type ReadingSettings = {
   enabled:boolean;
@@ -17,7 +20,7 @@ export type ReadingSettings = {
 export type RoiMode = "filter_only"|"crop_context";
 export type Inference = {method:"object_detection"|"ocr";engine:"ultralytics"|"easyocr"|"tesseract";model_id:string|null;device:string;video_fps:number;inference_fps:number;confidence:number;iou:number;image_size:number;preprocessing:Record<string,unknown>;roi:{x:number;y:number;width:number;height:number};roi_mode:RoiMode;context_margin:number;reading:ReadingSettings;engine_options:Record<string,unknown>};
 export type Roi = {x:number;y:number;width:number;height:number};
-export type Monitor = {id:number;name:string;display_name:string;location:string;enabled:boolean;status:Status;created_at:string;updated_at:string;source:Source|null;inference:Inference;current_value:string|null;previous_value:string|null;confidence:number|null;last_updated:string|null;inference_status:string;last_inference_error:string|null};
+export type Monitor = {id:number;name:string;display_name:string;location:string;enabled:boolean;status:Status;created_at:string;updated_at:string;source:Source|null;inference:Inference;current_value:string|null;previous_value:string|null;confidence:number|null;last_updated:string|null;previous_confidence:number|null;previous_confirmed_at:string|null;inference_status:InferenceStatus;last_inference_error:string|null};
 export type History = {id:number;url:string;username:string|null;last_verified_at:string;has_password:boolean};
 export type DeviceOption = {value:string;label:string};
 export type SystemInference = {

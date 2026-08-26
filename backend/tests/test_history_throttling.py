@@ -87,6 +87,8 @@ def test_history_does_not_record_transient_rejections():
 
             body = client.get(f"/api/monitors/{monitor_id}").json()
             assert body["current_value"] == "100"
-            assert body["status"] == "normal"
+            # Issue #29: 読取状態はinference_status(LatestResult.status)で表現する。
+            # Monitor.status(映像Runtime接続状態専用)はこのテストではRuntime未起動のため既定値のまま。
+            assert body["inference_status"] == "ok"
         finally:
             client.delete(f"/api/monitors/{monitor_id}")
