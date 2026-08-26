@@ -41,4 +41,9 @@ class MonitorResponse(BaseModel):
     previous_confirmed_at: datetime | None = None
     inference_status: str = "disabled"
     last_inference_error: str | None = None
+    # Issue #32: last_inference_errorは値が変わるまで残り続ける「粘着性」の履歴値
+    # (既存の意図的挙動、互換性のため維持)。current_inference_errorは、直近のRaw
+    # Readingが既に成功していれば(たとえ最終Confirmed値がまだ更新されていなくても)
+    # nullになる、「現在の状態」専用の値。UI側の現在エラー表示はこちらを使う。
+    current_inference_error: str | None = None
     model_config = {"from_attributes": True}

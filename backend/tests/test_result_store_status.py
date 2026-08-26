@@ -48,6 +48,45 @@ def test_inference_status_becomes_read_error_on_inference_error_without_touching
             client.delete(f"/api/monitors/{monitor_id}")
 
 
+def test_current_inference_error_clears_on_recovery_while_last_inference_error_stays_sticky():
+    """Issue #32: last_inference_error(値が変わるまで残り続ける「粘着性」の履歴値)とは別に、
+    current_inference_errorは直近のRaw Readingが成功した時点(まだConfirmedへ再確定していない
+    PENDING中でも)で即座にnullへクリアされ、「現在は実際にエラー状態ではない」ことを
+    正しく表現できることを確認する。last_inference_error/inference_status(status)の
+    既存の粘着的な更新条件・タイミングは一切変更しない。"""
+    with TestClient(app) as client:
+        created = client.post("/api/monitors", json={"name": "current_error_recovery_test", "display_name": "テスト", "location": "試験室"})
+        assert created.status_code == 201, created.text
+        monitor_id = created.json()["id"]
+        try:
+            save_result(monitor_id, ConfirmedReading(validation_status=CandidateStatus.CONFIRMED, value="10", confidence=0.9, engine="mock"))
+            body = client.get(f"/api/monitors/{monitor_id}").json()
+            assert body["current_inference_error"] is None
+            assert body["last_inference_error"] is None
+
+            # 連続失敗が閾値へ到達しNO_READINGへ遷移(MODEL_NOT_CONFIGURED)。
+            save_result(monitor_id, ConfirmedReading(validation_status=CandidateStatus.NO_READING, raw_error="MODEL_NOT_CONFIGURED", engine="ultralytics"))
+            body = client.get(f"/api/monitors/{monitor_id}").json()
+            assert body["inference_status"] == "read_error"
+            assert body["last_inference_error"] == "MODEL_NOT_CONFIGURED"
+            assert body["current_inference_error"] == "MODEL_NOT_CONFIGURED"
+
+            # Raw Reading自体は既に成功しているが、まだ多数決の合意が取れておらずPENDING
+            # (validation_statusはstabilizer._carry_forward()経由でCONFIRMEDにはまだ遷移しない)。
+            # このときlatest.valueは既に"10"で存在するため、result_storeのPENDING分岐は
+            # status/last_inference_errorを一切更新しない(粘着的に"read_error"/
+            # "MODEL_NOT_CONFIGURED"のまま)。しかしcurrent_inference_errorは
+            # raw_error=Noneを見て即座にクリアされ、「今はエラーではない」ことを表現する。
+            save_result(monitor_id, ConfirmedReading(validation_status=CandidateStatus.PENDING, raw_error=None, engine="ultralytics"))
+            body = client.get(f"/api/monitors/{monitor_id}").json()
+            assert body["inference_status"] == "read_error"
+            assert body["last_inference_error"] == "MODEL_NOT_CONFIGURED"
+            assert body["current_inference_error"] is None
+            assert body["current_value"] == "10"
+        finally:
+            client.delete(f"/api/monitors/{monitor_id}")
+
+
 def test_previous_value_confidence_and_confirmed_at_are_recorded_on_value_change():
     """Issue #28: 前回確定値の文字列(previous_value)だけでなく、その値が確定した
     時点の信頼度(previous_confidence)・確定日時(previous_confirmed_at)も、値が
