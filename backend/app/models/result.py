@@ -26,6 +26,14 @@ class LatestResult(Base):
     engine: Mapped[str | None] = mapped_column(String(32), nullable=True)
     processing_time_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
     last_error: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # Issue #32: last_errorは値が変わる(=新たにConfirmed/別のエラーへ遷移する)まで
+    # 更新されず残り続ける「粘着性」の設計(Alert等の将来利用を想定した既存の意図的挙動。
+    # docs/07_DATABASE.md参照。ここでは変更しない)。これとは別に、「現在まさに
+    # エラー中かどうか」をlast_errorから独立して判定できるよう、直近1tickのRaw Reading
+    # 自体の成否(＝ReadingStabilizerの連続失敗streakが継続中か)を表すcurrent_errorを
+    # 追加する。result_store.save_result()のみが更新する(ReadingStabilizer/Validatorの
+    # 判定ロジックには一切触れない)。
+    current_error: Mapped[str | None] = mapped_column(String(128), nullable=True)
     monitor = relationship("Monitor", back_populates="latest_result")
 
 class InferenceResult(Base):

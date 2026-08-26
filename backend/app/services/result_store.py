@@ -24,6 +24,19 @@ def save_result(monitor_id: int, confirmed: ConfirmedReading) -> None:
             db.add(latest)
 
         status = confirmed.validation_status
+
+        # Issue #32: last_error(下のif/elifで従来通り更新する「粘着性」のある値)とは別に、
+        # 「現在まさにエラー中かどうか」を表すcurrent_errorを判定する。ReadingStabilizer/
+        # Validatorの判定ロジック(状態遷移の閾値等)には一切触れず、既にConfirmedReadingへ
+        # 格納済みのraw_error(=直近1tickのRaw Reading自体の成否)を読むだけ。直近tickの
+        # Raw Readingが成功していれば(raw_error is None)、Confirmed/Pending/Rejectedの
+        # いずれであっても「読取自体は少なくとも今復旧している」ことを意味するため、
+        # current_errorを即座にクリアする(last_errorのように後続のConfirmed成立まで
+        # 待たない)。current_errorが実際に設定されるのは、下のNO_READING分岐
+        # (＝連続失敗が閾値へ到達した瞬間)のみ。
+        if confirmed.raw_error is None:
+            latest.current_error = None
+
         if status in _ACCEPTED_STATUSES:
             if confirmed.value is not None and latest.value != confirmed.value:
                 # Issue #28: 値が入れ替わる瞬間、旧value自体だけでなく、その値が
@@ -39,12 +52,14 @@ def save_result(monitor_id: int, confirmed: ConfirmedReading) -> None:
             latest.confidence = confirmed.confidence
             latest.status = "ok" if status == CandidateStatus.CONFIRMED else "low_confidence"
             latest.last_error = None
+            latest.current_error = None
             latest.engine = confirmed.engine or None
         elif status == CandidateStatus.NO_READING:
             # 連続読取失敗が閾値へ到達した場合のみread_error扱いにする。
             # (単発のNO_DETECTION等はここへ来ず、値も温存される)
             latest.status = "read_error"
             latest.last_error = confirmed.raw_error or "NO_DETECTION"
+            latest.current_error = latest.last_error
             latest.engine = confirmed.engine or None
         elif status == CandidateStatus.PENDING and latest.value is None:
             # 初回起動などまだ一度もConfirmed実績が無い場合のみ「判定中」を表示する。

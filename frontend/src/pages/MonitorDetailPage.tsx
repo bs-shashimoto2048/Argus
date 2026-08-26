@@ -21,6 +21,11 @@ import { combinedMonitorStatus, monitorStatusLabels } from "../utils/monitorStat
 // される」という誤解を招いていた。実際に「model_idが空」であることは以下の
 // modelMissing(現在のinference設定を直接参照)で別途判定して表示するため、この
 // メッセージ自体はコードの実際の意味に合わせて表現を改める。
+// Issue #32: last_inference_error自体の粘着性(上記)は、MODEL_NOT_CONFIGURED以外の
+// 一時的なエラー(NO_DETECTION等)でも同様に発生し、実際には解消済みでも赤い警告として
+// 表示され続けていた。現在は「現在の状態」専用のcurrent_inference_error(直近のRaw
+// Readingが成功していればnull)を赤警告の判定に使い、last_inference_errorは解消済みの
+// 履歴注記としてのみ表示する(下のJSX参照)。
 const inferenceErrorMessages: Record<string, string> = {
   MODEL_NOT_CONFIGURED: "ultralyticsライブラリを利用できません（Backend環境エラー。モデル自体の設定とは別の問題です）",
   MODEL_NOT_FOUND: "指定されたモデルファイルが見つかりません",
@@ -273,7 +278,15 @@ export function MonitorDetailPage() {
           一致が取れていない間は直前の確定値を保持するため、最新の推論結果と一時的に異なる場合があります。「前回値」は直前に確定していた値（Raw推論の途中経過ではありません）。
         </p>
         {modelMissing && <div className="alert error">モデルが設定されていません。右側の「推論設定」でモデルを選択してください。</div>}
-        {monitor.last_inference_error && !modelMissing && <div className="alert error">{inferenceErrorText(monitor.last_inference_error, monitor.inference.engine)}</div>}
+        {/* Issue #32: current_inference_errorは直近のRaw Readingが既に成功していればnullになる
+            「現在の状態」専用の値なので、これが立っている間だけ赤の警告として表示する。 */}
+        {monitor.current_inference_error && !modelMissing && <div className="alert error">{inferenceErrorText(monitor.current_inference_error, monitor.inference.engine)}</div>}
+        {/* last_inference_errorは値が変わるまで残り続ける履歴値(粘着性)なので、現在は
+            エラーではない(current_inference_errorがnull)場合は、誤って現在のエラーと
+            混同されないよう、控えめな「過去のエラー」注記としてのみ表示する。 */}
+        {!monitor.current_inference_error && monitor.last_inference_error && !modelMissing && (
+          <p className="muted status-note">直近のエラー履歴（現在は解消済み）: {inferenceErrorText(monitor.last_inference_error, monitor.inference.engine)}</p>
+        )}
 
         {/* Issue #28: 「モニター映像」「推論オーバーレイ」を縦2枚並べる構造を廃止し、
             同じ映像領域をタブで1枚だけ表示する。非アクティブ側はunmountされるため、

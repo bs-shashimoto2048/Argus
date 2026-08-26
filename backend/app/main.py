@@ -41,6 +41,7 @@ async def lifespan(_app: FastAPI):
                 ("latest_results", "engine", "VARCHAR(32)"),
                 ("latest_results", "processing_time_ms", "FLOAT"),
                 ("latest_results", "last_error", "VARCHAR(128)"),
+                ("latest_results", "current_error", "VARCHAR(128)"),
                 ("latest_results", "previous_confidence", "FLOAT"),
                 ("latest_results", "previous_confirmed_at", "DATETIME"),
                 ("latest_results", "confirmed_at", "DATETIME"),
