@@ -65,7 +65,10 @@ class ReadingSettings(BaseModel):
 
 class InferenceSettingsInput(BaseModel):
     method: Literal["object_detection", "ocr"] = "object_detection"
-    engine: Literal["ultralytics", "easyocr", "tesseract"] = "ultralytics"
+    # cpp_onnx: Issue #37, yolo_pipeline_studio Issue #47/#48で検証済みのC++ ONNX
+    # Runtime推論backend（production candidate）。既存engineの選択肢は維持する
+    # （legacy fallback、Issue #37 §14/§15）。
+    engine: Literal["ultralytics", "easyocr", "tesseract", "cpp_onnx"] = "ultralytics"
     model_id: str | None = None
     device: str = "auto"
     video_fps: int = Field(15, gt=0, le=60)

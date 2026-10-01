@@ -7,6 +7,9 @@ class Settings:
     app_name = "Argus"
     version = "0.1.0"
     data_dir = Path(os.getenv("ARGUS_DATA_DIR", str(ROOT_DIR / "data"))).resolve()
+    # Issue #37: C++ ONNX Runtime推論backend(cpp_onnx engine)が使う常駐workerの実行ファイル。
+    # ビルド手順はdocs/CPP_ONNX_INTEGRATION.mdを参照(ORT/OpenCV同様、Gitへはcommitしない)。
+    cpp_onnx_worker_path = Path(os.getenv("ARGUS_CPP_ONNX_WORKER", str(ROOT_DIR / "cpp" / "build" / "Release" / "argus_cpp_onnx_worker.exe"))).resolve()
     database_url = os.getenv("ARGUS_DATABASE_URL", f"sqlite:///{data_dir / 'argus.db'}")
     # Allow only local development origins, regardless of Vite's selected port.
     # Issue #26 (LAN access from another in-office PC): this intentionally does

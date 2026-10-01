@@ -8,6 +8,7 @@ from typing import Any
 import numpy as np
 
 from .base import Detection, InferenceEngine, InferenceResult, ModelRegistry
+from .cpp_onnx_engine import CppOnnxEngineConfigError, CppOnnxInferenceEngine
 from .device import resolve_device
 from .meter_interpreter import interpret_digits, normalize_meter_text
 
@@ -164,6 +165,17 @@ def create_engine(settings: dict[str, Any], registry: ModelRegistry, model_root:
         if method == "object_detection" and engine == "ultralytics":
             model_id = settings.get("model_id")
             return YoloInferenceEngine(model_id, device, settings.get("confidence", 0.25), settings.get("iou", 0.7), settings.get("image_size", 640), registry, model_root) if model_id else None
+        if method == "object_detection" and engine == "cpp_onnx":
+            # Issue #37: yolo_pipeline_studio Issue #47/#48で検証済みのC++ ONNX推論。
+            # Digital/Drum固有の非正方形input shape/conf/iouはdata/models/registry.jsonの
+            # profileメタデータから解決する(コードへ散在させない、Issue #37 §39)。
+            model_id = settings.get("model_id")
+            if not model_id:
+                return None
+            try:
+                return CppOnnxInferenceEngine(model_id, registry, model_root)
+            except CppOnnxEngineConfigError:
+                return _UnavailableEngine("MODEL_NOT_CONFIGURED", "cpp_onnx")
         options = settings.get("engine_options") or {}
         if engine == "easyocr":
             return EasyOcrInferenceEngine(options.get("languages", ["en"]), device, registry)

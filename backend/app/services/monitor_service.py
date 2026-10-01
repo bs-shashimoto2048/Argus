@@ -67,10 +67,15 @@ def _normalize_engine(method: str, engine: str) -> str:
     UI上は「Object Detection」に見えるのに実際にはTesseractInferenceEngineが動く、
     という不整合が発生し得る(Issue #16実UI確認で発覚)。
     create_engine()自体や推論処理・ROI処理は変更せず、設定の永続化(保存)時点だけで
-    この不変条件(object_detection→必ずultralytics、ocr→必ずtesseract/easyocr)を保証する。
+    この不変条件(object_detection→必ずultralytics/cpp_onnx、ocr→必ずtesseract/easyocr)
+    を保証する。
+
+    Issue #37: object_detectionのengineに"cpp_onnx"(yolo_pipeline_studio Issue #47/#48
+    検証済みのC++ ONNX Runtime推論backend)を追加した。既存の"ultralytics"(legacy
+    fallback)はそのまま維持し、どちらか一方だけが保存可能な値になる。
     """
     if method == "object_detection":
-        return "ultralytics"
+        return engine if engine in ("ultralytics", "cpp_onnx") else "ultralytics"
     if engine in ("tesseract", "easyocr"):
         return engine
     return "easyocr"

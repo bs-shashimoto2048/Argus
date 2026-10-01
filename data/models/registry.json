@@ -108,6 +108,40 @@
         "gpu_warm_latency_ms": 10.4
       },
       "notes": "PROMOTIONされなかった('rejected_candidate')。v2比でdigit_detection_accuracyは両Test Setで改善(Legacy 75.9%→82.1%, Holdout 71.4%→82.1%)したが、Full Reading Exact Matchは無変化(Legacy 28.6%→28.6%, Holdout 0%→0%)、digit_classification_accuracyはむしろ悪化(Legacy 86.4%→81.5%, Holdout 75.0%→69.6%)、Temporal StabilizerのFalse Confirmed Reading RateはLegacyで大幅悪化(46.4%→100%)。Issue #7で判明したsrc_002個体の1→5・4→7混同は今回のTrain拡充(src_003由来の4枚追加)では解消されず、'missing_digit'から'wrong_value'(誤って自信を持って別数字と判定)へ悪化するパターンが複数観測された。原因は、新規追加データが全てTrain役割のsrc_003(既存個体と同一物理個体)からのものであり、confusionの震源であるsrc_001/src_002個体自身の映像特性(LCDセグメントの劣化・視認性)をTrainに反映できなかったため(Test役割個体はTrain禁止という制約#5により意図的にそうしている)。結論: v3はv2を無条件に置き換えず、role=candidateはv2のまま維持し、v3はrole=rejected_candidateとして記録のみ残す。production昇格は見送り。今後の方向性はdocs/METER_DIGIT_MODEL_EVALUATION.mdのFuture Data Collectionを参照(4個体目以降の独立個体でのTrain拡充、または1/4/5/7形状混同を狙った合成データ拡張が必要)。"
+    },
+    {
+      "model_id": "digital_production_v1.onnx",
+      "role": "candidate",
+      "task": "detect",
+      "engine": "cpp_onnx",
+      "profile": "digital",
+      "classes": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
+      "contract_version": "production-inference-contract-v1",
+      "sha256": "512b669b02df383be15419ca0ca34dd0749fb3235e84a90d884e3d0a4660d0b0",
+      "input_shape": [1, 3, 384, 640],
+      "recommended_conf": 0.60,
+      "recommended_iou": 0.7,
+      "source": "yolo_pipeline_studio Issue #47/#48 (production_combined_v2_5z:best, PT SHA256 630d84287f983dac334815d04c6652f88de8164956c779d94f855645394d4b61, data_manifests/production_deployment_baseline_v1.json). Monitor側ROI/preprocessingを、docs/CPP_ONNX_INTEGRATION.mdのDigital preprocessing contract(grayscale→sharpen→resize width=640)と一致させて使用すること。",
+      "created_at": "2026-10-01",
+      "metrics_summary": null,
+      "notes": "Argus独自のmeter_digits_v*系モデル(同一の物理Aichi Tokei gas meter向け)とは別系統。yolo_pipeline_studioの7-segment digit検出production modelをArgusのCamera/Monitor/ROI/ReadingStabilizer架構で使えるようにするためのIssue #37統合対象。Test66/Hard-Valでの評価は未実施(本Issueでは行わない方針)。role='candidate'のまま、engine='cpp_onnx'を明示選択したMonitorでのみ使用される(既定のengine='ultralytics'には影響しない)。weight/ONNX実体はGit管理外(data/models/*.onnxはgitignore対象)。"
+    },
+    {
+      "model_id": "drum_production_v1.onnx",
+      "role": "candidate",
+      "task": "detect",
+      "engine": "cpp_onnx",
+      "profile": "drum",
+      "classes": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
+      "contract_version": "production-inference-contract-v1",
+      "sha256": "09fc0d56d54293f7dbf9afa667cf4561b318c44fb00bb17fd8d85adbd6cd8332",
+      "input_shape": [1, 3, 160, 640],
+      "recommended_conf": 0.80,
+      "recommended_iou": 0.7,
+      "source": "yolo_pipeline_studio Issue #47/#48 (candidate_roi_v4_hardneg:best, PT SHA256 cadd1d7df52b94004331be2d3c79c7dbc306c93802b3f5c3d455f2121061f595, data_manifests/production_deployment_baseline_v1.json). Monitor側ROI(x=[835,1354), y=[374,480), raw 1920x1080前提)/preprocessingを、docs/CPP_ONNX_INTEGRATION.mdのDrum preprocessing contract(ROI crop→resize width=640→grayscale→sharpen)と一致させて使用すること。",
+      "created_at": "2026-10-01",
+      "metrics_summary": null,
+      "notes": "digital_production_v1.onnxと同様、yolo_pipeline_studio由来のdrum(回転式計数)検出production modelをArgusへ統合する対象。role='candidate'、engine='cpp_onnx'を明示選択したMonitorでのみ使用される。weight/ONNX実体はGit管理外。"
     }
   ]
 }

@@ -24,3 +24,14 @@ htmlcov/
 .DS_Store
 *.log
 scripts/.dev-backend-port
+
+# ===== C++ ONNX inference worker (Issue #37) =====
+# ONNX Runtime/OpenCV等のthird-party binary一式・CMakeビルド生成物・Visual Studio
+# キャッシュはcommitしない（巨大・machine-specific・再取得可能なため）。
+cpp/third_party/
+cpp/build/
+.vs/
+
+# Digital/Drum production ONNX artifact（weight/ONNX binaryはcommitしない方針、
+# 既存.pt系legacy modelとは別。path/sha256はdata/models/registry.jsonで管理する）。
+data/models/*.onnx
