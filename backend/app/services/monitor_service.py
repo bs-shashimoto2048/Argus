@@ -3,7 +3,9 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
+from ..core.config import settings as app_settings
 from ..inference.device import resolve_device
+from ..inference.model_catalog import get_model_entry
 from ..models import InferenceSettings, LatestResult, Monitor, UrlHistory, VideoSource
 from ..schemas.video_source import VideoSourceInput
 from .secret_store import decrypt, encrypt
@@ -79,6 +81,30 @@ def _normalize_engine(method: str, engine: str) -> str:
     if engine in ("tesseract", "easyocr"):
         return engine
     return "easyocr"
+
+
+_CPP_ONNX_PROFILES = ("digital", "drum")
+
+
+def _validate_engine_model(engine: str, model_id: str | None) -> None:
+    """engineとmodel_idの組合せをバックエンド側で検証する(Issue #38、UIに依存しない)。
+
+    - cpp_onnx: model_idが必須で、registry.jsonにengine=cpp_onnx/profile=digital|drumとして
+      登録済みのモデルのみ許可する。
+    - ultralytics: cpp_onnx専用モデルは拒否する。registry未登録の自由入力model path
+      (既存互換)は拒否しない。
+    ONNXファイル欠落/SHA256不一致は保存時には拒否せず、実行時のMODEL_NOT_CONFIGUREDとして
+    扱う(既存のfail-safe設計)。
+    """
+    entry = get_model_entry(app_settings.data_dir / "models", model_id) if model_id else None
+    is_cpp_entry = bool(entry) and entry.get("engine") == "cpp_onnx"
+    if engine == "cpp_onnx":
+        if not model_id:
+            raise ValueError("INVALID_ENGINE_MODEL: cpp_onnxではmodel_idの指定が必要です")
+        if not is_cpp_entry or entry.get("profile") not in _CPP_ONNX_PROFILES:
+            raise ValueError(f"INVALID_ENGINE_MODEL: '{model_id}'はcpp_onnx用に登録されたモデルではありません")
+    elif engine == "ultralytics" and is_cpp_entry:
+        raise ValueError(f"INVALID_ENGINE_MODEL: '{model_id}'はcpp_onnx専用モデルのためultralyticsでは使用できません")
 
 
 def _build_inference_settings(inference: InferenceSettings | None) -> dict | None:
@@ -194,6 +220,13 @@ def update_monitor(db: Session, monitor_id: int, req):
             setattr(monitor.inference, key, value)
         # method/engineの意味的な矛盾(例: object_detection + tesseract)を保存前に正規化する。
         monitor.inference.engine = _normalize_engine(monitor.inference.method, monitor.inference.engine)
+        # 保存後の状態(PATCHに無いフィールドは既存値)でengine/model_idの整合性を検証する。
+        # ValueErrorはcommit前にRouterで400へ変換される。
+        try:
+            _validate_engine_model(monitor.inference.engine, monitor.inference.model_id)
+        except ValueError:
+            db.rollback()
+            raise
     monitor.updated_at = datetime.utcnow()
     db.commit()
     monitor = get_monitor(db, monitor_id)

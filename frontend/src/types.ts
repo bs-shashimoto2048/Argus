@@ -18,7 +18,7 @@ export type ReadingSettings = {
   rollover_max:number|null;
 };
 export type RoiMode = "filter_only"|"crop_context";
-export type Inference = {method:"object_detection"|"ocr";engine:"ultralytics"|"easyocr"|"tesseract";model_id:string|null;device:string;video_fps:number;inference_fps:number;confidence:number;iou:number;image_size:number;preprocessing:Record<string,unknown>;roi:{x:number;y:number;width:number;height:number};roi_mode:RoiMode;context_margin:number;reading:ReadingSettings;engine_options:Record<string,unknown>};
+export type Inference = {method:"object_detection"|"ocr";engine:"ultralytics"|"easyocr"|"tesseract"|"cpp_onnx";model_id:string|null;device:string;video_fps:number;inference_fps:number;confidence:number;iou:number;image_size:number;preprocessing:Record<string,unknown>;roi:{x:number;y:number;width:number;height:number};roi_mode:RoiMode;context_margin:number;reading:ReadingSettings;engine_options:Record<string,unknown>};
 export type Roi = {x:number;y:number;width:number;height:number};
 export type Monitor = {id:number;name:string;display_name:string;location:string;enabled:boolean;status:Status;created_at:string;updated_at:string;source:Source|null;inference:Inference;current_value:string|null;previous_value:string|null;confidence:number|null;last_updated:string|null;previous_confidence:number|null;previous_confirmed_at:string|null;inference_status:InferenceStatus;last_inference_error:string|null;current_inference_error:string|null};
 export type History = {id:number;url:string;username:string|null;last_verified_at:string;has_password:boolean};
@@ -34,6 +34,9 @@ export type ModelCatalogEntry = {
   model_id: string;
   role: "baseline"|"candidate"|"production"|"deprecated"|string;
   exists: boolean;
+  engine?: string;
+  profile?: "digital"|"drum"|string;
+  input_shape?: number[];
   recommended_conf?: number;
   recommended_iou?: number;
   recommended_imgsz?: number;

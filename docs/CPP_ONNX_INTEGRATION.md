@@ -291,15 +291,34 @@ subprocess）で実行した。結果:
 ## Migration status
 
 - `legacy_python`（`engine=ultralytics`）: 既存のfallback。既定値のまま維持。
-- `cpp_onnx`（`engine=cpp_onnx`）: 本Issueで追加したproduction candidate。
-  Monitorごとに明示的に選択する必要がある（UIからの選択UIは未実装、API/DB直接
-  設定が必要。Issue #37 §42「基本UI変更不要」の方針により、本Issueでは
-  フロントエンドのengine選択ドロップダウンは追加していない）。
-- **default backendはcpp_onnxへ切り替えていない。** Issue #37 §53の切替条件
-  （Digital/Drum parity・実カメラ・soak・regressionすべて成功）は満たしているが、
-  「UIから選択できない状態でdefaultだけ変える」のは運用上望ましくないため、
-  UI対応は次Issue候補として残し、本Issueでは両engineを選択可能な状態のまま
-  close する。既存Monitorの既定値・挙動には一切影響しない。
+- `cpp_onnx`（`engine=cpp_onnx`）: Issue #37で追加したproduction candidate。
+  Monitorごとに明示的に選択する。Issue #38でMonitor詳細画面の「推論設定」から選択できる
+  ようになった（下記「Monitor設定UI」）。
+- **default backendはcpp_onnxへ切り替えていない。** 既定は引き続き`ultralytics`。
+  default切替・production昇格は、物理Digital/Drum cameraのacceptance完了後に別判断する。
+
+## Monitor設定UI（Issue #38）
+
+Monitor詳細画面 → 推論設定（Object Detection時）で「実行エンジン」を選択する。
+
+- **Ultralytics（既定）**: 従来どおり。モデル候補はcpp_onnx専用ONNXを除いた一覧。
+  registry未登録の自由入力model pathの互換は維持。Conf/IoU/ImageSize/Deviceは編集可能。
+- **C++ ONNX**: モデルは`digital_production_v1.onnx` / `drum_production_v1.onnx`の2件のみ。
+  - Conf/IoUはモデル選択時にproduction profile（Digital 0.60/0.70、Drum 0.80/0.70）へ
+    自動設定され、編集不可（C++ worker側でprofile固有thresholdが適用されるため）。
+  - ImageSizeはprofile固定shape（Digital 1x3x384x640 / Drum 1x3x160x640）、
+    DeviceはCPU（CPUExecutionProvider固定）として表示し、編集不可。既存DB値は書き換えない。
+    cpp_onnx runtimeではprofile値が正式値。
+  - ROIはROIそのものを切り出して推論する（ROIモードは適用されない）。
+- engine切替時は`model_id`をnullへ戻し、互換しないmodelを残さない。
+
+Backend validation（`monitor_service._validate_engine_model`、保存時、違反は400
+`INVALID_ENGINE_MODEL`）:
+
+- `cpp_onnx` + model_idなし / PT / registry未登録 / profileがdigital・drum以外 → 拒否
+- `ultralytics` + cpp_onnx専用ONNX → 拒否
+- ONNXファイル欠落・SHA256不一致は保存時には拒否せず、実行時の`MODEL_NOT_CONFIGURED`
+  として扱う（上記Startup validation）。UIではengine別の文言で表示する。
 
 ## Runner/環境
 
@@ -311,7 +330,7 @@ subprocess）で実行した。結果:
 
 ## 既知の制約・次候補
 
-- フロントエンドにengine選択UIが無い（§42の方針により本Issueでは追加していない）。
+- `MODEL_NOT_CONFIGURED`は、モデル未配置・registry未登録・SHA256不一致を区別せず返す。
 - CUDAExecutionProviderは統合していない（CPUをbaselineとする方針、将来必要になれば
   yolo_pipeline_studio Issue #48で検証済みの実装をそのまま流用できる）。
 - Preprocessing（resize/sharpen）はArgus既存実装とyolo_pipeline_studio production
