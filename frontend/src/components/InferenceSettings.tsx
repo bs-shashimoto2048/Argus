@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {DeviceOption,Inference,ModelCatalogEntry} from "../types";
 import { api } from "../api/client";
 
@@ -21,9 +21,19 @@ export function InferenceSettings({value,onChange,open,onToggleOpen}:{value:Infe
 
   // Issue #38: engine切替時は互換しないmodel_idを残さない(cpp_onnx専用ONNXとultralytics用
   // .ptは相互に使えない)。Backendもengine/modelの組合せを検証するが、UIでも誤選択を防ぐ。
+  // cpp_onnx選択でConf/IoUがprofile値へ置き換わるため、ultralyticsへ戻すときに元の値を復元する
+  // (ultralytics側の設定をprofile値のまま保存してしまわないため)。
+  const beforeCpp = useRef<{ confidence: number; iou: number } | null>(null);
   const handleEngineChange = (engine: "ultralytics" | "cpp_onnx") => {
     if (engine === value.engine) return;
-    onChange({ ...value, engine, model_id: null });
+    if (engine === "cpp_onnx") {
+      beforeCpp.current = { confidence: value.confidence, iou: value.iou };
+      onChange({ ...value, engine, model_id: null });
+      return;
+    }
+    const restore = beforeCpp.current;
+    beforeCpp.current = null;
+    onChange({ ...value, engine, model_id: null, ...(restore ?? {}) });
   };
 
   // cpp_onnxはC++ worker側でprofile固有のthreshold/input shapeを適用するため、モデル選択時に
