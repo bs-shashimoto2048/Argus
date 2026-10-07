@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 
 from app.inference.base import InferenceResult
 
-from .canonicalizer import canonical_value, to_numeric
+from .canonicalizer import canonical_value, strip_leading_zeros, to_numeric
 from .models import CandidateStatus, ConfirmedReading, RawReading, ReadingSettings, StabilizationMode
 from .validator import validate_format, validate_monotonic, validate_rate
 
@@ -124,7 +124,8 @@ class ReadingStabilizer:
 
         confirmed = ConfirmedReading(
             validation_status=status,
-            value=canonical,
+            # expected_digits検証・decimal_position適用後の最終運用値でのみ先頭0を除去する。
+            value=self._output_value(canonical),
             numeric_value=numeric,
             confidence=avg_confidence,
             confirmed_at=reading.timestamp,
@@ -138,6 +139,9 @@ class ReadingStabilizer:
         )
         self._previous_confirmed = confirmed
         return confirmed
+
+    def _output_value(self, canonical: str | None) -> str | None:
+        return strip_leading_zeros(canonical) if self.settings.strip_leading_zero else canonical
 
     def _carry_forward(self, status: CandidateStatus, reading: RawReading) -> ConfirmedReading:
         """Confirmed値を更新せず、直前の確定値を保持したまま今回のstatusだけ返す。"""
@@ -169,7 +173,7 @@ class ReadingStabilizer:
             status = CandidateStatus.PENDING
         confirmed = ConfirmedReading(
             validation_status=status,
-            value=canonical if canonical is not None else (self._previous_confirmed.value if self._previous_confirmed else None),
+            value=self._output_value(canonical) if canonical is not None else (self._previous_confirmed.value if self._previous_confirmed else None),
             numeric_value=numeric if numeric is not None else (self._previous_confirmed.numeric_value if self._previous_confirmed else None),
             confidence=reading.confidence,
             confirmed_at=reading.timestamp,

@@ -100,12 +100,13 @@ Monitor詳細画面の推論設定内「読取安定化」セクション（`inf
 | `required_matches` | `3` | Confirmedとみなす一致数（`window_size`以下である必要がある） |
 | `min_confidence` | `0.60` | この値未満の平均confidenceで確定した場合は`low_confidence`として値は表示しつつ要確認扱いにする |
 | `expected_digits` | `null` | 桁数（小数点除く）が一致しない候補は`invalid_format`として棄却 |
-| `decimal_position` | `null` | 右から何桁目に小数点を挿入するか（Leading Zeroは常に保持） |
+| `decimal_position` | `null` | 右から何桁目に小数点を挿入するか（Leading Zeroは既定で保持。`strip_leading_zero`で確定値のみ除去可能） |
 | `monotonic` | `true` | 積算メーター向け。確定値が前回より減少した候補を`decrease_detected`として棄却 |
 | `max_rate_per_minute` | `null` | 1分あたりの変化量の上限。超過候補を`rate_exceeded`として棄却 |
 | `max_consecutive_failures` | `5` | この回数連続でエラー/未検出が続くと`read_error`（`no_reading`）へ遷移 |
 | `allow_rollover` | `false` | 最大値から0への巻き戻り（例: 999999→000000）を許可するか |
 | `rollover_max` | `null` | rollover時の最大値（`allow_rollover=true`かつrate検証を行う場合に必要） |
+| `strip_leading_zero` | `false` | `true`で確定値（UI表示・DB・CSV）の整数部の先頭の0を除去する（例: `0372398.5`→`372398.5`、`0000000.5`→`0.5`）。`expected_digits`検証・検出・Raw Readingは先頭0を含む元の桁列のまま行う |
 
 一時的な異常値（`decrease_detected`/`rate_exceeded`/`invalid_format`/`pending`）はLatestResult/Dashboardの表示を一切変更せず、直前のConfirmed値を保持したまま静かに棄却します。NO_DETECTIONが1回挟まっても値は消えず、`max_consecutive_failures`連続で失敗した場合のみ「読取不能」へ遷移します。
 

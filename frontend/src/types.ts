@@ -16,6 +16,7 @@ export type ReadingSettings = {
   max_consecutive_failures:number;
   allow_rollover:boolean;
   rollover_max:number|null;
+  strip_leading_zero:boolean;
 };
 export type RoiMode = "filter_only"|"crop_context";
 export type Inference = {method:"object_detection"|"ocr";engine:"ultralytics"|"easyocr"|"tesseract"|"cpp_onnx";model_id:string|null;device:string;video_fps:number;inference_fps:number;confidence:number;iou:number;image_size:number;preprocessing:Record<string,unknown>;roi:{x:number;y:number;width:number;height:number};roi_mode:RoiMode;context_margin:number;reading:ReadingSettings;engine_options:Record<string,unknown>};
