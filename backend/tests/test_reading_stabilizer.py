@@ -76,17 +76,19 @@ def test_fixed_digit_length_invalid():
     assert confirmed.value is None
 
 
-def test_leading_zero_is_preserved_in_confirmed_value():
+def test_leading_zero_is_removed_from_confirmed_value_but_kept_in_raw():
+    # Issue #40: 最終運用値(Confirmed)は整数部の先頭0を除去する。Raw(元の桁列)は維持する。
     stabilizer = ReadingStabilizer(ReadingSettings(window_size=1, required_matches=1))
     confirmed = _feed(stabilizer, ["002560"])
-    assert confirmed.value == "002560"
+    assert confirmed.value == "2560"
+    assert confirmed.raw_value == "002560"
     assert confirmed.numeric_value == 2560
 
 
 def test_decimal_position_applied_to_confirmed_value():
     stabilizer = ReadingStabilizer(ReadingSettings(window_size=1, required_matches=1, decimal_position=2))
     confirmed = _feed(stabilizer, ["002560"])
-    assert confirmed.value == "0025.60"
+    assert confirmed.value == "25.60"
 
 
 def test_monotonic_rejects_decrease():
@@ -145,7 +147,8 @@ def test_rollover_accepted_when_allowed():
     stabilizer.update(_reading("999999", offset_seconds=0))
     wrapped = stabilizer.update(_reading("000001", offset_seconds=1))
     assert wrapped.validation_status == CandidateStatus.CONFIRMED
-    assert wrapped.value == "000001"
+    assert wrapped.value == "1"  # 最終運用値は先頭0除去後(Raw/numeric_valueは変わらない)
+    assert wrapped.raw_value == "000001"
 
 
 def test_rollover_rejected_when_not_allowed():

@@ -12,6 +12,7 @@ from runtime.csv_export_worker import csv_export_worker
 from runtime.video_reader import ReaderConfig
 from .services.secret_store import decrypt
 from .services.result_store import save_result
+from .services.reading_baseline_service import restore_baseline
 from .services.monitor_service import _build_inference_settings
 
 logger = logging.getLogger("argus.startup")
@@ -55,6 +56,7 @@ async def lifespan(_app: FastAPI):
                     connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}"))
     runtime_manager.set_status_callback(_set_status)
     runtime_manager.set_result_callback(_set_result)
+    runtime_manager.set_baseline_provider(restore_baseline)
     db = SessionLocal()
     try:
         for monitor in db.query(Monitor).all():

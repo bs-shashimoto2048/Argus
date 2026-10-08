@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from io import BytesIO
 from threading import Event, Lock, Thread
 from time import monotonic, perf_counter
@@ -17,6 +19,8 @@ from app.services.preprocess_service import apply, crop_roi
 from app.schemas.inference import Roi
 from reading.models import ConfirmedReading, ReadingSettings
 from reading.stabilizer import ReadingStabilizer
+
+logger = logging.getLogger("argus.scheduler")
 
 # ROIのセマンティクス(Issue #16: 実機3台での比較検証により再整理)。
 #
@@ -60,7 +64,7 @@ def _draw_dashed_rect(image: np.ndarray, pt1: tuple[int, int], pt2: tuple[int, i
 
 
 class InferenceScheduler:
-    def __init__(self, monitor_id: int, buffer, settings: dict, model_registry: ModelRegistry, model_root: Path, on_result: Callable[[int, ConfirmedReading], None]) -> None:
+    def __init__(self, monitor_id: int, buffer, settings: dict, model_registry: ModelRegistry, model_root: Path, on_result: Callable[[int, ConfirmedReading], None], baseline_provider=None) -> None:
         self.monitor_id = monitor_id
         self.buffer = buffer
         self.settings = settings
@@ -69,7 +73,16 @@ class InferenceScheduler:
         # Raw Reading -> Confirmed Readingへの時系列安定化。InferenceScheduler自体が
         # Engine/Model/ROI/Preprocessing/Device変更や再起動のたびに新規構築されるため、
         # ここに紐付けるだけでbufferのresetが自然に満たされる。
-        self.stabilizer = ReadingStabilizer(ReadingSettings.from_dict(settings.get("reading")))
+        reading_settings = ReadingSettings.from_dict(settings.get("reading"))
+        baseline, epoch, conflict = None, 0, None
+        if baseline_provider is not None and reading_settings.enabled:
+            # Raw window/連続失敗回数は再構築のたびに初期化されるが、monotonic baselineはDBから復元する。
+            # 復元に失敗した場合は従来どおりbaselineなしで開始する(provider側でもログを出す)。
+            try:
+                baseline, epoch, conflict = baseline_provider(monitor_id, reading_settings)
+            except Exception:
+                logger.exception("monitor %s: baselineの復元に失敗しました", monitor_id)
+        self.stabilizer = ReadingStabilizer(reading_settings, baseline, epoch, conflict)
         self._stop = Event()
         self._thread: Thread | None = None
         self._busy = Lock()
@@ -221,7 +234,7 @@ class InferenceScheduler:
                 if detection.bbox:
                     bx1, by1, bx2, by2 = (int(value) for value in detection.bbox)
                     cv2.rectangle(overlay, (bx1, by1), (bx2, by2), (37, 99, 235), 2)
-                    cv2.putText(overlay, f"{detection.class_name or ''} {detection.confidence or 0:.2f}", (bx1, max(16, by1 - 4)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (37, 99, 235), 1)
+                    cv2.putText(overlay, f"{detection.class_name or ''}/{detection.confidence or 0:.2f}", (bx1, max(16, by1 - 4)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (37, 99, 235), 1)
             ok, encoded = cv2.imencode(".jpg", overlay)
             self.latest_overlay = encoded.tobytes() if ok else None
             confirmed = self.stabilizer.update(result)

@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta
 
 from sqlalchemy import select
@@ -5,6 +6,10 @@ from sqlalchemy import select
 from ..core.database import SessionLocal
 from ..models import InferenceResult, LatestResult
 from reading.models import CandidateStatus, ConfirmedReading
+
+from .reading_baseline_service import record_confirmed
+
+logger = logging.getLogger("argus.result_store")
 
 # LatestResult.value/previous_value/statusを更新する(=運用値として採用する)status。
 _ACCEPTED_STATUSES = (CandidateStatus.CONFIRMED, CandidateStatus.LOW_CONFIDENCE)
@@ -90,6 +95,12 @@ def save_result(monitor_id: int, confirmed: ConfirmedReading) -> None:
             should_record = last_history is None or last_history.value != effective_value or last_history.created_at < datetime.utcnow() - timedelta(seconds=60)
             if should_record:
                 db.add(InferenceResult(monitor_id=monitor_id, value=effective_value, confidence=confirmed.confidence if status in _ACCEPTED_STATUSES else None, detections=[], processing_time_ms=confirmed.processing_time_ms, engine=confirmed.engine or None))
+        # Issue #40: baseline(monotonic基準値)の永続化とconflict(固着)状態の記録。
+        # 失敗しても表示値(LatestResult)の保存は妨げない。
+        try:
+            record_confirmed(db, monitor_id, confirmed)
+        except Exception:
+            logger.exception("monitor %s: baselineの記録に失敗しました", monitor_id)
         db.commit()
     finally:
         db.close()

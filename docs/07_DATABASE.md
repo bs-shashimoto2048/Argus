@@ -20,7 +20,11 @@ Migrationツール、migrationファイル、Alembic設定は確認できませ�
 | `url_histories` | `UrlHistory` | `id`, `url`, `username`, `last_verified_at` |
 | `inference_settings` | `InferenceSettings` | `method`, `engine`, `model_id`, `device`, FPS、Confidence、IoU、ImageSize、`roi`/`preprocessing`/`reading`（JSON） |
 | `latest_results` | `LatestResult` | `value`（Confirmed値）, `previous_value`, `confidence`, `status`（読取・推論状態専用。`disabled`/`pending`/`ok`/`low_confidence`/`read_error`。API上は`inference_status`として返す）, `last_error`（値が変わるまで残り続ける履歴用の粘着値。API: `last_inference_error`）, `current_error`（直近のRaw Readingが成功していれば`null`になる、現在の状態専用の値。API: `current_inference_error`。Issue #32）, `engine`, `processing_time_ms`, `timestamp` |
+| `reading_baselines` | `ReadingBaseline` | monotonic基準値（Issue #40）。`monitor_id`（UNIQUE）, `value`/`numeric_value`（CONFIRMEDのみ）, `confirmed_at`, `source`（`confirmed`/`operator_reset`/`operator_rebase`/`auto_semantic_reset`）, `state`（`active`/`pending_reset`）, `epoch`（reset/rebaseの世代番号。古い世代のConfirmedによる上書きを防ぐ）, `decimal_position`/`expected_digits`（semantic fingerprint）, `conflict_*`（基準値と矛盾する合意候補の継続状態）, `updated_at` |
+| `reading_baseline_events` | `ReadingBaselineEvent` | baseline操作の監査履歴。`monitor_id`（FKなし。Monitor削除後も残す）, `monitor_name`（スナップショット）, `occurred_at`, `action`（`reset`/`rebase`/`auto_semantic_reset`）, `old_value`, `old_confirmed_at`, `new_value`, `reason`, `operator`, `client_host`, `context`（JSON） |
 | `inference_results` | `InferenceResult` | `value`（Confirmed値の変化時 + heartbeatのみ記録）, `confidence`, `detections`, `processing_time_ms`, `created_at` |
+
+`reading_baselines`/`reading_baseline_events`は新規テーブルで、起動時の`create_all`が自動作成します（既存テーブルの`ALTER`は不要）。既存Monitorにはbaseline行がなく、`latest_results.value`から自動では作りません（過去の誤確定が復活するのを避けるため）。最初のCONFIRMEDで初回baselineが作られます。`monitor_id`はSQLiteで再利用され得るため、監査履歴はMonitorが存在する間はその作成時刻以降のものだけを返します。
 
 ## Relationships
 

@@ -2,9 +2,14 @@ import json
 import os
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
 from ..core.config import settings
+from ..core.database import get_db
+from ..services import monitor_service, reading_baseline_service as baseline_service
+from reading.baseline import conflict_alert, conflict_active, conflict_duration_seconds
 from reading.models import RawReading
 
 from runtime.runtime_manager import runtime_manager
@@ -36,7 +41,22 @@ def reading_diagnostics(monitor_id: int):
 
     confirmed = scheduler.latest_confirmed
     stabilizer = scheduler.stabilizer
+    now = datetime.now(timezone.utc)
+    conflict = stabilizer.conflict
+    baseline = stabilizer.baseline_snapshot()
     return {
+        # Issue #40: Raw(元の桁列)とは別に、baseline/合意候補/conflictを返す(値は最終運用値の形式=先頭0除去後)。
+        "baseline": None if baseline is None else {
+            "value": baseline["value"], "numeric_value": baseline["numeric_value"], "epoch": baseline["epoch"],
+            "confirmed_at": baseline["confirmed_at"].isoformat() if baseline["confirmed_at"] else None,
+        },
+        "candidate": stabilizer.last_candidate,
+        "conflict": None if conflict is None else {
+            "status": conflict.status.value, "candidate": conflict.candidate, "count": conflict.count,
+            "started_at": conflict.started_at.isoformat(), "last_at": conflict.last_at.isoformat(),
+            "duration_seconds": int(conflict_duration_seconds(conflict)),
+            "active": conflict_active(conflict, now), "alert": conflict_alert(conflict, now),
+        },
         "enabled": stabilizer.settings.enabled,
         "mode": stabilizer.settings.mode.value,
         "consecutive_failures": stabilizer.consecutive_failures,
@@ -53,6 +73,73 @@ def reading_diagnostics(monitor_id: int):
             "raw_confidence": confirmed.raw_confidence if confirmed else None,
         },
     }
+
+
+class ResetRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=500)
+    operator: str = Field(min_length=1, max_length=160)
+
+    def cleaned(self) -> tuple[str, str]:
+        reason, operator = self.reason.strip(), self.operator.strip()
+        if not reason or not operator:
+            raise HTTPException(422, "reasonとoperatorは必須です")
+        return reason, operator
+
+
+class RebaseRequest(ResetRequest):
+    value: str = Field(min_length=1, max_length=64)
+    force: bool = False
+
+
+def _monitor_or_404(db: Session, monitor_id: int):
+    try:
+        return monitor_service.get_monitor(db, monitor_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+def _client_host(request: Request) -> str:
+    return request.client.host if request.client else ""
+
+
+def _run_baseline_action(action):
+    try:
+        return action()
+    except baseline_service.ReadingDisabledError as exc:
+        raise HTTPException(409, {"code": "READING_DISABLED", "message": str(exc)}) from exc
+    except baseline_service.InvalidBaselineValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except baseline_service.ForceRequiredError as exc:
+        raise HTTPException(409, {"code": "FORCE_REQUIRED", "message": str(exc), "candidate": exc.candidate,
+                                  "requested": exc.requested, "tolerance": str(exc.tolerance)}) from exc
+
+
+@router.get("/{monitor_id}/reading/baseline")
+def get_baseline(monitor_id: int, db: Session = Depends(get_db)):
+    """monotonic baseline(基準値)・conflict(固着)状態・最新のRaw合意候補を返す。"""
+    return baseline_service.get_status(db, _monitor_or_404(db, monitor_id))
+
+
+@router.post("/{monitor_id}/reading/baseline/reset")
+def reset_baseline(monitor_id: int, body: ResetRequest, request: Request, db: Session = Depends(get_db)):
+    """baselineをクリアする。次に正常にCONFIRMEDされた値が新しいbaselineになる(表示値は直接変更しない)。"""
+    reason, operator = body.cleaned()
+    monitor = _monitor_or_404(db, monitor_id)
+    return _run_baseline_action(lambda: baseline_service.reset_baseline(db, monitor, reason, operator, _client_host(request)))
+
+
+@router.post("/{monitor_id}/reading/baseline/rebase")
+def rebase_baseline(monitor_id: int, body: RebaseRequest, request: Request, db: Session = Depends(get_db)):
+    """baselineを、運用者が実メーターで確認した値へ置き換える(表示値は直接変更しない)。"""
+    reason, operator = body.cleaned()
+    monitor = _monitor_or_404(db, monitor_id)
+    return _run_baseline_action(lambda: baseline_service.rebase_baseline(db, monitor, body.value, reason, operator, _client_host(request), body.force))
+
+
+@router.get("/{monitor_id}/reading/baseline/events")
+def baseline_events(monitor_id: int, limit: int = Query(50, ge=1, le=200), db: Session = Depends(get_db)):
+    """baseline操作の監査履歴(新しい順)。Monitor削除後も取得できる。"""
+    return {"events": baseline_service.list_events(db, monitor_id, limit)}
 
 
 @router.post("/{monitor_id}/reading/capture")

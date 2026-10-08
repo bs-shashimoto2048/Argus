@@ -76,4 +76,4 @@ def test_inference_scheduler_processes_latest_frame(monkeypatch, tmp_path):
     scheduler.start()
     scheduler._stop.wait(0.25)
     scheduler.stop()
-    assert results and results[-1].value == "002560"
+    assert results and results[-1].value == "2560"  # Confirmedは先頭0除去後(Rawは"002560")

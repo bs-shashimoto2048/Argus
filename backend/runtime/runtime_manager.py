@@ -16,14 +16,16 @@ class RuntimeManager:
         self._generation: dict[int, int] = {}
         self._status_callback = None
         self._result_callback = None
+        self._baseline_provider = None
     def set_status_callback(self, callback) -> None: self._status_callback = callback
     def set_result_callback(self, callback) -> None: self._result_callback = callback
+    def set_baseline_provider(self, provider) -> None: self._baseline_provider = provider
     def start_monitor(self, monitor_id: int, config: ReaderConfig) -> None:
         with self._lock:
             self.stop_monitor(monitor_id)
             generation = self._generation.get(monitor_id, 0) + 1
             self._generation[monitor_id] = generation
-            runtime = MonitorRuntime(monitor_id, config, self._make_status_forwarder(monitor_id, generation), self._result_callback)
+            runtime = MonitorRuntime(monitor_id, config, self._make_status_forwarder(monitor_id, generation), self._result_callback, self._baseline_provider)
             self._runtimes[monitor_id] = runtime
             runtime.start()
     def stop_monitor(self, monitor_id: int) -> None:

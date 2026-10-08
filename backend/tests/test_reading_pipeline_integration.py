@@ -80,7 +80,7 @@ def test_raw_sequence_converges_to_confirmed_value_via_http_api(monkeypatch):
                 time.sleep(0.1)
 
             assert body is not None
-            assert body["current_value"] == "002560", body
+            assert body["current_value"] == "2560", body  # 先頭0除去後の最終運用値
             assert body["inference_status"] in ("ok", "low_confidence")
             # Issue #29: status(Monitor.status)は映像Runtime接続状態専用。_FakeReaderは
             # 常にframe読み取りに成功するため、実RuntimeがConfirmed済みでも"running"になる

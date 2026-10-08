@@ -55,7 +55,6 @@ class ReadingSettings(BaseModel):
     max_consecutive_failures: int = Field(5, ge=1, le=100)
     allow_rollover: bool = False
     rollover_max: int | None = Field(default=None, ge=0)
-    strip_leading_zero: bool = False
 
     @model_validator(mode="after")
     def matches_within_window(self):

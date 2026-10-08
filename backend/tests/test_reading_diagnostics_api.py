@@ -60,7 +60,7 @@ def test_reading_diagnostics_returns_raw_and_confirmed_without_secrets(monkeypat
                 time.sleep(0.1)
 
             assert body is not None, "diagnosticsがConfirmed値を返すまで待機できませんでした"
-            assert body["confirmed"]["value"] == "002560"
+            assert body["confirmed"]["value"] == "2560"  # 最終運用値は先頭0除去後(Rawは元の桁列)
             assert body["confirmed"]["validation_status"] in ("confirmed", "low_confidence")
             assert body["confirmed"]["agreement_count"] >= 2
             assert body["consecutive_failures"] == 0

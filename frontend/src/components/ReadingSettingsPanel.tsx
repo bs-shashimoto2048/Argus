@@ -24,16 +24,10 @@ export function ReadingSettingsPanel({ value, onChange, open, onToggleOpen }: { 
           <label>期待桁数<input type="number" min="1" value={value.expected_digits ?? ""} placeholder="未設定" onChange={(e) => set({ expected_digits: numOrNull(e.target.value) === null ? null : Math.trunc(Number(e.target.value)) })} /></label>
         </div>
         {/* Issue #17: 期待桁数の直後に配置。Backend既存仕様(reading/canonicalizer.py)のUI露出のみで、
-            意味は変えていない: 右からn桁を小数部として切り出す(文字列操作、Leading Zeroは保持)。 */}
+            意味は変えていない: 右からn桁を小数部として切り出す(文字列操作。確定値の整数部の先頭0はBackendが除去する)。 */}
         <label>小数点位置（右から桁数）<input type="number" min="0" value={value.decimal_position ?? ""} placeholder="未設定" onChange={(e) => set({ decimal_position: numOrNull(e.target.value) })} /></label>
         <p className="muted" style={{ fontSize: "0.76rem", margin: "-6px 0 10px" }}>
-          例: 2 を指定すると "12345" は "123.45" として扱われます。Leading Zeroは既定で保持されます（例: "002560" → "0025.60"）。未設定（空欄）の場合は小数点を挿入しません。
-        </p>
-        <label>
-          <input type="checkbox" checked={value.strip_leading_zero ?? false} onChange={(e) => set({ strip_leading_zero: e.target.checked })} /> 最終値の先頭の0を除去する
-        </label>
-        <p className="muted" style={{ fontSize: "0.76rem", margin: "-6px 0 10px" }}>
-          例: "0372398.5" → "372398.5"。桁数の検証・検出・Raw Readingは先頭0を含む元の桁列のまま行い、確定値（表示・DB・CSV）だけを整形します。
+          例: 2 を指定すると "12345" は "123.45" として扱われます。小数点の位置は桁数の検証後に決まり、整数部の先頭の0は確定値（表示・記録）から除去されます（例: "002560" → "25.60"。Raw値は元の桁列のまま）。未設定（空欄）の場合は小数点を挿入しません。
         </p>
         <label>
           <input type="checkbox" checked={value.monotonic} onChange={(e) => set({ monotonic: e.target.checked })} /> 値の減少を許可しない
