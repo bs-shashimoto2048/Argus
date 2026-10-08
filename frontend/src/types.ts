@@ -16,12 +16,11 @@ export type ReadingSettings = {
   max_consecutive_failures:number;
   allow_rollover:boolean;
   rollover_max:number|null;
-  strip_leading_zero:boolean;
 };
 export type RoiMode = "filter_only"|"crop_context";
 export type Inference = {method:"object_detection"|"ocr";engine:"ultralytics"|"easyocr"|"tesseract"|"cpp_onnx";model_id:string|null;device:string;video_fps:number;inference_fps:number;confidence:number;iou:number;image_size:number;preprocessing:Record<string,unknown>;roi:{x:number;y:number;width:number;height:number};roi_mode:RoiMode;context_margin:number;reading:ReadingSettings;engine_options:Record<string,unknown>};
 export type Roi = {x:number;y:number;width:number;height:number};
-export type Monitor = {id:number;name:string;display_name:string;location:string;enabled:boolean;status:Status;created_at:string;updated_at:string;source:Source|null;inference:Inference;current_value:string|null;previous_value:string|null;confidence:number|null;last_updated:string|null;previous_confidence:number|null;previous_confirmed_at:string|null;inference_status:InferenceStatus;last_inference_error:string|null;current_inference_error:string|null};
+export type Monitor = {id:number;name:string;display_name:string;location:string;enabled:boolean;status:Status;created_at:string;updated_at:string;source:Source|null;inference:Inference;current_value:string|null;previous_value:string|null;confidence:number|null;last_updated:string|null;previous_confidence:number|null;previous_confirmed_at:string|null;inference_status:InferenceStatus;last_inference_error:string|null;current_inference_error:string|null;reading_baseline:ReadingBaselineSummary|null};
 export type History = {id:number;url:string;username:string|null;last_verified_at:string;has_password:boolean};
 export type DeviceOption = {value:string;label:string};
 export type SystemInference = {
@@ -78,11 +77,28 @@ export type CsvExportMonitorStatus = {monitor_id:number;display_name:string;last
 export type CsvExportStatus = {enabled:boolean;output_folder:string|null;worker_running:boolean;last_tick_at:string|null;last_test_run_at:string|null;monitors:CsvExportMonitorStatus[]};
 export type CsvExportRunOutcome = {monitor_id:number;display_name:string;status:"written"|"skipped_already_exported"|"error";detail:string|null};
 export type RawReadingDiagnostic = {value:string|null;confidence:number|null;timestamp:string|null;engine:string;error:string|null;detection_count:number};
+export type ReadingBaselineSummary = {value:string|null;state:"active"|"pending_reset"|string;confirmed_at:string|null;conflict:boolean;conflict_status:string|null;conflict_candidate:string|null;conflict_since:string|null;conflict_seconds:number};
+export type BaselineConflict = {status:string;candidate:string;count:number;started_at:string;last_at:string;duration_seconds:number;active:boolean;alert:boolean};
+export type BaselineStatus = {
+  monitor_id:number;
+  baseline:{value:string|null;numeric_value:string|null;confirmed_at:string|null;age_seconds:number|null;source:string;state:"active"|"pending_reset"|string;epoch:number;decimal_position:number|null;expected_digits:number|null}|null;
+  conflict:BaselineConflict|null;
+  candidate:{value:string;agreement_count:number}|null;
+  latest_raw:string|null;
+  current_confirmed:string|null;
+  reading:{enabled:boolean;monotonic:boolean;allow_rollover:boolean;max_rate_per_minute:number|null;decimal_position:number|null;expected_digits:number|null};
+  alert_seconds:number;
+  runtime_active:boolean;
+};
+export type BaselineEvent = {id:number;monitor_id:number;monitor_name:string;occurred_at:string|null;action:"reset"|"rebase"|"auto_semantic_reset"|string;old_value:string|null;old_confirmed_at:string|null;new_value:string|null;reason:string;operator:string;client_host:string;context:Record<string,unknown>};
 export type ReadingDiagnostics = {
   enabled:boolean;
   mode:"majority"|"consecutive";
   consecutive_failures:number;
   recent_raw:RawReadingDiagnostic[];
+  baseline?:{value:string|null;numeric_value:string;epoch:number;confirmed_at:string|null}|null;
+  candidate?:{value:string;agreement_count:number}|null;
+  conflict?:BaselineConflict|null;
   confirmed:{
     value:string|null;
     confidence:number|null;

@@ -6,6 +6,8 @@ import { Brand } from "../components/Brand";
 import { formatDateTimeJst } from "../utils/datetime";
 import { InferenceSettings } from "../components/InferenceSettings";
 import { ReadingSettingsPanel } from "../components/ReadingSettingsPanel";
+import { ReadingBaselinePanel } from "../components/ReadingBaselinePanel";
+import { conflictMessage, stripLeadingZeros } from "../utils/readingFormat";
 import { SourceSettings } from "../components/SourceSettings";
 import { VideoPreview } from "../components/VideoPreview";
 import { RoiEditor } from "../components/RoiEditor";
@@ -67,7 +69,7 @@ function formatDiff(current: string | null, previous: string | null): string {
 
 // 右ペインの各設定セクションを独立して開閉するための共通ラッパー。
 // 閉じてもDOMからは外さず(display:noneのみ)、フォーム値・API呼び出しに一切影響しない。
-type SectionKey = "basic" | "source" | "preprocess" | "roi" | "reading" | "inference" | "danger";
+type SectionKey = "basic" | "source" | "preprocess" | "roi" | "reading" | "baseline" | "inference" | "danger";
 
 function CollapsibleSection({ title, open, onToggle, className, children }: { title: string; open: boolean; onToggle: () => void; className?: string; children: React.ReactNode }) {
   return <section className={`panel collapsible-panel${className ? ` ${className}` : ""}`}>
@@ -103,7 +105,7 @@ export function MonitorDetailPage() {
   // 右ペイン各セクションの開閉状態(Frontend表示のみ・永続化なし)。
   // 日常監視では設定編集の頻度が低いため、初期状態は全セクション折りたたみ(画面を短く保つ)。
   const [openSections, setOpenSections] = useState<Record<SectionKey, boolean>>({
-    basic: false, source: false, preprocess: false, roi: false, reading: false, inference: false, danger: false,
+    basic: false, source: false, preprocess: false, roi: false, reading: false, baseline: false, inference: false, danger: false,
   });
   const toggleSection = (key: SectionKey) => setOpenSections((current) => ({ ...current, [key]: !current[key] }));
   // Issue #20/#25: 基本情報(name/display_name/location)専用のフォーム状態。
@@ -189,7 +191,8 @@ export function MonitorDetailPage() {
   // Confirmed(確定値)とRaw(最新推論値、未確定)の区別をUI上で示すための派生値。
   // どちらも既存の5秒/3秒ポーリングで取得済みのデータのみを使用し、新規API呼び出しは発生しない。
   const rawInferenceValue = runtimeDiagnostics?.inference_result ?? null;
-  const rawDiffersFromConfirmed = rawInferenceValue != null && rawInferenceValue !== monitor.current_value;
+  // 確定値は整数部の先頭0を除去した形のため、Raw(元の桁列)側も同じ形へ揃えて比較する。
+  const rawDiffersFromConfirmed = rawInferenceValue != null && stripLeadingZeros(rawInferenceValue) !== stripLeadingZeros(monitor.current_value);
   // Issue #28調査: last_inference_error(DB由来、値が変わるまで残り続ける)だけを見ると、
   // 「model_idを設定し直した後もMODEL_NOT_CONFIGUREDの表示が残る」という誤解を招く。
   // 実際に現在のinference設定でmodel_idが空かどうかは、この派生値で直接判定する
@@ -290,6 +293,10 @@ export function MonitorDetailPage() {
         {modelMissing && <div className="alert error">モデルが設定されていません。右側の「推論設定」でモデルを選択してください。</div>}
         {/* Issue #32: current_inference_errorは直近のRaw Readingが既に成功していればnullになる
             「現在の状態」専用の値なので、これが立っている間だけ赤の警告として表示する。 */}
+        {/* Issue #40: 合意候補がbaselineと矛盾して一定時間続いている(=固着の疑い)場合の警告。 */}
+        {monitor.reading_baseline?.conflict && (
+          <div className="alert warning">⚠ {conflictMessage(monitor.reading_baseline.conflict_status, monitor.reading_baseline.value, monitor.reading_baseline.conflict_candidate, monitor.reading_baseline.conflict_seconds)}。実メーターを確認し、必要なら「読取基準値」から再設定してください。</div>
+        )}
         {monitor.current_inference_error && !modelMissing && <div className="alert error">{inferenceErrorText(monitor.current_inference_error, monitor.inference.engine)}</div>}
         {/* last_inference_errorは値が変わるまで残り続ける履歴値(粘着性)なので、現在は
             エラーではない(current_inference_errorがnull)場合は、誤って現在のエラーと
@@ -357,6 +364,12 @@ export function MonitorDetailPage() {
               {" / 一致 "}{readingDiagnostics.confirmed.agreement_count}/{readingDiagnostics.confirmed.raw_count}
               {readingDiagnostics.consecutive_failures > 0 && ` / 連続失敗 ${readingDiagnostics.consecutive_failures}`}
             </div>}
+            {readingDiagnostics && <div className="debug-line">
+              検証: {readingDiagnostics.confirmed.validation_status ?? "--"}
+              {" / 基準値 "}{readingDiagnostics.baseline?.value ?? "--"}
+              {" / 合意候補 "}{readingDiagnostics.candidate?.value ?? "--"}
+              {readingDiagnostics.conflict && ` / 矛盾 ${readingDiagnostics.conflict.status} ${readingDiagnostics.conflict.count}回`}
+            </div>}
             {runtimeDiagnostics && <div className="debug-line">
               映像Runtime: {runtimeDiagnostics.state}
               {runtimeDiagnostics.frame_width != null && ` / ${runtimeDiagnostics.frame_width}x${runtimeDiagnostics.frame_height}`}
@@ -417,6 +430,7 @@ export function MonitorDetailPage() {
           <button className="secondary" onClick={() => setEditor("roi")}>ROIを編集</button>
         </CollapsibleSection>
         <ReadingSettingsPanel value={inference.reading} onChange={(reading) => setInference({ ...inference, reading })} open={openSections.reading} onToggleOpen={() => toggleSection("reading")} />
+        <ReadingBaselinePanel monitorId={monitor.id} currentValue={monitor.current_value} open={openSections.baseline} onToggleOpen={() => toggleSection("baseline")} />
         <InferenceSettings value={inference} onChange={setInference} open={openSections.inference} onToggleOpen={() => toggleSection("inference")} />
         <div className="settings-actions"><button className="save-button" onClick={save} disabled={cppModelMissing} title={cppModelMissing ? "C++ ONNXではモデルを選択してください" : undefined}>設定を保存</button></div>
 

@@ -5,6 +5,7 @@ import { useInView, usePageVisible } from "../hooks/useVisibility";
 import type { DashboardDisplayFps } from "../hooks/useDashboardSettings";
 import { formatTimeJst } from "../utils/datetime";
 import { combinedMonitorStatus, monitorStatusLabels } from "../utils/monitorStatus";
+import { formatDuration } from "../utils/readingFormat";
 
 type Props = { monitor: Monitor; onClick: () => void; displayFps: DashboardDisplayFps };
 
@@ -42,6 +43,10 @@ export function MonitorCard({ monitor, onClick, displayFps }: Props) {
         <div className={`card-value-confidence status-${displayStatus}`}><small>信頼度</small><strong>{monitor.confidence == null ? "--" : `${(monitor.confidence * 100).toFixed(1)}%`}</strong></div>
         <div className="card-value-updated"><small>更新</small><strong>{formatTimeJst(monitor.last_updated)}</strong></div>
       </div>
+      {/* Issue #40: 合意候補がbaselineと矛盾して一定時間続いている(固着の疑い)場合の警告バッジ。 */}
+      {monitor.reading_baseline?.conflict && (
+        <div className="baseline-conflict-badge" role="status">⚠ 基準値 {monitor.reading_baseline.value ?? "--"} と矛盾する読取 {monitor.reading_baseline.conflict_candidate ?? "--"}（{formatDuration(monitor.reading_baseline.conflict_seconds)}）</div>
+      )}
     </button>
   );
 }

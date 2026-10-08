@@ -1,5 +1,8 @@
-import type {History,Monitor,Source,Inference,SystemInference,ReadingDiagnostics,ModelCatalogEntry,RuntimeDiagnostics,CsvExportStatus,CsvExportRunOutcome} from "../types";
+import type {BaselineEvent,BaselineStatus,History,Monitor,Source,Inference,SystemInference,ReadingDiagnostics,ModelCatalogEntry,RuntimeDiagnostics,CsvExportStatus,CsvExportRunOutcome} from "../types";
 const request=async<T>(url:string,init?:RequestInit):Promise<T>=>{const r=await fetch(url,{headers:{"Content-Type":"application/json",...(init?.headers||{})},...init});if(!r.ok){const body=await r.json().catch(()=>({}));throw new Error(body.detail||`HTTP ${r.status}`)}return r.status===204?undefined as T:r.json()};
+// baseline操作用: 409(FORCE_REQUIRED/READING_DISABLED)等のdetailがオブジェクトのため、statusとdetailを保持する。
+export class ApiError extends Error{status:number;detail:unknown;constructor(status:number,detail:unknown){super(typeof detail==="string"?detail:(detail&&typeof detail==="object"&&"message" in detail?String((detail as {message:unknown}).message):`HTTP ${status}`));this.status=status;this.detail=detail}}
+const baselineRequest=async<T>(url:string,init?:RequestInit):Promise<T>=>{const r=await fetch(url,{headers:{"Content-Type":"application/json"},...init});if(!r.ok){const body=await r.json().catch(()=>({}));const detail=Array.isArray(body.detail)?body.detail.map((d:{msg?:string})=>d.msg).join(" / "):body.detail;throw new ApiError(r.status,detail)}return r.json()};
 export const api={
  monitors:()=>request<{monitors:Monitor[]}>('/api/monitors'),
  monitor:(id:number)=>request<Monitor>(`/api/monitors/${id}`),
@@ -21,6 +24,10 @@ export const api={
  readingDiagnostics:(id:number)=>request<ReadingDiagnostics>(`/api/monitors/${id}/reading/diagnostics`),
  runtimeDiagnostics:(id:number)=>request<RuntimeDiagnostics>(`/api/monitors/${id}/runtime`),
  systemModels:()=>request<{models:ModelCatalogEntry[]}>('/api/system/models'),
+ readingBaseline:(id:number)=>baselineRequest<BaselineStatus>(`/api/monitors/${id}/reading/baseline`),
+ resetBaseline:(id:number,data:{reason:string;operator:string})=>baselineRequest<BaselineStatus>(`/api/monitors/${id}/reading/baseline/reset`,{method:'POST',body:JSON.stringify(data)}),
+ rebaseBaseline:(id:number,data:{value:string;reason:string;operator:string;force?:boolean})=>baselineRequest<BaselineStatus>(`/api/monitors/${id}/reading/baseline/rebase`,{method:'POST',body:JSON.stringify(data)}),
+ baselineEvents:(id:number,limit=50)=>baselineRequest<{events:BaselineEvent[]}>(`/api/monitors/${id}/reading/baseline/events?limit=${limit}`),
  roi:(id:number)=>request<import("../types").Roi>(`/api/monitors/${id}/roi`),
  saveRoi:(id:number,value:import("../types").Roi&{roi_mode?:import("../types").RoiMode;context_margin?:number})=>request<import("../types").Roi&{roi_mode:import("../types").RoiMode;context_margin:number}>(`/api/monitors/${id}/roi`,{method:'PUT',body:JSON.stringify(value)}),
  preprocessPreview:async(id:number,payload:unknown):Promise<string>=>{const r=await fetch(`/api/monitors/${id}/preprocess/preview`,{method:'POST',headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});if(!r.ok)throw new Error((await r.json().catch(()=>({}))).detail||`HTTP ${r.status}`);return URL.createObjectURL(await r.blob())},
