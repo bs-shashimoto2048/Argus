@@ -100,6 +100,22 @@ def test_only_confirmed_is_persisted(monitor_id):
         db.close()
 
 
+def test_unchanged_confirmed_only_touches_timestamp_and_keeps_source(client, monitor_id):
+    res = client.post(f"/api/monitors/{monitor_id}/reading/baseline/rebase", json={"value": "265754", "reason": "r", "operator": "o"})
+    assert res.status_code == 200, res.text
+    later = datetime.now(timezone.utc) + timedelta(seconds=120)
+    _record(monitor_id, _confirmed("265754", epoch=1, at=later))
+    db = SessionLocal()
+    try:
+        row = _row(db, monitor_id)
+        assert row.source == "operator_rebase"  # 値が変わらない確定では、由来を上書きしない
+        assert row.confirmed_at >= later.replace(tzinfo=None) - timedelta(seconds=1)  # 確定日時だけ更新される
+        _record(monitor_id, _confirmed("265755", epoch=1))
+        assert (_row(db, monitor_id).value, _row(db, monitor_id).source) == ("265755", "confirmed")
+    finally:
+        db.close()
+
+
 def test_new_monitor_has_no_baseline_row_and_latest_value_is_not_used(client, monitor_id):
     db = SessionLocal()
     try:

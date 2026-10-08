@@ -192,8 +192,12 @@ def record_confirmed(db: Session, monitor_id: int, confirmed: ConfirmedReading) 
         else:
             same_value = _decimal(row.numeric_value) == confirmed.numeric_value
             changed = (not same_value or row.state != "active" or row.decimal_position != confirmed.decimal_position
-                       or row.expected_digits != confirmed.expected_digits or bool(row.conflict_status)
-                       or row.confirmed_at is None or (confirmed_at - row.confirmed_at).total_seconds() >= _TOUCH_INTERVAL_SECONDS)
+                       or row.expected_digits != confirmed.expected_digits or bool(row.conflict_status))
+            if not changed and (row.confirmed_at is None or (confirmed_at - row.confirmed_at).total_seconds() >= _TOUCH_INTERVAL_SECONDS):
+                # 値が変わらない確定が続いている間は、由来(source)を変えずに確定日時だけを更新する(書込み頻度を抑制)。
+                row.confirmed_at = confirmed_at
+                row.updated_at = now
+                return
         if changed:
             row.value = confirmed.value
             row.numeric_value = str(confirmed.numeric_value)

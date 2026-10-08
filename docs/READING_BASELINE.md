@@ -68,3 +68,13 @@ baselineを永続化すると、この「偶然の復旧」がなくなります
 - 監査履歴は`monitor_id`で保持する。SQLiteがIDを再利用した場合に備え、Monitorが存在する間はその作成時刻以降のイベントだけを返す。
 - conflictのDB書込みは、状態の変化時または30秒ごと（毎推論tickでは書かない）。
 - LOW_CONFIDENCEで受理された値は、メモリ上の判定では従来どおりbaselineになるが、永続化はしない（再起動後は直前のCONFIRMEDに戻る側＝緩い側）。
+
+## 実機acceptance（Issue #40、Digital id=3で固着を再現）
+
+- Backend再起動後、baselineがDBから復元され、診断に表示された（最初のConfirmedを待たずに復元）。
+- id=3のbaselineを実値より高い値（+5）へ意図的にrebaseすると、正しい読取が`decrease_detected`で棄却され続け、
+  conflictが追跡された（表示値は変更されない）。5分を超えるとDashboardのカード・Monitor詳細に警告が出た
+  （例: 「基準値 215837 より小さい読取 215832 が6分続いています」）。
+- 実値へのrebaseで即座に解消し、表示値・baselineとも正しい値になった（reset後は次のConfirmedで新baselineが作られた）。
+  すべて監査履歴に記録された（旧値・新値・理由・操作者・client_host）。
+- Digital（id=2/3）・Drum（id=4）とも、確定値・Dashboard表示から先頭0が除去された（Rawは`0265774`のまま）。
