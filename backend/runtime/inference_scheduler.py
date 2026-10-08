@@ -234,7 +234,7 @@ class InferenceScheduler:
                 if detection.bbox:
                     bx1, by1, bx2, by2 = (int(value) for value in detection.bbox)
                     cv2.rectangle(overlay, (bx1, by1), (bx2, by2), (37, 99, 235), 2)
-                    cv2.putText(overlay, f"{detection.class_name or ''} {detection.confidence or 0:.2f}", (bx1, max(16, by1 - 4)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (37, 99, 235), 1)
+                    cv2.putText(overlay, f"{detection.class_name or ''}/{detection.confidence or 0:.2f}", (bx1, max(16, by1 - 4)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (37, 99, 235), 1)
             ok, encoded = cv2.imencode(".jpg", overlay)
             self.latest_overlay = encoded.tobytes() if ok else None
             confirmed = self.stabilizer.update(result)
