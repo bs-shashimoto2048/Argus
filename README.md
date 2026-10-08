@@ -100,15 +100,18 @@ Monitor詳細画面の推論設定内「読取安定化」セクション（`inf
 | `required_matches` | `3` | Confirmedとみなす一致数（`window_size`以下である必要がある） |
 | `min_confidence` | `0.60` | この値未満の平均confidenceで確定した場合は`low_confidence`として値は表示しつつ要確認扱いにする |
 | `expected_digits` | `null` | 桁数（小数点除く）が一致しない候補は`invalid_format`として棄却 |
-| `decimal_position` | `null` | 右から何桁目に小数点を挿入するか（Leading Zeroは既定で保持。`strip_leading_zero`で確定値のみ除去可能） |
+| `decimal_position` | `null` | 右から何桁目に小数点を挿入するか |
 | `monotonic` | `true` | 積算メーター向け。確定値が前回より減少した候補を`decrease_detected`として棄却 |
 | `max_rate_per_minute` | `null` | 1分あたりの変化量の上限。超過候補を`rate_exceeded`として棄却 |
 | `max_consecutive_failures` | `5` | この回数連続でエラー/未検出が続くと`read_error`（`no_reading`）へ遷移 |
 | `allow_rollover` | `false` | 最大値から0への巻き戻り（例: 999999→000000）を許可するか |
 | `rollover_max` | `null` | rollover時の最大値（`allow_rollover=true`かつrate検証を行う場合に必要） |
-| `strip_leading_zero` | `false` | `true`で確定値（UI表示・DB・CSV）の整数部の先頭の0を除去する（例: `0372398.5`→`372398.5`、`0000000.5`→`0.5`）。`expected_digits`検証・検出・Raw Readingは先頭0を含む元の桁列のまま行う |
 
 一時的な異常値（`decrease_detected`/`rate_exceeded`/`invalid_format`/`pending`）はLatestResult/Dashboardの表示を一切変更せず、直前のConfirmed値を保持したまま静かに棄却します。NO_DETECTIONが1回挟まっても値は消えず、`max_consecutive_failures`連続で失敗した場合のみ「読取不能」へ遷移します。
+
+**確定値の先頭0**: 確定値（Confirmed/UI表示/DB/CSV）は、桁数検証・小数点位置の適用後に整数部の先頭の0を除去した形です（全Monitor共通。`0265771`→`265771`、`037239.5`→`37239.5`、`000000.5`→`0.5`）。検出・bbox・Raw Readingと`expected_digits`の検証は元の桁列のまま行い、Raw値（Debug API・診断表示）は先頭0を含みます。以前のMonitor単位の`strip_leading_zero`設定は廃止され、DBに残っていても無視されます。過去の履歴は書き換えず、新しい確定値から適用されます。
+
+**読取基準値（monotonic baseline）**: `monotonic`/`max_rate_per_minute`の検証に使う基準値は、CONFIRMEDのときにDBへ永続化され、Backend再起動・設定保存（Scheduler再構築）後も復元されます（Raw windowと連続失敗回数は再構築で初期化）。誤値が確定して固着した場合（正しい値が`decrease_detected`で棄却され続ける）は、Monitor詳細の「読取基準値」から、実メーターで確認した値を指定して再設定（rebase）するか、基準値をリセットして次の確定値を新しい基準にします。操作には理由と操作者（自己申告）が必須で、すべて監査履歴に残ります。低い値が自動で採用されることはなく、合意候補が基準値と矛盾して5分以上続くと、DashboardとDetailに警告が出ます。詳細は`docs/READING_BASELINE.md`を参照してください。
 
 直近のRaw Reading・合意状況はDebug用途のAPIで確認できます（通常UIでは常用しません）。
 
