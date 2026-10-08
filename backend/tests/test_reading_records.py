@@ -16,6 +16,7 @@ from app.main import app
 from app.models import (InferenceSettings, LatestResult, Monitor, ReadingBaseline, ReadingBaselineEvent, ReadingRecord,
                         VideoSource)
 from app.services import reading_record_service as svc
+from app.services import storage_settings_service as storage
 from app.services.csv_export_service import JST
 from runtime.hourly_record_worker import HourlyRecordWorker, hourly_record_worker
 
@@ -31,7 +32,10 @@ def db():
     session = SessionLocal()
     created: list[int] = []
     session.info["created"] = created
+    # 画像保存はtest_record_images.pyで検証する。ここでは画像保存を無効にして、計測値の記録だけを検証する。
+    storage.update(session, save_original_image=False, save_overlay_image=False)
     yield session
+    storage.update(session, save_original_image=True, save_overlay_image=True)
     session.rollback()
     for monitor_id in created:
         monitor = session.get(Monitor, monitor_id)
@@ -87,7 +91,8 @@ def test_record_due_creates_one_record_per_enabled_monitor_with_source(db):
     assert (record.previous_value, record.usage) == (None, None)
     assert record.confidence == 0.95 and record.engine == "cpp_onnx" and record.model_id == "digital_production_v1.onnx"
     assert record.monitor_name == ok.display_name  # 記録時点の表示名のスナップショット
-    assert (record.original_image_path, record.overlay_image_path, record.image_status) == (None, None, "not_saved")
+    assert (record.original_image_path, record.overlay_image_path, record.image_status) == (None, None, "disabled")  # 画像保存が無効の場合
+    assert record.value_source == "confirmed"
 
 
 def test_disabled_and_sourceless_monitors_are_skipped(db):
@@ -150,11 +155,53 @@ def test_unhealthy_monitor_waits_then_records_without_value(db):
     assert (record.value, record.numeric_value, record.confidence, record.display_status, record.usage) == (None, None, None, "error", None)
 
 
-def test_read_error_does_not_record_a_stale_value(db):
+def test_read_error_keeps_the_last_confirmed_value_as_carried_forward(db):
+    # 読取不能(no_reading)でも、映像が稼働していれば直前の正常Confirmed値を保持して記録する。usageは従来どおりnull
     monitor = make_monitor(db, inference_status="read_error", value="265754")
     svc.record_due(db, jst(14, 3, 0), started_at=jst(13, 0, 0))
     record = records_of(db, monitor.id)[0]
-    assert record.value is None and record.display_status == "read_error"
+    assert (record.value, record.value_source, record.display_status, record.usage) == ("265754", "carried_forward", "read_error", None)
+
+
+def test_no_value_source_when_there_is_no_confirmed_value(db):
+    monitor = make_monitor(db, value=None, inference_status="pending")
+    svc.record_due(db, jst(14, 3, 0), started_at=jst(13, 0, 0))
+    record = records_of(db, monitor.id)[0]
+    assert (record.value, record.value_source) == (None, "none")
+
+
+@pytest.mark.parametrize("validation,source", [
+    ("confirmed", "confirmed"), ("low_confidence", "confirmed"),
+    ("pending", "carried_forward"), ("invalid_format", "carried_forward"), ("decrease_detected", "carried_forward"),
+    ("rate_exceeded", "carried_forward"), ("no_reading", "carried_forward"),
+])
+def test_value_source_follows_the_latest_validation_status(db, monkeypatch, validation, source):
+    monitor = make_monitor(db, value="372413.8")
+    monkeypatch.setattr(svc, "_live_raw_and_validation", lambda _id: ("372413.0", validation))
+    svc.record_due(db, jst(14, 0, 5))
+    record = records_of(db, monitor.id)[0]
+    assert (record.value, record.raw_value, record.validation_status, record.value_source) == ("372413.8", "372413.0", validation, source)
+
+
+def test_carried_forward_keeps_usage_calculation_when_the_series_is_continuous(db, monkeypatch):
+    monitor = make_monitor(db, value="372412.4")
+    svc.record_due(db, jst(14, 0, 5))
+    set_latest(db, monitor, value="372413.8")
+    monkeypatch.setattr(svc, "_live_raw_and_validation", lambda _id: ("372413.0", "decrease_detected"))  # 回転途中でRawが棄却されている
+    svc.record_due(db, jst(15, 0, 5))
+    second = records_of(db, monitor.id)[1]
+    assert (second.value, second.value_source, second.previous_value, second.usage) == ("372413.8", "carried_forward", "372412.4", "1.4")
+
+
+def test_backfill_value_source_sets_the_origin_of_existing_records():
+    from sqlalchemy import create_engine, text
+    engine = create_engine("sqlite://")
+    with engine.begin() as connection:
+        connection.execute(text("CREATE TABLE reading_records (id INTEGER PRIMARY KEY, value TEXT, validation_status TEXT, value_source TEXT DEFAULT 'none')"))
+        connection.execute(text("INSERT INTO reading_records (id, value, validation_status) VALUES (1,'1','confirmed'),(2,'2','low_confidence'),(3,'3','invalid_format'),(4,NULL,NULL),(5,'5',NULL)"))
+        svc.backfill_value_source(connection)
+        rows = dict(connection.execute(text("SELECT id, value_source FROM reading_records")).all())
+    assert rows == {1: "confirmed", 2: "confirmed", 3: "carried_forward", 4: "none", 5: "carried_forward"}
 
 
 def test_low_confidence_is_recorded_as_warning(db):

@@ -14,14 +14,17 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
+from runtime.record_writer import record_writer as default_record_writer
 from runtime.runtime_manager import runtime_manager
 
 from ..models import Monitor, ReadingBaselineEvent, ReadingRecord, SystemSettings
 from .csv_export_service import JST, get_settings, hour_bucket_jst
+from .record_image_service import ImageJob, ImageResult, finalize_record
+from .storage_settings_service import StorageConfig, load_config
 from .reading_baseline_service import summarize as summarize_baseline
 
 logger = logging.getLogger("argus.records")
@@ -31,8 +34,13 @@ RECORD_GRACE_SECONDS = 600
 # 映像/読取が正常でない場合に「値なし」の記録を作るまで待つ秒数(再起動直後などの立ち上がりを待つ)。
 RECORD_SETTLE_SECONDS = 120
 
-# 値を記録してよいdisplay_status(映像が稼働中で、読取が読取不能でないこと)。
+# usage(使用量)を計算してよいdisplay_status(映像が稼働中で、読取が読取不能でないこと)。
+# 値(value)自体は、映像が稼働中なら直前の正常Confirmed値を保持して記録する(下記value_source)。
 _VALUE_OK_STATUSES = ("normal", "warning")
+# 最新の候補が正常に確定している(accepted)validation_status。それ以外は「棄却中」で、直前の確定値を保持する。
+_ACCEPTED_VALIDATION = ("confirmed", "low_confidence")
+# 1時間記録の画像に使うフレームの鮮度の上限(秒)。映像が止まっているときの古いフレームを証跡にしない。
+_FRAME_MAX_AGE_SECONDS = 10.0
 # usageを無効にする、baselineの操作イベント。
 _BASELINE_RESET_ACTIONS = ("reset", "rebase", "auto_semantic_reset")
 
@@ -134,12 +142,22 @@ def build_record(db: Session, monitor: Monitor, bucket: datetime, now_utc: datet
     display = display_status(monitor.status, latest.status if latest else None)
     conflict_summary = summarize_baseline(monitor.reading_baseline)
     baseline_conflict = bool(conflict_summary and conflict_summary.get("conflict"))
-    value_ok = display in _VALUE_OK_STATUSES and latest is not None and latest.value is not None
-    value = latest.value if value_ok else None
+    # 正式記録値: 映像が稼働中なら、直前の正常Confirmed値(LatestResult.value)を記録する。最新のRawが棄却中
+    # (pending/invalid_format/decrease_detected/rate_exceeded/no_reading等、桁の回転途中・見切れ中を含む)でも、
+    # 「直近の最高値」ではなく直前の正常確定値を保持する(value_source=carried_forward)。映像が稼働していない
+    # (通信異常・停止中・接続中)間は記録しない(value_source=none)。
+    has_value = monitor.status == "running" and latest is not None and latest.value is not None
+    value = latest.value if has_value else None
     numeric = _decimal(value)
     raw_value, validation_status = _live_raw_and_validation(monitor.id)
-    if validation_status is None and value_ok:
-        validation_status = "low_confidence" if latest.status == "low_confidence" else "confirmed"
+    if validation_status is None and has_value:
+        validation_status = {"ok": "confirmed", "low_confidence": "low_confidence"}.get(latest.status or "", "no_reading")
+    if not has_value:
+        value_source = "none"
+    elif validation_status in _ACCEPTED_VALIDATION:
+        value_source = "confirmed"
+    else:
+        value_source = "carried_forward"
 
     previous = db.scalar(select(ReadingRecord).where(
         ReadingRecord.monitor_id == monitor.id, ReadingRecord.hour_bucket == (bucket - timedelta(hours=1)).isoformat()))
@@ -151,17 +169,18 @@ def build_record(db: Session, monitor: Monitor, bucket: datetime, now_utc: datet
         hour_bucket=bucket.isoformat(),
         recorded_at=_naive_utc(now_utc),
         value=value,
+        value_source=value_source,
         numeric_value=str(numeric) if numeric is not None else None,
-        raw_value=raw_value if value_ok else None,
+        raw_value=raw_value if has_value else None,
         previous_value=previous.value if previous is not None else None,
         usage=usage,
-        confidence=latest.confidence if value_ok else None,
+        confidence=latest.confidence if has_value else None,
         validation_status=validation_status,
         display_status=display,
         baseline_conflict=baseline_conflict,
         engine=(latest.engine if latest and latest.engine else None) or (inference.engine if inference else None),
         model_id=inference.model_id if inference else None,
-        image_status="not_saved",
+        image_status="not_saved",  # record_dueが、画像保存の設定/フレームの有無に応じてpending/disabled/failedへ更新する
     )
 
 
@@ -173,7 +192,7 @@ class RecordOutcome:
     record_id: int | None = None
 
 
-def record_due(db: Session, now_utc: datetime | None = None, started_at: datetime | None = None) -> list[RecordOutcome]:
+def record_due(db: Session, now_utc: datetime | None = None, started_at: datetime | None = None, writer=None) -> list[RecordOutcome]:
     """現在の計測枠について、未記録のMonitorの記録を作る(毎時00分から猶予時間内)。
 
     - 計測枠の開始からRECORD_GRACE_SECONDS(10分)を過ぎた枠は記録しない(遅れた値を定時計測にしない)。
@@ -185,6 +204,8 @@ def record_due(db: Session, now_utc: datetime | None = None, started_at: datetim
     now_utc = now_utc or datetime.now(timezone.utc)
     if not hourly_records_enabled(db):
         return []
+    writer = writer or default_record_writer
+    storage_config = load_config(db)
     bucket = hour_bucket_jst(now_utc)
     elapsed = (now_utc - bucket.astimezone(timezone.utc)).total_seconds()
     if elapsed > RECORD_GRACE_SECONDS:
@@ -212,8 +233,9 @@ def record_due(db: Session, now_utc: datetime | None = None, started_at: datetim
         try:
             record = build_record(db, monitor, bucket, now_utc)
             db.add(record)
-            db.commit()
+            db.commit()  # 計測値の記録を先に確定する(画像保存の成否に関わらず残る)
             outcomes.append(RecordOutcome(monitor.id, key, "created", record.id))
+            _attach_images(db, monitor, record, storage_config, writer)
         except IntegrityError:
             db.rollback()  # 同時に別のtickが作成済み(UNIQUE制約)
             outcomes.append(RecordOutcome(monitor.id, key, "exists"))
@@ -224,13 +246,70 @@ def record_due(db: Session, now_utc: datetime | None = None, started_at: datetim
     return outcomes
 
 
+# --- 画像保存(Phase 2) ---
+
+def _capture_frames(monitor_id: int) -> tuple[bytes | None, bytes | None]:
+    """記録時点の元画像(JPEG)と推論オーバーレイ(JPEG)を、runtimeから取り出す(推論は行わない)。
+
+    元画像は、overlayの元になったフレームがあればそれ(両者が同じフレームになる)、無ければ最新フレーム。
+    映像が止まっていて古い場合は、証跡として誤解を招くため取得しない。
+    """
+    runtime = runtime_manager.get_runtime(monitor_id)
+    if runtime is None:
+        return None, None
+    age = runtime.buffer.age()
+    if age is None or age > _FRAME_MAX_AGE_SECONDS:
+        return None, None
+    scheduler = runtime.inference_scheduler
+    overlay = scheduler.latest_overlay if scheduler else None
+    original = (scheduler.latest_overlay_source if scheduler else None) or runtime.buffer.get()[0]
+    return original, overlay
+
+
+def _attach_images(db: Session, monitor: Monitor, record: ReadingRecord, config: StorageConfig, writer) -> None:
+    """記録の作成直後に、画像保存のジョブを作る。失敗しても計測値の記録には影響しない。"""
+    try:
+        if not config.enabled:
+            record.image_status = "disabled"
+            db.commit()
+            return
+        original, overlay = _capture_frames(monitor.id)
+        job = ImageJob(record_id=record.id, monitor_id=monitor.id, monitor_name=record.monitor_name, recorded_at=record.recorded_at,
+                       value=record.value, original=original, overlay=overlay, want_original=config.save_original, want_overlay=config.save_overlay)
+        if not ((config.save_original and original) or (config.save_overlay and overlay)):
+            record.image_status = "failed"
+            record.image_error = "映像のフレームを取得できないため、画像を保存できませんでした"
+            db.commit()
+            return
+        record.image_status = "pending"
+        db.commit()
+        if not writer.submit(job):
+            finalize_record(record.id, ImageResult("dropped", error="画像保存のキューが満杯のため、画像を保存しませんでした"))
+    except Exception:
+        db.rollback()
+        logger.exception("monitor %s: 記録画像の保存の準備に失敗しました", monitor.id)
+        try:  # 計測値の記録は残したまま、画像だけ失敗として記録する
+            finalize_record(record.id, ImageResult("failed", error="画像保存の準備に失敗しました"))
+        except Exception:
+            logger.exception("monitor %s: 画像保存の失敗を記録できませんでした", monitor.id)
+
+
+def backfill_value_source(connection) -> None:
+    """value_source列を追加した直後に、既存の記録(Phase 1)へ由来を設定する(起動時の1回限り)。"""
+    connection.execute(text(
+        "UPDATE reading_records SET value_source = CASE "
+        "WHEN value IS NULL THEN 'none' "
+        "WHEN validation_status IN ('confirmed', 'low_confidence') THEN 'confirmed' "
+        "ELSE 'carried_forward' END"))
+
+
 # --- 参照 ---
 
 def serialize(record: ReadingRecord) -> dict:
     return {
         "id": record.id, "monitor_id": record.monitor_id, "monitor_name": record.monitor_name,
         "hour_bucket": record.hour_bucket, "recorded_at": _iso(record.recorded_at),
-        "value": record.value, "numeric_value": record.numeric_value, "raw_value": record.raw_value,
+        "value": record.value, "value_source": record.value_source, "numeric_value": record.numeric_value, "raw_value": record.raw_value,
         "previous_value": record.previous_value, "usage": record.usage, "confidence": record.confidence,
         "validation_status": record.validation_status, "display_status": record.display_status,
         "baseline_conflict": record.baseline_conflict, "engine": record.engine, "model_id": record.model_id,

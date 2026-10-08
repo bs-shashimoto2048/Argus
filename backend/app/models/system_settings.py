@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from ..core.database import Base
 
@@ -16,6 +16,14 @@ class SystemSettings(Base):
     csv_output_folder: Mapped[str | None] = mapped_column(String(500), nullable=True)
     # 1時間ごとの正式な計測記録(reading_records)。既定は有効(毎時00分)。
     hourly_record_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # データ保存設定(UI再設計 Phase 2)。画像保存先が未設定の場合は<data_dir>/imagesを使う。
+    image_root_folder: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    excel_output_folder: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    save_original_image: Mapped[bool] = mapped_column(Boolean, default=True)
+    save_overlay_image: Mapped[bool] = mapped_column(Boolean, default=True)
+    # 画像保存先の空き容量(GiB): warning未満で警告、stop未満で新規の画像保存を停止(計測値の記録は止めない)。
+    storage_warn_free_gb: Mapped[float] = mapped_column(Float, default=10.0)
+    storage_stop_free_gb: Mapped[float] = mapped_column(Float, default=5.0)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 

@@ -121,6 +121,8 @@ class InferenceScheduler:
         self.latest_result: InferenceResult | None = None
         self.latest_confirmed: ConfirmedReading | None = None
         self.latest_overlay: bytes | None = None
+        # overlayの元になったフレーム(JPEG)。1時間記録の「元画像」と「overlay」を同じフレームにするために保持する(推論には使わない)。
+        self.latest_overlay_source: bytes | None = None
         # Issue #16追加: 実際にengine.infer()へ渡した最終推論入力画像そのもの(表示用の
         # 再生成ではない)と、ROI/crop/前処理/検出数のpipeline diagnostics。
         self.latest_inference_input: bytes | None = None
@@ -290,6 +292,7 @@ class InferenceScheduler:
                 cv2.putText(overlay, f"{detection.class_name or ''}/{detection.confidence or 0:.2f}", (bx1, max(16, by1 - 4)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, _BBOX_COLOR, 1)
             ok, encoded = cv2.imencode(".jpg", overlay)
             self.latest_overlay = encoded.tobytes() if ok else None
+            self.latest_overlay_source = data if ok else None
             confirmed = self.stabilizer.update(result)
             self.latest_confirmed = confirmed
             self.on_result(self.monitor_id, confirmed)
