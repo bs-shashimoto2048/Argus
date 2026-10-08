@@ -20,6 +20,19 @@ class MonitorUpdate(BaseModel):
     source: VideoSourceInput | None = None
     inference: InferenceSettingsInput | None = None
 
+class ReadingBaselineSummary(BaseModel):
+    """Monitor応答に載せるbaseline(monotonic基準値)の要約(Issue #40)。詳細は/reading/baseline。"""
+
+    value: str | None = None
+    state: str = "active"
+    confirmed_at: str | None = None
+    conflict: bool = False  # 合意候補がbaselineと矛盾して一定時間(既定5分)以上続いている
+    conflict_status: str | None = None
+    conflict_candidate: str | None = None
+    conflict_since: str | None = None
+    conflict_seconds: int = 0
+
+
 class MonitorResponse(BaseModel):
     id: int
     name: str
@@ -46,4 +59,5 @@ class MonitorResponse(BaseModel):
     # Readingが既に成功していれば(たとえ最終Confirmed値がまだ更新されていなくても)
     # nullになる、「現在の状態」専用の値。UI側の現在エラー表示はこちらを使う。
     current_inference_error: str | None = None
+    reading_baseline: ReadingBaselineSummary | None = None
     model_config = {"from_attributes": True}

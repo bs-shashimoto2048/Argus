@@ -8,6 +8,7 @@ from ..inference.device import resolve_device
 from ..inference.model_catalog import get_model_entry
 from ..models import InferenceSettings, LatestResult, Monitor, UrlHistory, VideoSource
 from ..schemas.video_source import VideoSourceInput
+from .reading_baseline_service import summarize as summarize_baseline
 from .secret_store import decrypt, encrypt
 from .video_service import reader_config
 from runtime.runtime_manager import runtime_manager
@@ -56,7 +57,7 @@ def _to_response(monitor: Monitor):
     source = None
     if monitor.source:
         source = {"source_type": monitor.source.source_type, "device_id": monitor.source.device_id, "url": monitor.source.url, "username": monitor.source.username, "has_password": bool(monitor.source.encrypted_password)}
-    return MonitorResponse(id=monitor.id, name=monitor.name, display_name=monitor.display_name, location=monitor.location, enabled=monitor.enabled, status=monitor.status, created_at=monitor.created_at, updated_at=monitor.updated_at, source=source, inference=monitor.inference, current_value=monitor.latest_result.value if monitor.latest_result else None, previous_value=monitor.latest_result.previous_value if monitor.latest_result else None, confidence=monitor.latest_result.confidence if monitor.latest_result else None, last_updated=monitor.latest_result.timestamp if monitor.latest_result else None, previous_confidence=monitor.latest_result.previous_confidence if monitor.latest_result else None, previous_confirmed_at=monitor.latest_result.previous_confirmed_at if monitor.latest_result else None, inference_status=monitor.latest_result.status if monitor.latest_result else "disabled", last_inference_error=monitor.latest_result.last_error if monitor.latest_result else None, current_inference_error=monitor.latest_result.current_error if monitor.latest_result else None)
+    return MonitorResponse(id=monitor.id, name=monitor.name, display_name=monitor.display_name, location=monitor.location, enabled=monitor.enabled, status=monitor.status, created_at=monitor.created_at, updated_at=monitor.updated_at, source=source, inference=monitor.inference, current_value=monitor.latest_result.value if monitor.latest_result else None, previous_value=monitor.latest_result.previous_value if monitor.latest_result else None, confidence=monitor.latest_result.confidence if monitor.latest_result else None, last_updated=monitor.latest_result.timestamp if monitor.latest_result else None, previous_confidence=monitor.latest_result.previous_confidence if monitor.latest_result else None, previous_confirmed_at=monitor.latest_result.previous_confirmed_at if monitor.latest_result else None, inference_status=monitor.latest_result.status if monitor.latest_result else "disabled", last_inference_error=monitor.latest_result.last_error if monitor.latest_result else None, current_inference_error=monitor.latest_result.current_error if monitor.latest_result else None, reading_baseline=summarize_baseline(monitor.reading_baseline))
 
 
 def _normalize_engine(method: str, engine: str) -> str:
@@ -150,12 +151,12 @@ def restart_inference_only(monitor: Monitor, db: Session) -> None:
 
 
 def list_monitors(db: Session):
-    rows = db.scalars(select(Monitor).options(joinedload(Monitor.source), joinedload(Monitor.inference), joinedload(Monitor.latest_result)).order_by(Monitor.id)).unique().all()
+    rows = db.scalars(select(Monitor).options(joinedload(Monitor.source), joinedload(Monitor.inference), joinedload(Monitor.latest_result), joinedload(Monitor.reading_baseline)).order_by(Monitor.id)).unique().all()
     return [_to_response(monitor) for monitor in rows]
 
 
 def get_monitor(db: Session, monitor_id: int) -> Monitor:
-    monitor = db.scalar(select(Monitor).options(joinedload(Monitor.source), joinedload(Monitor.inference), joinedload(Monitor.latest_result)).where(Monitor.id == monitor_id))
+    monitor = db.scalar(select(Monitor).options(joinedload(Monitor.source), joinedload(Monitor.inference), joinedload(Monitor.latest_result), joinedload(Monitor.reading_baseline)).where(Monitor.id == monitor_id))
     if not monitor:
         raise ValueError("モニターが見つかりません")
     _ensure_children(db, monitor)

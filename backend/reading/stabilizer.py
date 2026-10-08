@@ -5,18 +5,24 @@ ReadingStabilizerは唯一状態(直近readingのbuffer、直前確定値、連�
 pure functionとして切り出してあり、単体テストしやすい構造にしている。
 
 InferenceSchedulerが再構築される(Engine/Model/ROI/Preprocessing/Device変更、
-Backend再起動)たびにReadingStabilizerも新規インスタンスになるため、
-buffer resetは自然に満たされる(特別なreset検知ロジックは持たない)。
+Backend再起動)たびにReadingStabilizerも新規インスタンスになる。Raw window(buffer)と
+連続失敗回数はそのたびに初期化されるが、monotonic/rateの基準値(baseline)は
+Issue #40以降、DBから復元したBaselineを`baseline`引数で受け取る(永続化は
+ResultStore、復元はInferenceScheduler経由のprovider)。baselineを手動で書き換える
+`reset()`/`rebase()`は、運用者が固着した誤値を復旧するための明示的な手段(低い値の自動採用はしない)。
 """
 from __future__ import annotations
 
 from collections import deque
 from datetime import datetime, timezone
+from decimal import Decimal
+from threading import RLock
 
 from app.inference.base import InferenceResult
 
+from .baseline import CONFLICT_GAP_SECONDS, CONFLICT_RESUME_SECONDS
 from .canonicalizer import canonical_value, strip_leading_zeros, to_numeric
-from .models import CandidateStatus, ConfirmedReading, RawReading, ReadingSettings, StabilizationMode
+from .models import Baseline, CandidateStatus, ConfirmedReading, ConflictInfo, RawReading, ReadingSettings, StabilizationMode
 from .validator import validate_format, validate_monotonic, validate_rate
 
 
@@ -60,11 +66,22 @@ def _vote(readings: "deque[RawReading]", settings: ReadingSettings) -> tuple[str
 
 
 class ReadingStabilizer:
-    def __init__(self, settings: ReadingSettings) -> None:
+    def __init__(self, settings: ReadingSettings, baseline: Baseline | None = None, epoch: int = 0, conflict: ConflictInfo | None = None) -> None:
         self.settings = settings
+        self._lock = RLock()
         self._buffer: deque[RawReading] = deque(maxlen=settings.window_size)
         self._consecutive_failures = 0
         self._previous_confirmed: ConfirmedReading | None = None
+        self._epoch = epoch
+        self._conflict: ConflictInfo | None = conflict
+        # 再構築をまたいで復元したconflictは、通常より長い空白(CONFLICT_RESUME_SECONDS)まで継続扱いにする。
+        self._conflict_gap = CONFLICT_RESUME_SECONDS if conflict else CONFLICT_GAP_SECONDS
+        # 直近のtickで合意した候補(最終運用値の形式, 一致数)。診断APIとconflict表示用。
+        self.last_candidate: dict | None = None
+        if baseline is not None:
+            self._previous_confirmed = self._baseline_reading(baseline)
+
+    # --- 状態の参照(診断/API用) ---
 
     @property
     def recent_raw(self) -> list[RawReading]:
@@ -74,7 +91,84 @@ class ReadingStabilizer:
     def consecutive_failures(self) -> int:
         return self._consecutive_failures
 
+    @property
+    def epoch(self) -> int:
+        return self._epoch
+
+    @property
+    def conflict(self) -> ConflictInfo | None:
+        with self._lock:
+            return self._conflict
+
+    def baseline_snapshot(self) -> dict | None:
+        with self._lock:
+            previous = self._previous_confirmed
+            if previous is None or previous.numeric_value is None:
+                return None
+            return {"value": previous.value, "numeric_value": str(previous.numeric_value), "confirmed_at": previous.confirmed_at, "epoch": self._epoch}
+
+    # --- baselineの明示的な操作(運用者のreset/rebase) ---
+
+    def reset(self, epoch: int) -> None:
+        """baselineを破棄する。次に正常にCONFIRMEDされた値が新しいbaselineになる(Raw windowは維持)。"""
+        with self._lock:
+            self._previous_confirmed = None
+            self._conflict = None
+            self._conflict_gap = CONFLICT_GAP_SECONDS
+            self._epoch = epoch
+
+    def rebase(self, value: str, numeric: Decimal, confirmed_at: datetime, epoch: int) -> None:
+        """baselineを指定した値へ置き換える(運用者が実メーターで確認した値を想定)。"""
+        with self._lock:
+            self._previous_confirmed = self._baseline_reading(Baseline(value=value, numeric_value=numeric, confirmed_at=confirmed_at, source="operator_rebase", epoch=epoch))
+            self._conflict = None
+            self._conflict_gap = CONFLICT_GAP_SECONDS
+            self._epoch = epoch
+
+    @staticmethod
+    def _baseline_reading(baseline: Baseline) -> ConfirmedReading:
+        return ConfirmedReading(
+            validation_status=CandidateStatus.CONFIRMED,
+            value=baseline.value,
+            numeric_value=baseline.numeric_value,
+            confirmed_at=baseline.confirmed_at or datetime.now(timezone.utc),
+            engine=baseline.source,
+        )
+
+    # --- 更新 ---
+
     def update(self, raw: InferenceResult) -> ConfirmedReading:
+        with self._lock:
+            confirmed = self._update(raw)
+            self._track_conflict(confirmed)
+            confirmed.baseline_epoch = self._epoch
+            confirmed.persist_baseline = self.settings.enabled and confirmed.validation_status == CandidateStatus.CONFIRMED
+            confirmed.decimal_position = self.settings.decimal_position
+            confirmed.expected_digits = self.settings.expected_digits
+            confirmed.conflict = self._conflict
+            return confirmed
+
+    def _track_conflict(self, confirmed: ConfirmedReading) -> None:
+        """合意候補がbaselineと矛盾して棄却され続けている状態(固着)を追跡する。"""
+        status = confirmed.validation_status
+        if status in (CandidateStatus.DECREASE_DETECTED, CandidateStatus.RATE_EXCEEDED):
+            candidate = self.last_candidate["value"] if self.last_candidate else None
+            if candidate is None:
+                return
+            at = confirmed.confirmed_at
+            conflict = self._conflict
+            if conflict is not None and conflict.status == status and (at - conflict.last_at).total_seconds() <= self._conflict_gap:
+                conflict.count += 1
+                conflict.last_at = at
+                conflict.candidate = candidate
+            else:
+                self._conflict = ConflictInfo(status=status, candidate=candidate, count=1, started_at=at, last_at=at)
+            self._conflict_gap = CONFLICT_GAP_SECONDS
+        elif status in (CandidateStatus.CONFIRMED, CandidateStatus.LOW_CONFIDENCE):
+            self._conflict = None
+            self._conflict_gap = CONFLICT_GAP_SECONDS
+
+    def _update(self, raw: InferenceResult) -> ConfirmedReading:
         reading = RawReading(
             value=raw.value,
             confidence=raw.confidence,
@@ -84,6 +178,7 @@ class ReadingStabilizer:
             detection_count=len(raw.detections),
         )
         self._buffer.append(reading)
+        self.last_candidate = None
 
         if not self.settings.enabled:
             return self._passthrough(reading, raw.processing_time_ms)
@@ -100,6 +195,7 @@ class ReadingStabilizer:
         if vote is None:
             return self._carry_forward(CandidateStatus.PENDING, reading)
         canonical, agreement_count, avg_confidence = vote
+        self.last_candidate = {"value": strip_leading_zeros(canonical), "agreement_count": agreement_count}
 
         if not validate_format(canonical, self.settings.expected_digits):
             return self._carry_forward(CandidateStatus.INVALID_FORMAT, reading)
@@ -124,8 +220,9 @@ class ReadingStabilizer:
 
         confirmed = ConfirmedReading(
             validation_status=status,
-            # expected_digits検証・decimal_position適用後の最終運用値でのみ先頭0を除去する。
-            value=self._output_value(canonical),
+            # 最終運用値(Confirmed/UI/DB/CSV)は、expected_digits検証・decimal_position適用の後で
+            # 整数部の先頭0を除去した形にする(全Monitor共通)。検出・Raw・桁数検証は元の桁列のまま。
+            value=strip_leading_zeros(canonical),
             numeric_value=numeric,
             confidence=avg_confidence,
             confirmed_at=reading.timestamp,
@@ -139,9 +236,6 @@ class ReadingStabilizer:
         )
         self._previous_confirmed = confirmed
         return confirmed
-
-    def _output_value(self, canonical: str | None) -> str | None:
-        return strip_leading_zeros(canonical) if self.settings.strip_leading_zero else canonical
 
     def _carry_forward(self, status: CandidateStatus, reading: RawReading) -> ConfirmedReading:
         """Confirmed値を更新せず、直前の確定値を保持したまま今回のstatusだけ返す。"""
@@ -173,7 +267,7 @@ class ReadingStabilizer:
             status = CandidateStatus.PENDING
         confirmed = ConfirmedReading(
             validation_status=status,
-            value=self._output_value(canonical) if canonical is not None else (self._previous_confirmed.value if self._previous_confirmed else None),
+            value=strip_leading_zeros(canonical) if canonical is not None else (self._previous_confirmed.value if self._previous_confirmed else None),
             numeric_value=numeric if numeric is not None else (self._previous_confirmed.numeric_value if self._previous_confirmed else None),
             confidence=reading.confidence,
             confirmed_at=reading.timestamp,

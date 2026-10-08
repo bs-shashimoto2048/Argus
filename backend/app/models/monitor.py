@@ -16,3 +16,4 @@ class Monitor(Base):
     source = relationship("VideoSource", back_populates="monitor", uselist=False, cascade="all, delete-orphan")
     inference = relationship("InferenceSettings", back_populates="monitor", uselist=False, cascade="all, delete-orphan")
     latest_result = relationship("LatestResult", back_populates="monitor", uselist=False, cascade="all, delete-orphan")
+    reading_baseline = relationship("ReadingBaseline", back_populates="monitor", uselist=False, cascade="all, delete-orphan")

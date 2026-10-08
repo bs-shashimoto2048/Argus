@@ -13,12 +13,14 @@ from app.inference.registry import model_registry
 
 
 class MonitorRuntime:
-    def __init__(self, monitor_id: int, config: ReaderConfig, on_status, on_result=None) -> None:
+    def __init__(self, monitor_id: int, config: ReaderConfig, on_status, on_result=None, baseline_provider=None) -> None:
         self.monitor_id = monitor_id
         self.config = config
         self.buffer = LatestFrameBuffer()
         self._on_status = on_status
         self._on_result = on_result or (lambda *_: None)
+        # Issue #40: Scheduler(ReadingStabilizer)構築時にmonotonic baselineを復元するprovider。
+        self._baseline_provider = baseline_provider
         self._stop = Event()
         self._state_lock = Lock()
         self._state = "stopped"
@@ -31,7 +33,7 @@ class MonitorRuntime:
         self.last_error: str | None = None
         self.last_frame_timestamp: float | None = None
         self.stale_after_seconds = max(3.0, 3.0 / max(1.0, config.video_fps))
-        self.inference_scheduler = InferenceScheduler(monitor_id, self.buffer, config.inference_settings or {}, model_registry, app_settings.data_dir / "models", self._on_result) if config.inference_settings else None
+        self.inference_scheduler = InferenceScheduler(monitor_id, self.buffer, config.inference_settings or {}, model_registry, app_settings.data_dir / "models", self._on_result, self._baseline_provider) if config.inference_settings else None
 
     @property
     def state(self) -> str:
@@ -82,7 +84,7 @@ class MonitorRuntime:
         self.stale_after_seconds = max(3.0, 3.0 / max(1.0, video_fps))
         old_scheduler = self.inference_scheduler
         self.inference_scheduler = (
-            InferenceScheduler(self.monitor_id, self.buffer, inference_settings, model_registry, app_settings.data_dir / "models", self._on_result)
+            InferenceScheduler(self.monitor_id, self.buffer, inference_settings, model_registry, app_settings.data_dir / "models", self._on_result, self._baseline_provider)
             if inference_settings else None
         )
         if old_scheduler:

@@ -42,6 +42,31 @@ class RawReading:
 
 
 @dataclass
+class ConflictInfo:
+    """baselineと矛盾する合意候補(decrease_detected/rate_exceeded)が続いている状態。
+
+    候補自体はrequired_matchesを満たした合意値(単発の読み間違いではない)。
+    """
+
+    status: CandidateStatus
+    candidate: str  # 最終運用値の形式(先頭0除去後)
+    count: int
+    started_at: datetime
+    last_at: datetime
+
+
+@dataclass
+class Baseline:
+    """monotonic/rate検証の基準値(永続化・復元の単位)。"""
+
+    value: str  # 最終運用値の形式(先頭0除去後)
+    numeric_value: Decimal
+    confirmed_at: datetime | None = None  # tz-aware UTC
+    source: str = "confirmed"
+    epoch: int = 0
+
+
+@dataclass
 class ConfirmedReading:
     """時系列安定化・Validationを経て運用値として採用された結果。
 
@@ -61,6 +86,12 @@ class ConfirmedReading:
     raw_value: str | None = None
     raw_confidence: float | None = None
     raw_error: str | None = None
+    # Issue #40: baseline永続化(ResultStore)が使う付帯情報。ReadingStabilizerだけが設定する。
+    baseline_epoch: int = 0
+    persist_baseline: bool = False  # CONFIRMEDかつvalidationが有効なときだけTrue(LOW_CONFIDENCE/パススルーはFalse)
+    decimal_position: int | None = None
+    expected_digits: int | None = None
+    conflict: "ConflictInfo | None" = None
 
 
 @dataclass
@@ -79,9 +110,6 @@ class ReadingSettings:
     max_consecutive_failures: int = 5
     allow_rollover: bool = False
     rollover_max: int | None = None
-    # 最終運用値(Confirmed/UI/DB/CSV)から整数部の先頭0を除去する。既定はFalse(従来どおり保持)。
-    # expected_digits検証・Raw/diagnosticsは先頭0を含む元の桁列のまま行う。
-    strip_leading_zero: bool = False
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "ReadingSettings":
@@ -107,5 +135,4 @@ class ReadingSettings:
             max_consecutive_failures=max(1, int(data.get("max_consecutive_failures", defaults.max_consecutive_failures))),
             allow_rollover=bool(data.get("allow_rollover", defaults.allow_rollover)),
             rollover_max=data.get("rollover_max", defaults.rollover_max),
-            strip_leading_zero=bool(data.get("strip_leading_zero", defaults.strip_leading_zero)),
         )
