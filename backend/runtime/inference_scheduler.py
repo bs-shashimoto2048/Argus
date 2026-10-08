@@ -42,9 +42,9 @@ logger = logging.getLogger("argus.scheduler")
 #   入力領域にする意味があるため、常にROIをそのままcropする(既存挙動を維持)。
 _DEFAULT_CONTEXT_MARGIN = 1.0
 
-# Overlay描画色(BGR)。detection bbox([37,99,235])とは明確に区別する。
-_ROI_COLOR = (255, 191, 0)  # ユーザー指定ROI: コバルトブルー破線、常時描画
-_CROP_COLOR = (0, 165, 255)  # crop_context時の内部推論crop範囲: アンバー破線(filter_onlyでは描画しない)
+# Overlay描画色(BGR)。overlay.jpgは「前処理後画像(inference-input.jpgと同じ見た目) + bbox + ラベル」。
+_ROI_COLOR = (255, 191, 0)  # ユーザー指定ROI: コバルトブルー破線(推論cropがROIと異なる場合のみ描画)
+_BBOX_COLOR = (20, 255, 57)  # detection bboxの枠線とラベル: 蛍光緑(#39FF14)
 
 
 def _draw_dashed_rect(image: np.ndarray, pt1: tuple[int, int], pt2: tuple[int, int], color: tuple[int, int, int], thickness: int = 2, dash: int = 10, gap: int = 6) -> None:
@@ -172,6 +172,8 @@ class InferenceScheduler:
             result = self.engine.infer(image, self.settings)
             result.processing_time_ms = (perf_counter() - started) * 1000
             raw_detection_count = len(result.detections)
+            # overlayは前処理後画像の座標系で描画するため、full-frame座標へ変換する前のbboxを控える。
+            model_space_boxes = {id(detection): detection.bbox for detection in result.detections}
             sx = crop.shape[1] / max(1, image.shape[1])
             sy = crop.shape[0] / max(1, image.shape[0])
             for detection in result.detections:
@@ -223,18 +225,21 @@ class InferenceScheduler:
                 "engine": result.engine,
                 "model_id": result.model_id or self.settings.get("model_id"),
             }
-            overlay = raw.copy()
-            # ユーザーが指定した実ROIは常時描画する(コバルトブルー破線)。
-            _draw_dashed_rect(overlay, (roi_x1, roi_y1), (roi_x2, roi_y2), _ROI_COLOR, 2)
-            # crop_contextモードの場合のみ、内部推論crop範囲を区別できる別スタイル
-            # (アンバー破線)で追加描画する(filter_onlyでは内部crop枠は表示しない)。
-            if roi_mode == "crop_context" and (x1, y1, x2, y2) != (roi_x1, roi_y1, roi_x2, roi_y2):
-                _draw_dashed_rect(overlay, (x1, y1), (x2, y2), _CROP_COLOR, 1)
+            # 前処理後画像(engine.infer()へ渡した画像そのもの。inference-input.jpgと同じ見た目)の上へ、
+            # bboxとラベルを描く。bboxは前処理後画像の座標系(model_space_boxes)のまま描画する。
+            overlay = image.copy()
+            if (x1, y1, x2, y2) != (roi_x1, roi_y1, roi_x2, roi_y2):
+                # 推論cropがROIより広い場合(filter_only/crop_context)は、ユーザー指定ROIを前処理後画像の
+                # 座標系へ変換して破線で示す(推論cropがROIそのものの場合は画像全体がROIのため描かない)。
+                scale_x = image.shape[1] / max(1, crop.shape[1])
+                scale_y = image.shape[0] / max(1, crop.shape[0])
+                _draw_dashed_rect(overlay, (int((roi_x1 - x1) * scale_x), int((roi_y1 - y1) * scale_y)), (int((roi_x2 - x1) * scale_x), int((roi_y2 - y1) * scale_y)), _ROI_COLOR, 2)
             for detection in result.detections:
-                if detection.bbox:
-                    bx1, by1, bx2, by2 = (int(value) for value in detection.bbox)
-                    cv2.rectangle(overlay, (bx1, by1), (bx2, by2), (37, 99, 235), 2)
-                    cv2.putText(overlay, f"{detection.class_name or ''}/{detection.confidence or 0:.2f}", (bx1, max(16, by1 - 4)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (37, 99, 235), 1)
+                box = model_space_boxes.get(id(detection))
+                if box:
+                    bx1, by1, bx2, by2 = (int(value) for value in box)
+                    cv2.rectangle(overlay, (bx1, by1), (bx2, by2), _BBOX_COLOR, 2)
+                    cv2.putText(overlay, f"{detection.class_name or ''}/{detection.confidence or 0:.2f}", (bx1, max(16, by1 - 4)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, _BBOX_COLOR, 1)
             ok, encoded = cv2.imencode(".jpg", overlay)
             self.latest_overlay = encoded.tobytes() if ok else None
             confirmed = self.stabilizer.update(result)
