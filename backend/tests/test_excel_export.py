@@ -122,6 +122,7 @@ def test_sheet_name_sanitize_and_length():
     assert excel.sanitize_sheet_name("a:b\\c/d?e*f[g]h") == "a_b_c_d_e_f_g_h"
     assert excel.sanitize_sheet_name("x" * 50) == "x" * 31
     assert excel.sanitize_sheet_name("'quoted'") == "quoted"
+    assert excel.sanitize_sheet_name("末尾にタブ	") == "末尾にタブ"  # 末尾の空白/制御文字は「_」にせず除く
     used: set[str] = set()
     assert excel.unique_sheet_name("", 7, used) == "Monitor_7"
     assert excel.unique_sheet_name("History", 8, used) == "Monitor_8"  # Excelの予約名は使わない

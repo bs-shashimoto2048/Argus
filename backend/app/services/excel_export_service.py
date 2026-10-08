@@ -121,7 +121,8 @@ def unique_filename(folder: Path, filename: str) -> str:
 # --- worksheet名 ---
 
 def sanitize_sheet_name(text: str | None) -> str:
-    value = _SHEET_FORBIDDEN.sub("_", text or "").strip().strip("'").strip()
+    # 先頭・末尾の空白/制御文字(実データには表示名末尾のタブがある)は、置換する前に除く
+    value = _SHEET_FORBIDDEN.sub("_", (text or "").strip()).strip().strip("'").strip()
     return value[:MAX_SHEET_NAME].strip().strip("'")
 
 
