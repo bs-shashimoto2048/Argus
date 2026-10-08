@@ -205,7 +205,9 @@ IPC側で既にリクエストを直列化しており（`cpp_worker_process.py`
 単体C++ベンチマークでは（常駐プロセスではなく都度起動だったため）表面化していな
 かった。常駐worker特有の問題として本Issueで修正したことを明記する。
 
-## 実カメラ確認
+## 実カメラ確認（Issue #37時点）
+
+> 物理カメラでのacceptanceはIssue #38で実施した（下記「Physical acceptance」参照）。以下はIssue #37時点の記録。
 
 物理的なDigital/Drum計器カメラは本環境に接続されていないため、yolo_pipeline_studio
 で実際にカメラ撮影された生画像（`projects/meter_src002/raw/images/`）を、ローカル
@@ -319,6 +321,55 @@ Backend validation（`monitor_service._validate_engine_model`、保存時、違�
 - `ultralytics` + cpp_onnx専用ONNX → 拒否
 - ONNXファイル欠落・SHA256不一致は保存時には拒否せず、実行時の`MODEL_NOT_CONFIGURED`
   として扱う（上記Startup validation）。UIではengine別の文言で表示する。
+
+## Physical acceptance（Issue #38）
+
+Monitor設定UIから`cpp_onnx`を選択し、実カメラ（IPカメラ、1920x1080）でDigital/Drumそれぞれ
+acceptanceを実施した。defaultは`ultralytics`のまま変更していない。
+
+### 使用したMonitor設定
+
+| | Digital（Aichi Tokei液晶、7桁） | Drum（機械式ドラム、白6桁+赤1桁） |
+|---|---|---|
+| engine / model | `cpp_onnx` / `digital_production_v1.onnx` | `cpp_onnx` / `drum_production_v1.onnx` |
+| Conf / IoU | 0.60 / 0.70（profile固定） | 0.80 / 0.70（profile固定） |
+| ROI | 全画面（x=0, y=0, w=1, h=1） | pixel [835,374,1354,480]（正規化 x=0.4348958333, y=0.3462962963, w=0.2703125, h=0.0981481481） |
+| 前処理 | grayscale ON / sharpen ON / resize 幅640 | 同左 |
+| reading | `expected_digits=7`, `decimal_position=0` | `expected_digits=7`, `decimal_position=1`, `strip_leading_zero=true` |
+
+cpp_onnxはROIをtight cropしてから前処理する（ultralyticsの「全画面推論+ROIフィルタ」とは異なる）。
+Digitalのproduction contractはROI cropなし（全画面ROI）、DrumはROI cropが契約の一部。
+
+### 結果
+
+- 基本推論（7桁bbox、Raw/Confirmedが実表示と一致）、stop/start、Backend再起動、worker kill、
+  `MODEL_NOT_CONFIGURED`表示、ultralytics/easyocrへのfallbackと復帰、1時間soak
+  （Digital/Drum同時稼働、1つのworkerを共有）はいずれもPASS。
+- soak中、`current_inference_error`/再接続/stale/workerの再起動はいずれも0件。
+- 参考値（環境依存）: 1推論tick（JPEGデコード〜前処理〜推論）は約110ms（p95 約125ms）、
+  worker CPUは1コア換算で約25%（Digital単独・5fps）〜60%（Digital+Drum）、worker working setは約50〜130MB。
+
+### 先頭0の除去（`strip_leading_zero`）
+
+`reading.strip_leading_zero=true`の場合のみ、`expected_digits`検証・`decimal_position`適用の後、
+最終運用値（Confirmed/UI/DB/CSV）の整数部の先頭の0を除去する（整数部は最低1桁残す）。検出・bbox・
+Raw・桁数検証は先頭0を含む元の桁列のまま行い、`numeric_value`（monotonic比較）も変わらない。既定は`false`。
+
+### 既知の挙動・制約
+
+- **Drumの桁回転中**: 赤い小数桁が回転中（2つの数字が同時に見える）は検出されず6桁になり、白い桁の
+  繰り上がりでは4〜5桁まで減る。`expected_digits=7`で`invalid_format`として棄却され、確定値は直前の値を
+  保持する（確定が数分遅れて見える）。赤い桁が9→0に変わる途中の`decrease_detected`もmonotonicで棄却される。
+  誤値がConfirmedになったことは観測されていない。このため`expected_digits`は変更しないこと。
+- **monotonic baselineは再構築で失われる**: `ReadingStabilizer`の前回確定値はメモリ上のみで、stop/start、
+  Backend再起動、engine/model/ROI/前処理/reading設定の保存のたびに空になる。誤値が確定すると以降の正しい値が
+  `decrease_detected`として静かに棄却され続ける固着が起こり得る（実機で再現）。Issue #40で対応予定。
+- ROIの正規化値×フレームサイズを整数に切り捨てるため、Drumでは1px小さく切り出される
+  （[834,374,1353,479]）。読み取りへの影響は見られていない。
+- `PATCH /api/monitors/{id}`で`inference.reading`の一部の項目だけを送ると、省略した項目は既定値へ戻る
+  （UIは全項目を送る）。
+- Backend稼働中に`pytest`を実行すると同じDBを書き換える（Monitorのstatus等）ため、実運用Backendの稼働中は
+  実行しないこと。
 
 ## Runner/環境
 
