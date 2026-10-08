@@ -6,9 +6,10 @@ from .core.config import settings
 from .core.database import Base, SessionLocal, engine
 from sqlalchemy import text
 from .models import Monitor
-from .routers import cameras, csv_export, health, monitors, preprocess, reading, roi, sources, streams, system
+from .routers import cameras, csv_export, health, monitors, preprocess, reading, records, roi, sources, streams, system
 from runtime.runtime_manager import runtime_manager
 from runtime.csv_export_worker import csv_export_worker
+from runtime.hourly_record_worker import hourly_record_worker
 from runtime.video_reader import ReaderConfig
 from .services.secret_store import decrypt
 from .services.result_store import save_result
@@ -47,6 +48,7 @@ async def lifespan(_app: FastAPI):
                 ("latest_results", "previous_confirmed_at", "DATETIME"),
                 ("latest_results", "confirmed_at", "DATETIME"),
                 ("inference_results", "engine", "VARCHAR(32)"),
+                ("system_settings", "hourly_record_enabled", "BOOLEAN DEFAULT 1"),
                 ("inference_settings", "reading", "JSON"),
                 ("inference_settings", "roi_mode", "VARCHAR(32) DEFAULT 'filter_only'"),
                 ("inference_settings", "context_margin", "FLOAT DEFAULT 1.0"),
@@ -70,7 +72,9 @@ async def lifespan(_app: FastAPI):
     finally:
         db.close()
     csv_export_worker.start()
+    hourly_record_worker.start()
     yield
+    hourly_record_worker.stop()
     csv_export_worker.stop()
     runtime_manager.stop_all()
 
@@ -86,3 +90,4 @@ app.include_router(roi.router)
 app.include_router(reading.router)
 app.include_router(system.router)
 app.include_router(csv_export.router)
+app.include_router(records.router)
