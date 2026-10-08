@@ -1,14 +1,21 @@
+import shutil
+import tempfile
 from datetime import datetime
+from pathlib import Path
+from threading import Lock
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
+from starlette.background import BackgroundTask
 from sqlalchemy.orm import Session
 
 from ..core.database import get_db
+from ..services import excel_export_service as excel
 from ..services import reading_record_service as svc
 from ..services.record_image_service import resolve_image_path
-from ..services.storage_settings_service import load_config
+from ..services.storage_settings_service import StorageTimeout, excel_output_folder, load_config
 from runtime.hourly_record_worker import hourly_record_worker
 
 router = APIRouter(prefix="/api/records", tags=["records"])
@@ -16,6 +23,20 @@ router = APIRouter(prefix="/api/records", tags=["records"])
 
 class RecordSettingsInput(BaseModel):
     enabled: bool
+
+
+class ExcelExportInput(BaseModel):
+    """Excel出力の依頼。monitor_idsが空なら全Monitor。period=custom(既定)ではfrom/to(省略可)を使い、toは含まない。"""
+
+    model_config = ConfigDict(populate_by_name=True)
+    monitor_ids: list[int] = Field(default_factory=list)
+    period: Literal["today", "last_7_days", "custom"] = "custom"
+    start: str | None = Field(default=None, alias="from")
+    end: str | None = Field(default=None, alias="to")
+    save_to_server: bool = False  # true=設定の保存先フォルダへ保存してJSONを返す / false=ブラウザへダウンロード
+
+
+_export_lock = Lock()  # Excel生成は1件ずつ(重い処理でBackendを圧迫しない)
 
 
 def _period(value: str | None, name: str) -> datetime | None:
@@ -54,6 +75,55 @@ def records_status(db: Session = Depends(get_db)):
 def update_records_settings(body: RecordSettingsInput, db: Session = Depends(get_db)):
     svc.set_hourly_records_enabled(db, body.enabled)
     return {"enabled": svc.hourly_records_enabled(db)}
+
+
+def _remove_dir(path: str) -> None:
+    shutil.rmtree(path, ignore_errors=True)
+
+
+@router.post("/export/excel")
+def export_excel(body: ExcelExportInput, db: Session = Depends(get_db)):
+    """reading_recordsからExcel(.xlsx)を出力する(1 Monitor 1 worksheet)。
+
+    save_to_server=false: .xlsxをダウンロード / true: 設定のExcel保存先へ保存し、保存先を返す。
+    このAPIの失敗は他の機能(映像・推論・Reading・定時記録・画像保存)へ影響しない。
+    """
+    start, end = _period(body.start, "from"), _period(body.end, "to")
+    try:
+        start, end = excel.resolve_period(body.period, start, end)
+    except excel.ExportError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    filename = excel.export_filename(start, end)
+    if not _export_lock.acquire(blocking=False):
+        raise HTTPException(409, {"code": "EXPORT_IN_PROGRESS", "message": "別のExcel出力を実行中です。完了してからやり直してください"})
+    work_dir = tempfile.mkdtemp(prefix="argus_excel_")
+    keep_work_dir = False
+    try:
+        source = Path(work_dir) / filename
+        try:
+            summary = excel.build_workbook(db, source, body.monitor_ids or None, start, end, load_config(db).image_root)
+        except excel.NoRecordsError as exc:
+            raise HTTPException(404, {"code": "NO_RECORDS", "message": str(exc)}) from exc
+        sheets = [{"monitor_id": s.monitor_id, "sheet_name": s.sheet_name, "rows": s.rows} for s in summary.sheets]
+        if not body.save_to_server:
+            keep_work_dir = True
+            return FileResponse(source, media_type=excel.XLSX_MEDIA_TYPE, filename=filename,
+                                headers={"Cache-Control": "no-store", "X-Argus-Total-Rows": str(summary.total_rows)},
+                                background=BackgroundTask(_remove_dir, work_dir))
+        folder, is_default = excel_output_folder(db)
+        try:
+            saved = excel.save_to_folder(source, folder, filename, create=is_default)
+        except StorageTimeout as exc:
+            raise HTTPException(503, {"code": "EXPORT_SAVE_TIMEOUT", "message": f"{exc}(保存先: {folder})"}) from exc
+        except OSError as exc:
+            raise HTTPException(503, {"code": "EXPORT_SAVE_FAILED", "message": f"Excelを保存できませんでした: {exc}"}) from exc
+        return {"saved": True, "path": str(saved), "filename": saved.name, "folder": str(folder), "size_bytes": source.stat().st_size,
+                "total_rows": summary.total_rows, "sheets": sheets, "image_links": summary.image_links,
+                "image_links_skipped": summary.image_links_skipped}
+    finally:
+        _export_lock.release()
+        if not keep_work_dir:
+            shutil.rmtree(work_dir, ignore_errors=True)
 
 
 @router.get("/{record_id}")

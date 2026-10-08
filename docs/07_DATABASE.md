@@ -25,7 +25,7 @@ Migrationツール、migrationファイル、Alembic設定は確認できませ�
 | `reading_records` | `ReadingRecord` | 1時間ごとの正式な計測記録（1 Monitor 1時間 1件）。`monitor_id`/`monitor_name`（スナップショット）、`hour_bucket`（JSTの計測枠、`(monitor_id, hour_bucket)`でUNIQUE）、`recorded_at`、`value`/`numeric_value`/`raw_value`/`previous_value`/`usage`、`confidence`、`validation_status`、`display_status`、`baseline_conflict`、`engine`/`model_id`、`original_image_path`/`overlay_image_path`/`image_status`/`image_error`（画像保存はPhase 2）。Monitor削除後も残す（FKなし） |
 | `inference_results` | `InferenceResult` | `value`（Confirmed値の変化時 + heartbeatのみ記録）, `confidence`, `detections`, `processing_time_ms`, `created_at` |
 
-`system_settings`には、画像保存の設定（`image_root_folder`、`excel_output_folder`、`save_original_image`、`save_overlay_image`、`storage_warn_free_gb`、`storage_stop_free_gb`）も追加しました。`reading_records`には`value_source`（confirmed / carried_forward / none）を追加し、既存の記録は起動時に1回だけ補完します（値あり＋検証statusがconfirmed/low_confidenceならconfirmed、値ありでそれ以外はcarried_forward、値なしはnone）。
+`system_settings`には、画像保存・Excel出力の設定（`image_root_folder`、`excel_output_folder`（Phase 3のExcel保存先。未設定時は`<data_dir>/exports`）、`save_original_image`、`save_overlay_image`、`storage_warn_free_gb`、`storage_stop_free_gb`）も追加しました。`reading_records`には`value_source`（confirmed / carried_forward / none）を追加し、既存の記録は起動時に1回だけ補完します（値あり＋検証statusがconfirmed/low_confidenceならconfirmed、値ありでそれ以外はcarried_forward、値なしはnone）。
 
 `system_settings`に`hourly_record_enabled`（1時間ごとの計測記録の有効/無効、既定は有効）を追加しました（起動時に`ALTER TABLE ADD COLUMN`）。`reading_records`も新規テーブルで、`create_all`が自動作成します。
 

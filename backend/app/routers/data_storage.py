@@ -48,7 +48,12 @@ def test_data_storage(body: StorageTestInput, db: Session = Depends(get_db)):
     path = body.path
     if path is None:
         row = svc.serialize(db)
-        path = row["effective_image_root"] if body.target == "image" else row["excel_output_folder"]
+        path = row["effective_image_root"] if body.target == "image" else row["effective_excel_output_folder"]
+        if body.target == "excel" and row["excel_output_folder"] is None:
+            try:  # 既定のExcel保存先(<data_dir>/exports)だけは、画像の既定と同様に自動作成する
+                svc.run_with_timeout(lambda: svc.default_excel_root().mkdir(parents=True, exist_ok=True), 5.0)
+            except (svc.StorageTimeout, OSError):
+                pass
     return svc.probe_folder(path)
 
 

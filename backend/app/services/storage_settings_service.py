@@ -43,6 +43,16 @@ def default_image_root() -> Path:
     return (app_settings.data_dir / "images").resolve()
 
 
+def default_excel_root() -> Path:
+    return (app_settings.data_dir / "exports").resolve()
+
+
+def excel_output_folder(db: Session) -> tuple[Path, bool]:
+    """(Excelの保存先, 既定か)。未設定なら<data_dir>/exports。"""
+    configured = (get_settings(db).excel_output_folder or "").strip()
+    return (Path(configured), False) if configured else (default_excel_root(), True)
+
+
 @dataclass(frozen=True)
 class StorageConfig:
     """保存処理が1回ごとに参照する設定のスナップショット。"""
@@ -95,6 +105,7 @@ def serialize(db: Session) -> dict:
         "image_root_folder": (row.image_root_folder or "").strip() or None,
         "effective_image_root": str(config.image_root),
         "excel_output_folder": (row.excel_output_folder or "").strip() or None,
+        "effective_excel_output_folder": str(excel_output_folder(db)[0]),
         "save_original_image": config.save_original,
         "save_overlay_image": config.save_overlay,
         "storage_warn_free_gb": row.storage_warn_free_gb if row.storage_warn_free_gb is not None else DEFAULT_WARN_FREE_GB,

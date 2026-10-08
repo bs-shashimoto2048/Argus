@@ -88,6 +88,7 @@ Debug用途のAPIで、通常UIで常用する想定はありません。passwor
 | GET | `/api/records/{id}/image/{original\|overlay}` | 記録時に保存した元画像/推論オーバーレイ（JPEG）。保存済みのファイルだけを返し、現在の映像は取得しない。画像が無い/ファイルが無い場合は404（`detail.code`: `IMAGE_NOT_SAVED` / `IMAGE_FILE_MISSING` / `IMAGE_PATH_INVALID`） |
 | GET | `/api/records/status` | 記録の有効/無効、Workerの状態 |
 | PUT | `/api/records/settings` | `{enabled}`（既定は有効） |
+| POST | `/api/records/export/excel` | `reading_records`からExcel(.xlsx)を出力（Phase 3）。Body: `{monitor_ids?: number[]（空=全Monitor）, period?: "today"\|"last_7_days"\|"custom"（既定custom）, from?, to?（ISO 8601、タイムゾーンなしはJST。toは含まない）, save_to_server?: bool（既定false）}`。`save_to_server=false`: `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`のダウンロード（`Content-Disposition`にファイル名）。`true`: 設定のExcel保存先へ保存し、`{saved, path, filename, folder, size_bytes, total_rows, sheets[{monitor_id, sheet_name, rows}], image_links, image_links_skipped}`を返す。エラー: 422（期間不正・from≧to）、404 `NO_RECORDS`（該当記録なし）、409 `EXPORT_IN_PROGRESS`（別の出力を実行中）、503 `EXPORT_SAVE_FAILED` / `EXPORT_SAVE_TIMEOUT`（保存先の不通・権限・タイムアウト。映像・推論・Reading・定時記録・画像保存には影響しない） |
 
 詳細は`docs/READING_RECORDS.md`を参照してください。値は最終運用値（先頭0除去後）で、`raw_value`は元の桁列です。
 
@@ -95,7 +96,7 @@ Debug用途のAPIで、通常UIで常用する想定はありません。passwor
 
 | Method | Endpoint | Request / Response |
 |---|---|---|
-| GET | `/api/system/data-storage` | `image_root_folder`（未設定はnull）、`effective_image_root`（未設定時は`<data_dir>/images`）、`excel_output_folder`、`save_original_image`、`save_overlay_image`、`storage_warn_free_gb`（既定10）、`storage_stop_free_gb`（既定5） |
+| GET | `/api/system/data-storage` | `image_root_folder`（未設定はnull）、`effective_image_root`（未設定時は`<data_dir>/images`）、`excel_output_folder`（未設定はnull）、`effective_excel_output_folder`（未設定時は`<data_dir>/exports`）、`save_original_image`、`save_overlay_image`、`storage_warn_free_gb`（既定10）、`storage_stop_free_gb`（既定5） |
 | PUT | `/api/system/data-storage` | 指定した項目だけ更新。保存先は絶対パス（ドライブ付き/UNC）。空文字は未設定。停止しきい値は警告しきい値以下。不正は422 |
 | POST | `/api/system/data-storage/test` | `{target: image\|excel, path?}`。書き込みテスト（一時ファイルの作成と削除）と空き容量。常に200で`{ok, message, free_gb}`（UNCの不通でも固まらず、10秒でタイムアウト） |
 | GET | `/api/system/data-storage/status` | 画像保存の状態（`state`: ok/warning/stopped/failing/disabled）、空き容量、キュー長、成功/失敗/破棄の件数、最終エラー |

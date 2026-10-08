@@ -83,7 +83,7 @@ def test_probe_succeeds_for_a_writable_folder(client, tmp_path):
 
 
 def test_probe_reports_failures_without_raising(client, tmp_path):
-    for path, expected in ((str(tmp_path / "missing"), "見つかりません"), ("relative", "絶対パス"), (None, "指定されていません")):
+    for path, expected in ((str(tmp_path / "missing"), "見つかりません"), ("relative", "絶対パス"), ("", "指定されていません")):
         res = client.post("/api/system/data-storage/test", json={"target": "excel", "path": path})
         body = res.json()
         assert res.status_code == 200 and body["ok"] is False and expected in body["message"]
@@ -129,3 +129,12 @@ def test_status_does_not_hang_when_the_share_is_unreachable(client, tmp_path, mo
     started = time.monotonic()
     body = client.get("/api/system/data-storage/status").json()
     assert body["state"] == "failing" and body["space"] == "unreachable" and time.monotonic() - started < 2.0
+
+
+def test_excel_default_folder_is_probed_and_created_when_unset(client, tmp_path, monkeypatch):
+    default = tmp_path / "exports"
+    monkeypatch.setattr(svc, "default_excel_root", lambda: default)
+    body = client.get("/api/system/data-storage").json()
+    assert body["excel_output_folder"] is None and body["effective_excel_output_folder"] == str(default)
+    result = client.post("/api/system/data-storage/test", json={"target": "excel"}).json()
+    assert result["ok"] is True and default.is_dir()
