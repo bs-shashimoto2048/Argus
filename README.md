@@ -100,12 +100,13 @@ Monitor詳細画面の推論設定内「読取安定化」セクション（`inf
 | `required_matches` | `3` | Confirmedとみなす一致数（`window_size`以下である必要がある） |
 | `min_confidence` | `0.60` | この値未満の平均confidenceで確定した場合は`low_confidence`として値は表示しつつ要確認扱いにする |
 | `expected_digits` | `null` | 桁数（小数点除く）が一致しない候補は`invalid_format`として棄却 |
-| `decimal_position` | `null` | 右から何桁目に小数点を挿入するか（Leading Zeroは常に保持） |
+| `decimal_position` | `null` | 右から何桁目に小数点を挿入するか（Leading Zeroは既定で保持。`strip_leading_zero`で確定値のみ除去可能） |
 | `monotonic` | `true` | 積算メーター向け。確定値が前回より減少した候補を`decrease_detected`として棄却 |
 | `max_rate_per_minute` | `null` | 1分あたりの変化量の上限。超過候補を`rate_exceeded`として棄却 |
 | `max_consecutive_failures` | `5` | この回数連続でエラー/未検出が続くと`read_error`（`no_reading`）へ遷移 |
 | `allow_rollover` | `false` | 最大値から0への巻き戻り（例: 999999→000000）を許可するか |
 | `rollover_max` | `null` | rollover時の最大値（`allow_rollover=true`かつrate検証を行う場合に必要） |
+| `strip_leading_zero` | `false` | `true`で確定値（UI表示・DB・CSV）の整数部の先頭の0を除去する（例: `0372398.5`→`372398.5`、`0000000.5`→`0.5`）。`expected_digits`検証・検出・Raw Readingは先頭0を含む元の桁列のまま行う |
 
 一時的な異常値（`decrease_detected`/`rate_exceeded`/`invalid_format`/`pending`）はLatestResult/Dashboardの表示を一切変更せず、直前のConfirmed値を保持したまま静かに棄却します。NO_DETECTIONが1回挟まっても値は消えず、`max_consecutive_failures`連続で失敗した場合のみ「読取不能」へ遷移します。
 
@@ -234,6 +235,7 @@ Internet公開・VPN越し公開・Reverse proxy/HTTPSの本格導入・AD/SSO�
 - JPEGスナップショット / MJPEGストリーム / 推論結果Overlay JPEG配信
 - ROI編集・前処理編集（実画像への適用込み）
 - YOLO（Ultralytics）/ EasyOCR / Tesseractによる実推論、ModelRegistryによるモデルcache/reuse
+- C++ ONNX推論backend（`engine=cpp_onnx`、Digital/Drum production profile）。Monitor詳細画面の「推論設定」から選択でき、既定は引き続き`ultralytics`。詳細・物理カメラacceptance結果・既知の制約は`docs/CPP_ONNX_INTEGRATION.md`
 - 推論結果（現在値・信頼度・前回値・推論status/エラー）の保存とDashboard/Detail表示
 - Diagnostics API（`GET /api/system/inference`）によるtorch/CUDA/各推論ライブラリの導入状況確認
 - Frontend Device選択肢の実環境（実GPU）連動
@@ -244,7 +246,7 @@ Internet公開・VPN越し公開・Reverse proxy/HTTPSの本格導入・AD/SSO�
 
 - Argus専用数字検出モデルは"Production Candidate"（`meter_digits_v2_candidate.pt`、`role=candidate`）に留まっている。追加データ収集（実カメラ3個体・167枚）で`meter_digits_v3_candidate.pt`を再学習したが、Full Reading Exact Matchの改善なし・Temporal StabilizerのFalse Confirmed Reading悪化のため`role=production`への昇格は見送り、`role=rejected_candidate`として記録のみ（詳細: `docs/METER_DIGIT_MODEL_EVALUATION.md` 13章）
 - 機械式カウンター方式のメーター（Domain B）は今回のCandidate学習対象外。対応するには専用データ収集・学習が別途必要
-- 実際の物理メーター（積算ガスメーター等）を使ったConfirmed値の長時間安定性検証は未実施（この開発環境に物理メーターを継続設置できないため。既存の実メーター写真によるオフライン評価、実カメラ・実YOLOでのNO_DETECTION連続時の`no_reading`遷移は実機で確認済み）
+- 実際の物理メーター（積算ガスメーター等）を使ったConfirmed値の長時間安定性検証は、`cpp_onnx`のDigital（液晶）/Drum（機械式ドラム）についてのみ実施済み（1時間soak、`docs/CPP_ONNX_INTEGRATION.md`参照）。それ以外のモデル・メーターは未実施（この開発環境に物理メーターを継続設置できないため。既存の実メーター写真によるオフライン評価、実カメラ・実YOLOでのNO_DETECTION連続時の`no_reading`遷移は実機で確認済み）
 - Alert、グラフ・履歴分析（ConfirmedReadingのみを見る構造は用意済みだが、Alert本体・グラフ画面は未実装）
 - `datetime.utcnow()`のdeprecation警告が残っている（DB層のdatetime列が全体的にnaive datetime前提のため、部分的なtimezone-aware化はnaive/aware比較エラーを誘発するリスクがあり、今回のscopeでは見送り）
 - カメラ一覧はOpenCVで0〜4番を探索

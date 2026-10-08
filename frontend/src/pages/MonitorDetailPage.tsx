@@ -28,6 +28,7 @@ import { combinedMonitorStatus, monitorStatusLabels } from "../utils/monitorStat
 // 履歴注記としてのみ表示する(下のJSX参照)。
 const inferenceErrorMessages: Record<string, string> = {
   MODEL_NOT_CONFIGURED: "ultralyticsライブラリを利用できません（Backend環境エラー。モデル自体の設定とは別の問題です）",
+  CPP_WORKER_ERROR: "C++ ONNX workerでエラーが発生しました（worker未ビルド/異常終了の可能性があります）",
   MODEL_NOT_FOUND: "指定されたモデルファイルが見つかりません",
   DEVICE_UNAVAILABLE: "指定されたDevice（GPU/CPU）が利用できません",
   OCR_ENGINE_UNAVAILABLE: "OCRエンジンがインストールされていません",
@@ -37,6 +38,12 @@ const inferenceErrorMessages: Record<string, string> = {
 };
 
 function inferenceErrorText(code: string, engine: string): string {
+  // Issue #38: cpp_onnxのMODEL_NOT_CONFIGUREDは「ultralytics」とは無関係。モデル未配置・
+  // registry未登録・SHA256不一致のいずれか(Backendは原因を区別せずこのコードで返す)。
+  if (engine === "cpp_onnx") {
+    if (code === "MODEL_NOT_CONFIGURED") return "C++ ONNXモデルを利用できません（モデルファイル未配置、registry.json未登録、またはSHA256不一致）";
+    if (code === "MODEL_NOT_FOUND") return "C++ ONNXモデルファイルが見つかりません";
+  }
   if (code === "OCR_ENGINE_UNAVAILABLE") {
     return engine === "tesseract" ? "pytesseractがインストールされていません" : "EasyOCRがインストールされていません";
   }
@@ -189,6 +196,9 @@ export function MonitorDetailPage() {
   // (object_detection+ultralyticsのときだけ意味を持つ組み合わせ)。
   const modelMissing = monitor.inference.method === "object_detection" && monitor.inference.engine === "ultralytics" && !monitor.inference.model_id;
 
+  // Issue #38: cpp_onnxはmodel_idが必須(Backendも拒否するが、UIでも保存前に止める)。
+  const cppModelMissing = inference.method === "object_detection" && inference.engine === "cpp_onnx" && !inference.model_id;
+
   const save = async () => {
     try {
       const updated = await api.update(monitorId, {
@@ -314,7 +324,7 @@ export function MonitorDetailPage() {
               <span><i className="legend-swatch legend-detection" />検出bbox</span>
             </div>
             {runtimeDiagnostics?.pipeline && (
-              runtimeDiagnostics.pipeline.engine === "ultralytics" ? (
+              (runtimeDiagnostics.pipeline.engine === "ultralytics" || runtimeDiagnostics.pipeline.engine === "cpp_onnx") ? (
                 <p className="muted overlay-caption">
                   検出 {runtimeDiagnostics.pipeline.roi_filtered_detection_count}/{runtimeDiagnostics.pipeline.raw_detection_count} 件（ROI内/全体）
                   {runtimeDiagnostics.pipeline.raw_detection_count === 0 && "（全体でも検出0件のため、bboxは表示されません）"}
@@ -398,14 +408,17 @@ export function MonitorDetailPage() {
           <button className="secondary" onClick={() => setEditor("preprocess")}>前処理を編集</button>
         </CollapsibleSection>
         <CollapsibleSection title="ROI（関心領域）" open={openSections.roi} onToggle={() => toggleSection("roi")}>
-          {inference.method === "object_detection" && <p className="muted" style={{ fontSize: "0.76rem", margin: "0 0 8px" }}>
+          {inference.method === "object_detection" && inference.engine === "cpp_onnx" && <p className="muted" style={{ fontSize: "0.76rem", margin: "0 0 8px" }}>
+            C++ ONNXではROIそのものを切り出して推論します（ROIモードは適用されません）。
+          </p>}
+          {inference.method === "object_detection" && inference.engine !== "cpp_onnx" && <p className="muted" style={{ fontSize: "0.76rem", margin: "0 0 8px" }}>
             モード: {inference.roi_mode === "crop_context" ? "ROI周辺を切り出して推論（詳細設定）" : "検出結果をROI内に限定（推奨）"}
           </p>}
           <button className="secondary" onClick={() => setEditor("roi")}>ROIを編集</button>
         </CollapsibleSection>
         <ReadingSettingsPanel value={inference.reading} onChange={(reading) => setInference({ ...inference, reading })} open={openSections.reading} onToggleOpen={() => toggleSection("reading")} />
         <InferenceSettings value={inference} onChange={setInference} open={openSections.inference} onToggleOpen={() => toggleSection("inference")} />
-        <div className="settings-actions"><button className="save-button" onClick={save}>設定を保存</button></div>
+        <div className="settings-actions"><button className="save-button" onClick={save} disabled={cppModelMissing} title={cppModelMissing ? "C++ ONNXではモデルを選択してください" : undefined}>設定を保存</button></div>
 
         <CollapsibleSection title="Danger Zone" open={openSections.danger} onToggle={() => toggleSection("danger")} className="danger-zone">
           {!confirmingDelete ? (
@@ -425,7 +438,7 @@ export function MonitorDetailPage() {
     {editor === "roi" && <RoiEditor
       monitorId={monitorId}
       initial={inference.roi}
-      isObjectDetection={inference.method === "object_detection"}
+      isObjectDetection={inference.method === "object_detection" && inference.engine !== "cpp_onnx"}
       initialRoiMode={inference.roi_mode}
       initialContextMargin={inference.context_margin}
       onClose={() => setEditor(null)}

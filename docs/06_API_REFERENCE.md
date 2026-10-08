@@ -31,7 +31,7 @@ Backend Routerの実装から確認できるAPIです。全Endpointは`/api`配�
 ### MonitorUpdate
 
 `display_name`、`location`、`enabled`、`source`、`inference`を任意で含めます。
-`inference.reading`で時系列安定化設定（`enabled`/`mode`/`window_size`/`required_matches`/`min_confidence`/`expected_digits`/`decimal_position`/`monotonic`/`max_rate_per_minute`/`max_consecutive_failures`/`allow_rollover`/`rollover_max`）を指定できます。
+`inference.reading`で時系列安定化設定（`enabled`/`mode`/`window_size`/`required_matches`/`min_confidence`/`expected_digits`/`decimal_position`/`monotonic`/`max_rate_per_minute`/`max_consecutive_failures`/`allow_rollover`/`rollover_max`/`strip_leading_zero`）を指定できます。
 
 ## Sources
 

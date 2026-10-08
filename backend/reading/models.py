@@ -79,6 +79,9 @@ class ReadingSettings:
     max_consecutive_failures: int = 5
     allow_rollover: bool = False
     rollover_max: int | None = None
+    # 最終運用値(Confirmed/UI/DB/CSV)から整数部の先頭0を除去する。既定はFalse(従来どおり保持)。
+    # expected_digits検証・Raw/diagnosticsは先頭0を含む元の桁列のまま行う。
+    strip_leading_zero: bool = False
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "ReadingSettings":
@@ -104,4 +107,5 @@ class ReadingSettings:
             max_consecutive_failures=max(1, int(data.get("max_consecutive_failures", defaults.max_consecutive_failures))),
             allow_rollover=bool(data.get("allow_rollover", defaults.allow_rollover)),
             rollover_max=data.get("rollover_max", defaults.rollover_max),
+            strip_leading_zero=bool(data.get("strip_leading_zero", defaults.strip_leading_zero)),
         )
