@@ -111,6 +111,8 @@ Monitor詳細画面の推論設定内「読取安定化」セクション（`inf
 
 **確定値の先頭0**: 確定値（Confirmed/UI表示/DB/CSV）は、桁数検証・小数点位置の適用後に整数部の先頭の0を除去した形です（全Monitor共通。`0265771`→`265771`、`037239.5`→`37239.5`、`000000.5`→`0.5`）。検出・bbox・Raw Readingと`expected_digits`の検証は元の桁列のまま行い、Raw値（Debug API・診断表示）は先頭0を含みます。以前のMonitor単位の`strip_leading_zero`設定は廃止され、DBに残っていても無視されます。過去の履歴は書き換えず、新しい確定値から適用されます。
 
+**1時間ごとの計測履歴**: 毎時00分（Asia/Tokyo）に、有効な全Monitorの最終運用値を`reading_records`へ1件ずつ記録します（既定で有効。`GET /api/records`）。前回（1時間前）の定時計測値との差を使用量（`usage`）として保存します。値が変わるたびの記録ではなく、通信異常・読取不能・baseline conflict・reset/rebase等の状態変化は別の情報（`reading_baseline_events`、runtime情報）で、計測履歴には混在させません。詳細は`docs/READING_RECORDS.md`を参照してください。
+
 **読取基準値（monotonic baseline）**: `monotonic`/`max_rate_per_minute`の検証に使う基準値は、CONFIRMEDのときにDBへ永続化され、Backend再起動・設定保存（Scheduler再構築）後も復元されます（Raw windowと連続失敗回数は再構築で初期化）。誤値が確定して固着した場合（正しい値が`decrease_detected`で棄却され続ける）は、Monitor詳細の「読取基準値」から、実メーターで確認した値を指定して再設定（rebase）するか、基準値をリセットして次の確定値を新しい基準にします。操作には理由と操作者（自己申告）が必須で、すべて監査履歴に残ります。低い値が自動で採用されることはなく、合意候補が基準値と矛盾して5分以上続くと、DashboardとDetailに警告が出ます。詳細は`docs/READING_BASELINE.md`を参照してください。
 
 直近のRaw Reading・合意状況はDebug用途のAPIで確認できます（通常UIでは常用しません）。

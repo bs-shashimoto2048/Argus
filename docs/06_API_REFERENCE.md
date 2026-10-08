@@ -79,6 +79,17 @@ Runtimeが存在しない場合は409、最新フレームがない場合は503�
 
 Debug用途のAPIで、通常UIで常用する想定はありません。password/認証URL等は含みません。Runtime未稼働時は409です。`reading/capture`は`ARGUS_ENABLE_DATASET_CAPTURE=1`未設定時は常に403を返します（誤操作防止）。
 
+## 計測履歴（reading_records、1時間ごと）
+
+| Method | Endpoint | Response |
+|---|---|---|
+| GET | `/api/records` | 1時間ごとの計測履歴（新しい順）。Query: `monitor_id`（複数可）、`from`/`to`（記録時刻、ISO 8601、タイムゾーンなしはJST）、`limit`（1〜1000）、`offset`。`{items, total, limit, offset}` |
+| GET | `/api/records/{id}` | 1件（`value`/`raw_value`/`previous_value`/`usage`/`confidence`/`validation_status`/`display_status`/`baseline_conflict`/`engine`/`model_id`/画像パスと`image_status`） |
+| GET | `/api/records/status` | 記録の有効/無効、Workerの状態 |
+| PUT | `/api/records/settings` | `{enabled}`（既定は有効） |
+
+詳細は`docs/READING_RECORDS.md`を参照してください。値は最終運用値（先頭0除去後）で、`raw_value`は元の桁列です。
+
 ## ROI / Preprocess
 
 | Method | Endpoint | Request | Response |

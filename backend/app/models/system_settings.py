@@ -14,6 +14,8 @@ class SystemSettings(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
     csv_export_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     csv_output_folder: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # 1時間ごとの正式な計測記録(reading_records)。既定は有効(毎時00分)。
+    hourly_record_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
