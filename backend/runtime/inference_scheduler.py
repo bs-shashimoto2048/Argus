@@ -42,9 +42,41 @@ logger = logging.getLogger("argus.scheduler")
 #   入力領域にする意味があるため、常にROIをそのままcropする(既存挙動を維持)。
 _DEFAULT_CONTEXT_MARGIN = 1.0
 
-# Overlay描画色(BGR)。detection bbox([37,99,235])とは明確に区別する。
-_ROI_COLOR = (255, 191, 0)  # ユーザー指定ROI: コバルトブルー破線、常時描画
-_CROP_COLOR = (0, 165, 255)  # crop_context時の内部推論crop範囲: アンバー破線(filter_onlyでは描画しない)
+# Overlay描画色(BGR)。overlay.jpgは「前処理後画像(inference-input.jpgと同じ見た目) + bbox + ラベル」。
+_ROI_COLOR = (255, 191, 0)  # ユーザー指定ROI: コバルトブルー破線(推論cropがROIと異なる場合のみ描画)
+_BBOX_COLOR = (20, 255, 57)  # detection bboxの枠線とラベル: 蛍光緑(#39FF14)
+
+
+# overlay.jpgの表示範囲: 検出bbox群の外接矩形に余白を付けて切り出し、小さければ拡大して数字部分を大きく見せる。
+# 推論そのもの(Full Frame/ROI cropでの推論、Raw/Confirmed)には影響しない、表示だけの処理。
+_OVERLAY_MARGIN_RATIO = 0.12  # 外接矩形の幅/高さに対する上下左右の余白
+_OVERLAY_MIN_WIDTH = 480  # 切り出し後の幅がこれ以上なら拡大しない(Drum等、既に読みやすい大きさ)
+_OVERLAY_TARGET_WIDTH = 960  # 拡大する場合の目標幅(アスペクト比は維持)
+_OVERLAY_MAX_SCALE = 6.0
+_OVERLAY_MAX_HEIGHT = 720  # 拡大後の高さの上限
+_OVERLAY_LABEL_HEADROOM = 24  # bbox上端より上に確保するラベル用の余白(表示後のpixel)
+
+
+def _overlay_view(image_shape: tuple[int, ...], boxes: list[tuple[float, float, float, float]]) -> tuple[int, int, int, int, float]:
+    """bbox群の外接矩形を基準にした、overlayの切り出し範囲と拡大率(x1, y1, x2, y2, scale)を返す。
+
+    前処理後画像の座標系で、画像端を超える余白はクランプする。ラベルを描く分だけ上側の余白を広く取る。
+    """
+    height, width = image_shape[:2]
+    ux1, uy1 = min(box[0] for box in boxes), min(box[1] for box in boxes)
+    ux2, uy2 = max(box[2] for box in boxes), max(box[3] for box in boxes)
+    union_w, union_h = max(1.0, ux2 - ux1), max(1.0, uy2 - uy1)
+    x1, x2 = max(0.0, ux1 - union_w * _OVERLAY_MARGIN_RATIO), min(float(width), ux2 + union_w * _OVERLAY_MARGIN_RATIO)
+    crop_w = max(1.0, x2 - x1)
+    scale = 1.0 if crop_w >= _OVERLAY_MIN_WIDTH else min(_OVERLAY_MAX_SCALE, _OVERLAY_TARGET_WIDTH / crop_w)
+    y1 = max(0.0, uy1 - max(union_h * _OVERLAY_MARGIN_RATIO, _OVERLAY_LABEL_HEADROOM / scale))
+    y2 = min(float(height), uy2 + union_h * _OVERLAY_MARGIN_RATIO)
+    crop_h = max(1.0, y2 - y1)
+    if scale > 1.0 and crop_h * scale > _OVERLAY_MAX_HEIGHT:
+        scale = max(1.0, _OVERLAY_MAX_HEIGHT / crop_h)
+    ix1, iy1 = int(np.floor(x1)), int(np.floor(y1))
+    ix2, iy2 = max(ix1 + 1, int(np.ceil(x2))), max(iy1 + 1, int(np.ceil(y2)))
+    return ix1, iy1, min(ix2, int(width)), min(iy2, int(height)), scale
 
 
 def _draw_dashed_rect(image: np.ndarray, pt1: tuple[int, int], pt2: tuple[int, int], color: tuple[int, int, int], thickness: int = 2, dash: int = 10, gap: int = 6) -> None:
@@ -172,6 +204,8 @@ class InferenceScheduler:
             result = self.engine.infer(image, self.settings)
             result.processing_time_ms = (perf_counter() - started) * 1000
             raw_detection_count = len(result.detections)
+            # overlayは前処理後画像の座標系で描画するため、full-frame座標へ変換する前のbboxを控える。
+            model_space_boxes = {id(detection): detection.bbox for detection in result.detections}
             sx = crop.shape[1] / max(1, image.shape[1])
             sy = crop.shape[0] / max(1, image.shape[0])
             for detection in result.detections:
@@ -223,18 +257,37 @@ class InferenceScheduler:
                 "engine": result.engine,
                 "model_id": result.model_id or self.settings.get("model_id"),
             }
-            overlay = raw.copy()
-            # ユーザーが指定した実ROIは常時描画する(コバルトブルー破線)。
-            _draw_dashed_rect(overlay, (roi_x1, roi_y1), (roi_x2, roi_y2), _ROI_COLOR, 2)
-            # crop_contextモードの場合のみ、内部推論crop範囲を区別できる別スタイル
-            # (アンバー破線)で追加描画する(filter_onlyでは内部crop枠は表示しない)。
-            if roi_mode == "crop_context" and (x1, y1, x2, y2) != (roi_x1, roi_y1, roi_x2, roi_y2):
-                _draw_dashed_rect(overlay, (x1, y1), (x2, y2), _CROP_COLOR, 1)
-            for detection in result.detections:
-                if detection.bbox:
-                    bx1, by1, bx2, by2 = (int(value) for value in detection.bbox)
-                    cv2.rectangle(overlay, (bx1, by1), (bx2, by2), (37, 99, 235), 2)
-                    cv2.putText(overlay, f"{detection.class_name or ''}/{detection.confidence or 0:.2f}", (bx1, max(16, by1 - 4)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (37, 99, 235), 1)
+            # 前処理後画像(engine.infer()へ渡した画像そのもの。inference-input.jpgと同じ見た目)の上へ、
+            # bboxとラベルを描く。bboxは前処理後画像の座標系(model_space_boxes)のまま描画する。
+            drawn = [(detection, model_space_boxes.get(id(detection))) for detection in result.detections]
+            drawn = [(detection, box) for detection, box in drawn if box]
+            if drawn:
+                # 検出がある場合: bbox群の外接矩形(+余白)で切り出し、小さければ拡大して数字部分を大きく見せる。
+                vx1, vy1, vx2, vy2, view_scale = _overlay_view(image.shape, [box for _detection, box in drawn])
+                overlay = image[vy1:vy2, vx1:vx2]
+                if view_scale != 1.0:
+                    overlay = cv2.resize(overlay, None, fx=view_scale, fy=view_scale, interpolation=cv2.INTER_CUBIC)
+                else:
+                    overlay = overlay.copy()
+            else:
+                # 検出が無い(初期状態/検出失敗)場合は、従来どおり前処理後の全体画像を表示する。
+                vx1, vy1, view_scale = 0, 0, 1.0
+                overlay = image.copy()
+
+            def to_view(px: float, py: float) -> tuple[int, int]:
+                return int(round((px - vx1) * view_scale)), int(round((py - vy1) * view_scale))
+
+            if (x1, y1, x2, y2) != (roi_x1, roi_y1, roi_x2, roi_y2):
+                # 推論cropがROIより広い場合(filter_only/crop_context)は、ユーザー指定ROIを前処理後画像の
+                # 座標系へ変換し、表示範囲の座標系で破線を描く(ROIそのものをcropする場合は画像全体がROIのため描かない)。
+                scale_x = image.shape[1] / max(1, crop.shape[1])
+                scale_y = image.shape[0] / max(1, crop.shape[0])
+                _draw_dashed_rect(overlay, to_view((roi_x1 - x1) * scale_x, (roi_y1 - y1) * scale_y), to_view((roi_x2 - x1) * scale_x, (roi_y2 - y1) * scale_y), _ROI_COLOR, 2)
+            for detection, box in drawn:
+                bx1, by1 = to_view(box[0], box[1])
+                bx2, by2 = to_view(box[2], box[3])
+                cv2.rectangle(overlay, (bx1, by1), (bx2, by2), _BBOX_COLOR, 2)
+                cv2.putText(overlay, f"{detection.class_name or ''}/{detection.confidence or 0:.2f}", (bx1, max(16, by1 - 4)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, _BBOX_COLOR, 1)
             ok, encoded = cv2.imencode(".jpg", overlay)
             self.latest_overlay = encoded.tobytes() if ok else None
             confirmed = self.stabilizer.update(result)

@@ -291,8 +291,12 @@ def test_pipeline_diagnostics_in_crop_context_mode(monkeypatch, tmp_path):
 
 @pytest.mark.parametrize("roi_mode,extra", [("filter_only", {}), ("crop_context", {"roi_mode": "crop_context"})])
 def test_overlay_draws_without_crashing_and_has_valid_jpeg_dimensions(monkeypatch, tmp_path, roi_mode, extra):
-    """Issue #16追加要件: Overlay上にユーザー指定ROI(常時)と、crop_context時のみ
-    内部推論crop範囲を破線で描画する処理が、例外なく動作し正しいJPEGを生成すること。
+    """Issue #16追加要件: Overlay描画処理が例外なく動作し、正しいJPEGを生成すること。
+
+    overlay.jpgは前処理後画像(engine.infer()へ渡した画像)をベースにするため、描画対象の検出が無い
+    場合(このテストの検出はROI外のため除外される)は、画像サイズがpipelineの
+    `preprocess_output_shape`と一致する(filter_onlyはFull Frame、crop_contextは推論crop範囲の大きさ)。
+    検出がある場合のbbox周辺の切り出し・拡大は`test_inference_overlay.py`で確認する。
     """
     engine = _RecordingEngine([Detection(0, "3", 0.9, (10.0, 10.0, 20.0, 20.0))])
     scheduler, results = _build_scheduler(monkeypatch, _od_settings(**extra), engine)
@@ -301,5 +305,7 @@ def test_overlay_draws_without_crashing_and_has_valid_jpeg_dimensions(monkeypatc
     assert results
     assert scheduler.latest_overlay is not None
     decoded = cv2.imdecode(np.frombuffer(scheduler.latest_overlay, dtype=np.uint8), cv2.IMREAD_COLOR)
-    assert decoded.shape == (FULL_H, FULL_W, 3)
+    assert decoded.shape == (*scheduler.latest_diagnostics["preprocess_output_shape"], 3)
+    if roi_mode == "filter_only":
+        assert decoded.shape == (FULL_H, FULL_W, 3)
     assert scheduler.latest_diagnostics["roi_mode"] == roi_mode

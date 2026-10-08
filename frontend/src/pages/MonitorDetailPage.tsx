@@ -326,9 +326,10 @@ export function MonitorDetailPage() {
           </div>
           {videoTab === "overlay" && monitor.source && <>
             <div className="overlay-legend">
-              <span><i className="legend-swatch legend-roi" />ユーザー指定ROI</span>
-              {runtimeDiagnostics?.pipeline?.roi_mode === "crop_context" && <span><i className="legend-swatch legend-margin" />内部推論crop範囲(context margin適用後)</span>}
-              <span><i className="legend-swatch legend-detection" />検出bbox</span>
+              {/* ROIの破線は、推論cropがROIより広い場合(roi_modeあり)だけ描画される */}
+              {runtimeDiagnostics?.pipeline?.roi_mode && <span><i className="legend-swatch legend-roi" />ユーザー指定ROI</span>}
+              <span><i className="legend-swatch legend-detection" />検出bbox（ラベル: 推論値/確信度）</span>
+              <span>前処理後の推論入力画像に描画</span>
             </div>
             {runtimeDiagnostics?.pipeline && (
               (runtimeDiagnostics.pipeline.engine === "ultralytics" || runtimeDiagnostics.pipeline.engine === "cpp_onnx") ? (
