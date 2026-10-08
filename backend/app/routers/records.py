@@ -1,11 +1,14 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ..core.database import get_db
 from ..services import reading_record_service as svc
+from ..services.record_image_service import resolve_image_path
+from ..services.storage_settings_service import load_config
 from runtime.hourly_record_worker import hourly_record_worker
 
 router = APIRouter(prefix="/api/records", tags=["records"])
@@ -59,3 +62,26 @@ def get_record(record_id: int, db: Session = Depends(get_db)):
     if record is None:
         raise HTTPException(404, "計測記録が見つかりません")
     return svc.serialize(record)
+
+
+@router.get("/{record_id}/image/{kind}")
+def get_record_image(record_id: int, kind: str, db: Session = Depends(get_db)):
+    """記録時に保存した画像(kind=original|overlay)。保存済みのファイルだけを返し、現在の映像は取得しない。"""
+    if kind not in ("original", "overlay"):
+        raise HTTPException(404, "画像の種類はoriginalまたはoverlayです")
+    record = svc.get_record(db, record_id)
+    if record is None:
+        raise HTTPException(404, "計測記録が見つかりません")
+    relative = record.original_image_path if kind == "original" else record.overlay_image_path
+    if not relative:
+        raise HTTPException(404, {"code": "IMAGE_NOT_SAVED", "message": record.image_error or "この記録には画像が保存されていません", "image_status": record.image_status})
+    target = resolve_image_path(load_config(db).image_root, relative)
+    if target is None:
+        raise HTTPException(404, {"code": "IMAGE_PATH_INVALID", "message": "画像のパスが保存先の外を指しています"})
+    try:
+        exists = target.is_file()
+    except OSError:
+        exists = False
+    if not exists:
+        raise HTTPException(404, {"code": "IMAGE_FILE_MISSING", "message": "保存した画像ファイルが見つかりません(保存先の変更や削除、共有フォルダの不通の可能性があります)"})
+    return FileResponse(target, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})

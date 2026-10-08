@@ -30,6 +30,10 @@ class ReadingRecord(Base):
     value: Mapped[str | None] = mapped_column(String(128), nullable=True)
     numeric_value: Mapped[str | None] = mapped_column(String(64), nullable=True)
     raw_value: Mapped[str | None] = mapped_column(String(128), nullable=True)  # 元の桁列(先頭0を含む)
+    # 正式記録値(value)の由来: confirmed=記録時点の最新候補が確定した値 / carried_forward=最新Rawは棄却中だが
+    # 直前の正常Confirmed値を保持した(回転途中・見切れ中など。valueは「直近の最高値」ではなく直前の正常確定値) /
+    # none=正式に記録できるConfirmed値が無い(映像が正常でない、確定値が一度も無い)
+    value_source: Mapped[str] = mapped_column(String(16), default="none")
     previous_value: Mapped[str | None] = mapped_column(String(128), nullable=True)  # 前回(1時間前)の定時計測値
     usage: Mapped[str | None] = mapped_column(String(64), nullable=True)  # 今回 - 前回(連続した正常データでなければNone)
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -41,6 +45,6 @@ class ReadingRecord(Base):
     # 記録画像(Phase 2): DBには画像ルートからの相対パスを保存する。
     original_image_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     overlay_image_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    image_status: Mapped[str] = mapped_column(String(16), default="not_saved")  # not_saved / ok / failed / dropped / disabled
+    image_status: Mapped[str] = mapped_column(String(16), default="not_saved")  # not_saved(Phase 1の記録) / pending / ok / failed / dropped / disabled
     image_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     __table_args__ = (UniqueConstraint("monitor_id", "hour_bucket", name="uq_reading_records_monitor_hour"),)

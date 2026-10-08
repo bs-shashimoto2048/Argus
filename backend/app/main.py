@@ -6,13 +6,15 @@ from .core.config import settings
 from .core.database import Base, SessionLocal, engine
 from sqlalchemy import text
 from .models import Monitor
-from .routers import cameras, csv_export, health, monitors, preprocess, reading, records, roi, sources, streams, system
+from .routers import cameras, csv_export, data_storage, health, monitors, preprocess, reading, records, roi, sources, streams, system
 from runtime.runtime_manager import runtime_manager
 from runtime.csv_export_worker import csv_export_worker
 from runtime.hourly_record_worker import hourly_record_worker
+from runtime.record_writer import record_writer
 from runtime.video_reader import ReaderConfig
 from .services.secret_store import decrypt
 from .services.result_store import save_result
+from .services.reading_record_service import backfill_value_source
 from .services.reading_baseline_service import restore_baseline
 from .services.monitor_service import _build_inference_settings
 
@@ -49,6 +51,13 @@ async def lifespan(_app: FastAPI):
                 ("latest_results", "confirmed_at", "DATETIME"),
                 ("inference_results", "engine", "VARCHAR(32)"),
                 ("system_settings", "hourly_record_enabled", "BOOLEAN DEFAULT 1"),
+                ("system_settings", "image_root_folder", "VARCHAR(500)"),
+                ("system_settings", "excel_output_folder", "VARCHAR(500)"),
+                ("system_settings", "save_original_image", "BOOLEAN DEFAULT 1"),
+                ("system_settings", "save_overlay_image", "BOOLEAN DEFAULT 1"),
+                ("system_settings", "storage_warn_free_gb", "FLOAT DEFAULT 10"),
+                ("system_settings", "storage_stop_free_gb", "FLOAT DEFAULT 5"),
+                ("reading_records", "value_source", "VARCHAR(16) DEFAULT 'none'"),
                 ("inference_settings", "reading", "JSON"),
                 ("inference_settings", "roi_mode", "VARCHAR(32) DEFAULT 'filter_only'"),
                 ("inference_settings", "context_margin", "FLOAT DEFAULT 1.0"),
@@ -56,6 +65,8 @@ async def lifespan(_app: FastAPI):
                 table_columns = connection.execute(text(f"PRAGMA table_info({table})")).all()
                 if not any(row[1] == column for row in table_columns):
                     connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}"))
+                    if (table, column) == ("reading_records", "value_source"):
+                        backfill_value_source(connection)
     runtime_manager.set_status_callback(_set_status)
     runtime_manager.set_result_callback(_set_result)
     runtime_manager.set_baseline_provider(restore_baseline)
@@ -72,9 +83,11 @@ async def lifespan(_app: FastAPI):
     finally:
         db.close()
     csv_export_worker.start()
+    record_writer.start()
     hourly_record_worker.start()
     yield
     hourly_record_worker.stop()
+    record_writer.stop()
     csv_export_worker.stop()
     runtime_manager.stop_all()
 
@@ -91,3 +104,4 @@ app.include_router(reading.router)
 app.include_router(system.router)
 app.include_router(csv_export.router)
 app.include_router(records.router)
+app.include_router(data_storage.router)
