@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 
 from io import BytesIO
 from threading import Event, Lock, Thread
@@ -17,8 +18,10 @@ from app.inference.engines import create_engine
 from app.inference.meter_interpreter import interpret_digits
 from app.services.preprocess_service import apply, crop_roi
 from app.schemas.inference import Roi
+from reading.baseline import CONFLICT_ALERT_SECONDS
 from reading.models import ConfirmedReading, ReadingSettings
 from reading.stabilizer import ReadingStabilizer
+from .record_snapshot import InferenceRecordSnapshot
 
 logger = logging.getLogger("argus.scheduler")
 
@@ -127,6 +130,45 @@ class InferenceScheduler:
         # 再生成ではない)と、ROI/crop/前処理/検出数のpipeline diagnostics。
         self.latest_inference_input: bytes | None = None
         self.latest_diagnostics: dict = {}
+        # 1推論tick = 1 immutable snapshot(定時計測recordの証跡用)。tickの処理がすべて終わってから、丸ごと差し替える。
+        self._snapshot: InferenceRecordSnapshot | None = None
+        self._snapshot_lock = Lock()
+        self._tick = 0
+
+    def get_record_snapshot(self) -> InferenceRecordSnapshot | None:
+        """直近の完了した推論tickのsnapshotを取得する(不変オブジェクトなので、取得後に別tickの値が混ざらない)。"""
+        with self._snapshot_lock:
+            return self._snapshot
+
+    def _publish_snapshot(self, snapshot: InferenceRecordSnapshot) -> None:
+        with self._snapshot_lock:
+            self._snapshot = snapshot  # オブジェクトを丸ごと交換する(フィールド単位の更新はしない)
+
+    def _build_snapshot(self, *, inference_at: datetime, captured_at: datetime | None, original: bytes | None, overlay: bytes | None,
+                        result: InferenceResult, confirmed: ConfirmedReading, formal: dict | None, processing_time_ms: float) -> InferenceRecordSnapshot:
+        """そのtickの情報だけから、snapshotを組み立てる(推論・overlay・Stabilizer・運用値の保存がすべて終わった後に呼ぶ)。"""
+        self._tick += 1
+        baseline = self.stabilizer.baseline_snapshot()
+        conflict = confirmed.conflict
+        now = datetime.now(timezone.utc)
+        conflict_alert = conflict is not None and (now - conflict.started_at).total_seconds() >= CONFLICT_ALERT_SECONDS
+        candidate = self.stabilizer.last_candidate
+        status = confirmed.validation_status.value
+        if formal is None:
+            # 運用値の保存結果が無い場合(on_resultが値を返さない構成)は、このtickの採用結果だけから判断する。
+            accepted = status in ("confirmed", "low_confidence")
+            formal = {"value": confirmed.value if accepted else None, "confidence": confirmed.confidence if accepted else None, "confirmed_at": confirmed.confirmed_at if accepted else None, "status": None}
+        return InferenceRecordSnapshot(
+            monitor_id=self.monitor_id, tick=self._tick, inference_at=inference_at, captured_at=captured_at,
+            original_jpeg=original, overlay_jpeg=overlay,
+            raw_value=confirmed.raw_value, raw_confidence=confirmed.raw_confidence, raw_error=confirmed.raw_error, detection_count=len(result.detections),
+            validation_status=status, candidate_value=candidate["value"] if candidate else None, agreement_count=confirmed.agreement_count, raw_count=confirmed.raw_count,
+            confirmed_value=formal.get("value"), confirmed_confidence=formal.get("confidence"), confirmed_at=formal.get("confirmed_at"), inference_status=formal.get("status"),
+            engine=result.engine or confirmed.engine or None, model_id=result.model_id or self.settings.get("model_id"), processing_time_ms=processing_time_ms,
+            baseline_value=baseline["value"] if baseline else None, baseline_epoch=int(confirmed.baseline_epoch or 0),
+            baseline_conflict=bool(conflict_alert), conflict_status=conflict.status.value if conflict else None,
+            conflict_candidate=conflict.candidate if conflict else None, conflict_count=conflict.count if conflict else 0,
+        )
 
     @property
     def enabled(self) -> bool:
@@ -161,9 +203,11 @@ class InferenceScheduler:
 
     def _infer_latest(self) -> None:
         started = perf_counter()
-        data, _ = self.buffer.get()
+        inference_at = datetime.now(timezone.utc)
+        data, frame_ts = self.buffer.get()
         if not data or self.engine is None:
             return
+        captured_at = datetime.fromtimestamp(frame_ts, timezone.utc) if frame_ts else None
         try:
             raw = cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_COLOR)
             if raw is None:
@@ -291,14 +335,21 @@ class InferenceScheduler:
                 cv2.rectangle(overlay, (bx1, by1), (bx2, by2), _BBOX_COLOR, 2)
                 cv2.putText(overlay, f"{detection.class_name or ''}/{detection.confidence or 0:.2f}", (bx1, max(16, by1 - 4)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, _BBOX_COLOR, 1)
             ok, encoded = cv2.imencode(".jpg", overlay)
-            self.latest_overlay = encoded.tobytes() if ok else None
+            tick_overlay = encoded.tobytes() if ok else None
+            self.latest_overlay = tick_overlay
             self.latest_overlay_source = data if ok else None
             confirmed = self.stabilizer.update(result)
             self.latest_confirmed = confirmed
-            self.on_result(self.monitor_id, confirmed)
+            formal = self.on_result(self.monitor_id, confirmed)
+            # このtickのsnapshot: 元画像(推論に使ったフレームそのもの)・overlay・Raw・判定・運用値・baselineをすべて同じtickの値で1つにまとめて公開する。
+            self._publish_snapshot(self._build_snapshot(inference_at=inference_at, captured_at=captured_at, original=data, overlay=tick_overlay, result=result, confirmed=confirmed,
+                                                        formal=formal if isinstance(formal, dict) else None, processing_time_ms=result.processing_time_ms))
         except Exception:
             result = InferenceResult(error="INFERENCE_FAILED", processing_time_ms=(perf_counter() - started) * 1000)
             self.latest_result = result
             confirmed = self.stabilizer.update(result)
             self.latest_confirmed = confirmed
-            self.on_result(self.monitor_id, confirmed)
+            formal = self.on_result(self.monitor_id, confirmed)
+            # 失敗したtickでも、その時点の完全なsnapshotを作る(overlayは無い。別tickのoverlayは使わない)。
+            self._publish_snapshot(self._build_snapshot(inference_at=inference_at, captured_at=captured_at, original=data, overlay=None, result=result, confirmed=confirmed,
+                                                        formal=formal if isinstance(formal, dict) else None, processing_time_ms=result.processing_time_ms))
