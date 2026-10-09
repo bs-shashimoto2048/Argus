@@ -3,16 +3,19 @@ import { useState } from "react";
 // Dashboard専用の表示設定。video_fps/inference_fpsとは完全に独立しており、
 // Backendへの推論・映像取得設定には一切影響しない(Dashboard側のpreview.jpg
 // polling頻度のみを制御するFrontend-onlyの設定)。
-export type DashboardDisplayFps = 0.2 | 0.5 | 1 | 2 | 5;
+export type DashboardDisplayFps = 1 | 2 | 5 | 10 | 15 | 20 | 30;
 
-export const DASHBOARD_DISPLAY_FPS_OPTIONS: DashboardDisplayFps[] = [0.2, 0.5, 1, 2, 5];
+export const DASHBOARD_DISPLAY_FPS_OPTIONS: DashboardDisplayFps[] = [1, 2, 5, 10, 15, 20, 30];
+export const DASHBOARD_DISPLAY_FPS_DEFAULT: DashboardDisplayFps = 5;
+// この値以上では、ブラウザ・通信の負荷が増えるため設定欄に注意を表示する。
+export const DASHBOARD_HIGH_FPS = 20;
 
 export type DashboardSettings = {
   displayFps: DashboardDisplayFps;
 };
 
 const STORAGE_KEY = "argus.dashboardSettings";
-const DEFAULT_SETTINGS: DashboardSettings = { displayFps: 1 };
+const DEFAULT_SETTINGS: DashboardSettings = { displayFps: DASHBOARD_DISPLAY_FPS_DEFAULT };
 
 function isValidFps(value: unknown): value is DashboardDisplayFps {
   return typeof value === "number" && (DASHBOARD_DISPLAY_FPS_OPTIONS as number[]).includes(value);

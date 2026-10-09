@@ -890,3 +890,104 @@ body { overflow-x: hidden; }
 .toggle-switch .toggle-knob { width: 18px; height: 18px; border-radius: 50%; background: currentColor; }
 .toggle-switch.on { background: #16a34a; border-color: #16a34a; color: #fff; flex-direction: row-reverse; padding: 3px 3px 3px 10px; }
 .toggle-switch.on .toggle-knob { background: #fff; }
+
+/* ===== Dashboard: カード → 使用量推移グラフ → 計測履歴 の縦並び ===== */
+/* ページ全体: viewport高さを下限に、カード領域・グラフ・履歴の順に並べる。カード領域は最大高さを持ち、Monitor台数でページは伸びない。 */
+.dashboard-page { height: auto; min-height: calc(100vh - var(--nav-h)); min-height: calc(100dvh - var(--nav-h)); }
+/* Monitorカード: 1行に最大3枚。1〜3台は1行、4台以上は3列のまま、この領域の中だけが縦スクロールする。 */
+.dashboard-page .monitor-region { max-height: clamp(240px, 36vh, 420px); overflow-x: hidden; overflow-y: auto; scrollbar-gutter: stable; }
+.dashboard-page .monitor-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.dashboard-page .preview-wrap { height: clamp(80px, 11vh, 160px); }
+.dashboard-page .monitor-card .card-notices { min-height: 44px; }
+.card-count-hint { align-self: center; margin-left: auto; padding: 4px 10px; border: 1px solid var(--color-border-strong); border-radius: 999px; background: var(--color-surface); color: var(--color-text); font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.card-count-hint small { margin-left: 6px; color: var(--color-text-secondary); font-weight: 500; font-size: 11.5px; }
+@media (max-width: 900px) { .dashboard-page .monitor-grid { grid-template-columns: 1fr; } }
+
+/* 使用量推移グラフ(SVG手描き。幅は親に追従、高さは180px固定) */
+.dashboard-page .trend-panel { margin: 0; padding: 8px 14px 6px; }
+.trend-head { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 14px; margin-bottom: 2px; }
+.trend-head h2 { margin: 0; font-size: 15px; line-height: 1.3; }
+.trend-head .segment { height: 28px; padding: 0 12px; font-size: 12.5px; }
+.trend-condition { font-size: 12px; }
+.trend-legend { display: flex; flex-wrap: wrap; gap: 2px 14px; margin: 0 0 0 auto; padding: 0; list-style: none; font-size: 12px; color: var(--color-text); }
+.trend-legend li { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.trend-legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; }
+.trend-legend i.marker-diamond { width: 8px; height: 8px; border: 1.5px solid #475569; border-radius: 0; background: #fff; transform: rotate(45deg); }
+.trend-legend i.marker-ring { width: 9px; height: 9px; border: 1.5px solid #475569; border-radius: 50%; background: transparent; }
+.trend-body { position: relative; min-height: 180px; }
+.trend-svg { display: block; width: 100%; height: 180px; }
+.trend-empty { display: grid; place-items: center; height: 180px; color: var(--color-text-secondary); font-size: 13px; border: 1px dashed var(--color-border-strong); border-radius: 8px; }
+.trend-tooltip { position: absolute; top: 8px; z-index: 3; min-width: 150px; padding: 6px 9px; border: 1px solid var(--color-border-strong); border-radius: 7px; background: rgb(255 255 255 / 96%); box-shadow: var(--shadow-sm); font-size: 12px; line-height: 1.5; pointer-events: none; white-space: nowrap; }
+.trend-tooltip strong { display: block; font-variant-numeric: tabular-nums; }
+.trend-tooltip i { display: inline-block; width: 9px; height: 9px; margin-right: 6px; border-radius: 2px; }
+.trend-note { margin-top: 2px; font-size: 11.5px; }
+
+/* 計測履歴(Dashboard): グラフの下の残り高さを使う。最低でも数行(ヘッダー + 約7行)が見える高さを確保する */
+.dashboard-page .records-section { min-height: 330px; }
+
+/* 計測履歴テーブル: 表はコンテナ幅いっぱい(width:100%)に使い、各セルは折り返さない。
+   モニター名以外の列は内容幅(width:1% + nowrap)に詰め、余った幅は「モニター」列へ配る。狭い画面では表の内部だけ横スクロールする。 */
+.records-table { width: 100%; min-width: 0; table-layout: auto; }
+.records-table th, .records-table td { width: 1%; white-space: nowrap; overflow: visible; text-overflow: clip; }
+.records-table th:nth-child(2), .records-table td.cell-monitor { width: auto; }
+.records-table th:first-child, .records-table td:first-child { min-width: 9em; }
+.records-table .cell-monitor, .records-table .cell-model { max-width: none; overflow: visible; text-overflow: clip; }
+
+/* Export (XL): 期間コントロールの右隣 */
+.records-controls .export-xl-button { white-space: nowrap; }
+.export-xl-message { max-width: 360px; font-size: 12px; line-height: 1.3; }
+.export-xl-message.error-text { color: var(--color-danger); }
+
+/* 計測履歴テーブルの行を詰める(1366x768でも数行が見えるように)。ボタン・バッジの高さに合わせた最小の余白。 */
+.history-table td { padding-top: 3px; padding-bottom: 3px; }
+.history-table .small-button { padding: 3px 10px; font-size: 12.5px; }
+
+.trend-tooltip .tooltip-delta { margin-top: 4px; }
+.trend-tooltip .tooltip-delta > div:not(:first-child) { padding-left: 14px; }
+
+/* ===== Monitorカード: 中央=画像(約70%) | 現在値・信頼度・更新(縦並び、約30%)。取得状態・警告は下段 ===== */
+.monitor-card .card-body { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 3fr); gap: 6px; align-items: stretch; padding: 0 8px; }
+.monitor-card .card-body .preview-wrap { height: clamp(110px, 15vh, 170px); border-radius: 4px; overflow: hidden; }
+.monitor-card .card-body .video-image { object-fit: contain; }
+.monitor-card .card-body .card-values { display: flex; flex-direction: column; justify-content: center; gap: 8px; min-width: 0; padding: 4px 2px; border-top: 0; min-height: 0; background: transparent; }
+.monitor-card .card-body .card-values > div { min-width: 0; }
+.monitor-card .card-body .card-value-primary strong { font-size: clamp(24px, 1.72vw, 28px); line-height: 1.15; letter-spacing: -0.01em; overflow: visible; text-overflow: clip; }
+.monitor-card .card-body .card-value-confidence strong { font-size: clamp(15px, 1.2vw, 16px); }
+.monitor-card .card-body .card-value-updated strong { font-size: clamp(12px, 0.95vw, 13px); }
+.monitor-card .card-body .card-values small { font-size: 11px; }
+.monitor-card .card-meta { padding: 4px 12px 2px; min-height: 0; font-size: 11.5px; }
+.dashboard-page .monitor-card .card-notices, .monitor-card .card-notices { min-height: 0; padding: 0 10px 8px; }
+.monitor-card .card-notices:empty { padding: 0; }
+.monitor-card .card-notices .carried-badge, .monitor-card .card-notices .baseline-conflict-badge { width: 100%; box-sizing: border-box; }
+.dashboard-page .preview-wrap { height: clamp(110px, 15vh, 170px); }
+.dashboard-page .monitor-card .card-body .preview-wrap { height: clamp(110px, 15vh, 170px); }
+
+/* 値無し(null)の印: 赤い×(前回値保持=菱形・手動修正=二重丸とは別の記号)。警告文はグラフ内の左下寄りに、値無しがある時だけ出す。 */
+.trend-body .trend-missing-note { position: absolute; left: 64px; bottom: 26px; z-index: 2; max-width: calc(100% - 80px); padding: 2px 8px; border-radius: 4px; background: rgb(254 242 242 / 94%); border: 1px solid #fecaca; color: #b91c1c; font-size: 11.5px; line-height: 1.4; pointer-events: none; }
+.trend-legend .marker-cross { display: inline-block; width: auto; height: auto; margin-right: 4px; background: none; color: #dc2626; font-style: normal; font-weight: 800; font-size: 13px; line-height: 1; }
+
+/* ===== アクセントボタン: [＋ モニター追加](Rose #F43F5E 基準) と [Export (XL)](Emerald #10B981 基準)。鮮やかで軽快な色のグラデーション(ベタ塗りにしない)、薄いborder、控えめなshadow。
+   「削除」の警告の赤(--color-danger の平塗り)とは別の、明るいローズ。高さ・角丸・padding・太さ・transition・focus-visibleは2つで共通。 */
+.action-button, .records-controls .export-xl-button {
+  --btn-light: #f43f5e; --btn-dark: #e11d48; --btn-hover-light: #fb7185; --btn-hover-dark: #f43f5e; --btn-active-light: #e11d48; --btn-active-dark: #be123c;
+  --btn-border: rgb(190 18 60 / 35%); --btn-shadow: 0 3px 10px rgb(225 29 72 / 22%); --btn-hover-shadow: 0 5px 14px rgb(244 63 94 / 30%); --btn-ring: rgb(244 63 94 / 30%);
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box; height: 40px; padding: 0 16px; border-radius: 8px; border: 1px solid var(--btn-border);
+  background: linear-gradient(135deg, var(--btn-light), var(--btn-dark)); color: #fff; font-size: 14px; font-weight: 700; letter-spacing: .01em; line-height: 1; white-space: nowrap;
+  box-shadow: var(--btn-shadow); text-shadow: 0 1px 1px rgb(0 0 0 / 16%);
+  transition: background 150ms ease, box-shadow 150ms ease, transform 100ms ease, filter 150ms ease;
+}
+.records-controls .export-xl-button {
+  --btn-light: #10b981; --btn-dark: #059669; --btn-hover-light: #34d399; --btn-hover-dark: #10b981; --btn-active-light: #059669; --btn-active-dark: #047857;
+  --btn-border: rgb(5 150 105 / 35%); --btn-shadow: 0 3px 10px rgb(16 185 129 / 22%); --btn-hover-shadow: 0 5px 14px rgb(16 185 129 / 30%); --btn-ring: rgb(16 185 129 / 30%);
+}
+.action-button:hover:not(:disabled), .records-controls .export-xl-button:hover:not(:disabled) { background: linear-gradient(135deg, var(--btn-hover-light), var(--btn-hover-dark)); box-shadow: var(--btn-hover-shadow); transform: translateY(-1px); }
+.action-button:active:not(:disabled), .records-controls .export-xl-button:active:not(:disabled) { background: linear-gradient(135deg, var(--btn-active-light), var(--btn-active-dark)); transform: translateY(0); box-shadow: 0 1px 3px rgb(0 0 0 / 14%); }
+.action-button:focus-visible, .records-controls .export-xl-button:focus-visible { outline: 2px solid transparent; box-shadow: 0 0 0 3px var(--btn-ring), var(--btn-shadow); }
+/* 無効・実行中: 同じ系統の色のまま彩度と明るさを少し落とし、白文字の読みやすさは保つ */
+.action-button:disabled, .records-controls .export-xl-button:disabled { cursor: not-allowed; box-shadow: none; text-shadow: none; transform: none; filter: none; }
+.action-button:disabled { background: linear-gradient(135deg, #e0788c, #cf5a74); border-color: rgb(190 18 60 / 25%); }
+.records-controls .export-xl-button:disabled { background: linear-gradient(135deg, #4cb892, #33a07b); border-color: rgb(5 150 105 / 25%); }
+.records-controls .export-xl-button[aria-busy="true"]::before { content: ""; width: 12px; height: 12px; border: 2px solid rgb(255 255 255 / 45%); border-top-color: #fff; border-radius: 50%; animation: accent-spin .8s linear infinite; }
+@keyframes accent-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .records-controls .export-xl-button[aria-busy="true"]::before { animation-duration: 2.4s; } }
+.action-button .btn-plus { font-size: 18px; font-weight: 800; line-height: 1; margin-right: 2px; }

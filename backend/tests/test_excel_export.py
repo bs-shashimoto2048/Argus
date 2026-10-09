@@ -440,3 +440,23 @@ def test_chunked_reading_keeps_order_and_all_rows(client, db, monkeypatch):
 def test_ignores_inference_results_table(client, db):
     m = make_monitor(db, "データ源")
     assert export(client, [m.id]).status_code == 404  # reading_recordsが無ければ、他のテーブルがあっても出力しない
+
+
+def test_export_includes_all_rows_beyond_api_list_limit_and_has_no_row_cap(client, db):
+    """Export (XL)は画面の段階読み込み(GET /api/records の上限1000件)に依存せず、条件に合う全件を出力する。"""
+    m = make_monitor(db, "多数行")
+    base = datetime(2026, 10, 2, 0, 0, tzinfo=JST)
+    rows = []
+    for i in range(1205):
+        t = base + timedelta(hours=i)
+        rows.append(ReadingRecord(monitor_id=m.id, monitor_name=m.display_name, hour_bucket=t.isoformat(), recorded_at=t.astimezone(timezone.utc).replace(tzinfo=None),
+                                  value=str(10000 + i), numeric_value=str(10000 + i), raw_value=str(10000 + i), value_source="confirmed", confidence=0.9,
+                                  validation_status="confirmed", display_status="normal", baseline_conflict=False, engine="cpp_onnx", model_id="d.onnx", image_status="not_saved"))
+    db.add_all(rows)
+    db.commit()
+    res = export(client, [m.id], **{"from": "2026-10-01T00:00:00+09:00", "to": "2026-12-31T00:00:00+09:00"})
+    assert res.status_code == 200
+    assert res.headers["x-argus-total-rows"] == "1205"
+    book = open_book(res)
+    assert book.sheetnames == ["多数行"]
+    assert len(rows_of(book["多数行"])) == 1205

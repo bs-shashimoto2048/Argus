@@ -3,6 +3,7 @@ import { api } from "../api/client";
 import type { CorrectionResult, ReadingRecord } from "../types";
 import { compareRecordOrder, periodError, periodToRange, todayJst } from "../utils/records";
 import { ExcelExportPanel } from "./ExcelExportPanel";
+import { ExportXlButton } from "./ExportXlButton";
 import { RecordDrawer } from "./RecordDrawer";
 import { RecordFilters } from "./RecordFilters";
 import type { RecordFilterValue } from "./RecordFilters";
@@ -21,12 +22,21 @@ type Props = {
   fixedMonitorId?: number;
   // 履歴表(スクロール領域)の高さの用途別クラス。
   size?: "compact" | "tall";
+  // 指定すると、Monitor・期間の条件を親が持つ(グラフと共有する)。省略時はこのセクション内で保持する。
+  filter?: RecordFilterValue;
+  onFilterChange?: (next: RecordFilterValue) => void;
+  // 期間コントロールの右に [Export (XL)](現在の条件の全件を.xlsxで出力)を出す。
+  showExportXl?: boolean;
+  // 記録を修正したときに呼ばれる(Dashboardのグラフを取り直す)。
+  onRecordCorrected?: () => void;
 };
 
 // 計測履歴(フィルタ + 固定ヘッダーのスクロール表 + 詳細Drawer)。Dashboard下部・履歴・データ画面・Monitor Detailの履歴タブで共用する。
 // ページ送りは無く、現在の条件の全件を縦スクロールだけで確認できる。内部ではchunk単位で段階的に読み込む。
-export function RecordsSection({ monitors, title, description, showExport = false, refreshMs, fixedMonitorId, size = "compact" }: Props) {
-  const [filter, setFilter] = useState<RecordFilterValue>({ monitorIds: fixedMonitorId != null ? [fixedMonitorId] : [], period: { mode: "today", startDate: todayJst(), endDate: todayJst() } });
+export function RecordsSection({ monitors, title, description, showExport = false, refreshMs, fixedMonitorId, size = "compact", filter: controlledFilter, onFilterChange, showExportXl = false, onRecordCorrected }: Props) {
+  const [ownFilter, setOwnFilter] = useState<RecordFilterValue>({ monitorIds: fixedMonitorId != null ? [fixedMonitorId] : [], period: { mode: "today", startDate: todayJst(), endDate: todayJst() } });
+  const filter = controlledFilter ?? ownFilter;
+  const setFilter = onFilterChange ?? setOwnFilter;
   const [items, setItems] = useState<ReadingRecord[] | null>(null);
   const [total, setTotal] = useState(0);
   const [error, setError] = useState("");
@@ -98,17 +108,34 @@ export function RecordsSection({ monitors, title, description, showExport = fals
     return () => window.clearInterval(timer);
   }, [refreshMs, fetchChunk, from, to, monitorKeyOrder]);
 
-  // 読取値を修正したら、一覧の該当行(正式値・使用量・修正済み)と、使用量が再計算された次の1時間の行を、その場で更新する(行の位置は動かさない)。
+  // 読取値を修正したら、まず一覧の該当行(正式値・使用量・修正済み)を修正APIの応答でその場で更新し(行の位置は動かさない)、
+  // そのあと、Backendで再計算・保存された記録(以降の行のprevious_value/usageを含む)を、読み込み済みの範囲だけ取り直して置き換える。
+  // 派生値(usage等)はFrontendで仮計算しない。
   const handleCorrected = (result: CorrectionResult) => {
-    const next = result.next_record;
-    const merged = itemsRef.current.map((r) => {
-      if (r.id === result.record.id) return result.record;
-      if (next && r.id === next.record_id) return { ...r, previous_value: result.record.value, usage: next.new_usage };
-      return r;
-    });
+    const merged = itemsRef.current.map((r) => (r.id === result.record.id ? result.record : r));
     itemsRef.current = merged;
     setItems(merged);
     setSelected(result.record);
+    onRecordCorrected?.();
+    const id = generation.current;
+    const count = Math.max(merged.length, 1);
+    void (async () => {
+      try {
+        const fresh: ReadingRecord[] = [];
+        let totalRows = 0;
+        for (let offset = 0; offset < count; offset += RECORDS_CHUNK) {
+          const page = await fetchChunk(offset, RECORDS_CHUNK);
+          if (id !== generation.current) return;
+          fresh.push(...page.items);
+          totalRows = page.total;
+          if (page.items.length === 0) break;
+        }
+        const tail = itemsRef.current.slice(fresh.length).filter((r) => !fresh.some((f) => f.id === r.id));
+        const next = [...fresh, ...tail];
+        itemsRef.current = next; setItems(next); setTotal(totalRows);
+        setSelected((current) => (current ? next.find((r) => r.id === current.id) ?? current : current));
+      } catch { /* 取り直せなくても、修正自体は反映済み。次の定期更新で整う */ }
+    })();
   };
 
   const changeFilter = (next: RecordFilterValue) => setFilter(fixedMonitorId != null ? { ...next, monitorIds: [fixedMonitorId] } : next);
@@ -122,6 +149,7 @@ export function RecordsSection({ monitors, title, description, showExport = fals
       <div className="records-title"><h2>{title}</h2>{description && <p className="muted">{description}</p>}</div>
       <div className="records-controls">
         <RecordFilters monitors={monitors} value={filter} onChange={changeFilter} hideMonitor={fixedMonitorId != null} />
+        {showExportXl && <ExportXlButton filter={filter} />}
         {showExport && <ExcelExportPanel filter={filter} />}
       </div>
     </div>

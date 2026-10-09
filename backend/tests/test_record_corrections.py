@@ -228,18 +228,18 @@ def test_usage_is_recomputed_for_the_corrected_and_the_next_record(client, db):
 def test_usage_null_conditions_are_kept(client, db):
     monitor = make_monitor(db)
     add_record(db, monitor, 7, "215836")
-    # 通信異常等(display_statusが正常/要確認以外)の記録 → 修正してもusageはnullのまま
+    # 手動修正済みは「運用者が確認した正式値」なので、記録時にdisplay_statusが異常系・baseline conflictだったとしても、usage計算上は信頼できる
     r8 = add_record(db, monitor, 8, "215858", value_source="carried_forward", display_status="read_error", usage=None, previous_value="215836")
-    assert correct(client, r8.id).status_code == 200
+    assert correct(client, r8.id, value="215850").status_code == 200
     db.expire_all()
-    assert db.get(ReadingRecord, r8.id).usage is None
-    # baseline conflict中の記録 → usageはnullのまま
+    assert db.get(ReadingRecord, r8.id).usage == "14"
     m2 = make_monitor(db)
     add_record(db, m2, 7, "215836")
     c8 = add_record(db, m2, 8, "215858", baseline_conflict=True, validation_status="decrease_detected", usage=None, previous_value="215836")
-    assert correct(client, c8.id).status_code == 200
+    assert correct(client, c8.id, value="215850").status_code == 200
     db.expire_all()
-    assert db.get(ReadingRecord, c8.id).usage is None
+    c8 = db.get(ReadingRecord, c8.id)
+    assert c8.usage == "14" and c8.baseline_conflict is True  # 元のbaseline_conflictは証跡として残る
     # 値が前回より減る修正 → usageはnull(減少)
     m3 = make_monitor(db)
     add_record(db, m3, 7, "215836")
@@ -269,7 +269,7 @@ def test_next_record_that_also_carries_the_same_value_is_not_rewritten(client, d
     db.expire_all()
     nxt = db.get(ReadingRecord, r9.id)
     assert nxt.value == "215858" and nxt.correction_count == 0  # 同じ誤った値を保持していても、勝手に一括書き換えしない
-    assert nxt.previous_value == "215850" and nxt.usage == "8"  # usageだけ整合(215858 - 215850)
+    assert nxt.previous_value == "215850" and nxt.usage is None  # previous_valueだけ整合。未修正のcarried_forwardはusageを計算しない(8と自動計算しない)
     assert correct(client, r9.id, value="215851", reason="次の記録も個別に修正").status_code == 200  # 必要なら次のrecordも個別に修正できる
 
 

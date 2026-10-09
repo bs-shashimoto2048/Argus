@@ -35,6 +35,8 @@ export function MonitorCard({ monitor, onClick, displayFps, latestRecord }: Prop
           {monitorStatusLabels[displayStatus]}
         </small>
       </div>
+      {/* 中央: 左=メーター画像(約70%) / 右=現在値・信頼度・更新(縦並び、約30%)。取得状態と警告は下段(横幅いっぱい)。 */}
+      <div className="card-body">
       <div className="preview-wrap">
         {monitor.source ? <VideoPreview monitorId={monitor.id} intervalMs={intervalMs} paused={paused} /> : <div className="no-video">映像ソース未設定</div>}
       </div>
@@ -46,6 +48,7 @@ export function MonitorCard({ monitor, onClick, displayFps, latestRecord }: Prop
         <div className="card-value-primary"><small>現在値</small><strong>{monitor.current_value ?? "--"}</strong></div>
         <div className={`card-value-confidence status-${displayStatus}`}><small>信頼度</small><strong>{monitor.confidence == null ? "--" : `${(monitor.confidence * 100).toFixed(1)}%`}</strong></div>
         <div className="card-value-updated"><small>更新</small><strong>{formatTimeJst(monitor.last_updated)}</strong></div>
+      </div>
       </div>
       <div className="card-meta"><span>取得状態：{fetchStateLabels[monitor.status] ?? monitor.status}</span></div>
       {/* バッジの有無でカード高さが変わらないよう、通知欄は常に一定の高さを確保する。 */}

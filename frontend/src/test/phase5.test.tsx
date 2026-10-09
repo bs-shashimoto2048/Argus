@@ -94,7 +94,7 @@ describe("Dashboard: レイアウト", () => {
     expect(children[1]).toHaveClass("monitoring-control");
     expect(children[0].nextElementSibling).toBe(children[1]); // 右隣
     expect(within(children[1]).getByText("Monitoring")).toBeInTheDocument();
-    expect(children[1]).toHaveTextContent("1 FPS");
+    expect(children[1]).toHaveTextContent("5 FPS");
     expect(within(children[1]).getByRole("button", { name: "Dashboard設定" })).toBeInTheDocument();
     await waitFor(() => expect(children[1].querySelector(".monitoring-status")).toHaveClass("live")); // 稼働中のMonitorがあれば緑のindicator
   });
@@ -123,7 +123,7 @@ describe("Dashboard: レイアウト", () => {
 });
 
 describe("履歴表: ヘッダー固定・スクロール", () => {
-  it("表はスクロール領域の中に1つのtable(thead + colgroup)として描画され、列がずれない", async () => {
+  it("表はスクロール領域の中に1つのtable(thead + tbody)として描画され、列がずれない", async () => {
     standardMocks([recordsHandler([record({ id: 1 }), record({ id: 2 })])]);
     renderApp("/");
     await screen.findByText("2件（全件表示）");
@@ -132,7 +132,7 @@ describe("履歴表: ヘッダー固定・スクロール", () => {
     expect(wrap).not.toBeNull();
     const tables = wrap.querySelectorAll("table");
     expect(tables).toHaveLength(1); // ヘッダーと本体が別tableにならない(列位置がずれない)
-    expect(tables[0].querySelectorAll("colgroup col")).toHaveLength(9);
+    expect(tables[0].querySelector("colgroup")).toBeNull(); // 列幅は固定せず、各列の内容の最小幅(折り返さない幅)
     expect(tables[0].querySelectorAll("thead th")).toHaveLength(9);
     expect(tables[0].querySelectorAll("tbody tr")).toHaveLength(2);
   });
@@ -157,13 +157,14 @@ describe("履歴表: ヘッダー固定・スクロール", () => {
     expect(document.querySelectorAll(".records-area")).toHaveLength(1);
   });
 
-  it("CSS: ヘッダーはsticky固定、本文領域のみ縦スクロール、必要時のみ表の中で横スクロール、列幅固定", () => {
+  it("CSS: ヘッダーはsticky固定、本文領域のみ縦スクロール、必要時のみ表の中で横スクロール、列は最小幅", () => {
     expect(value(".records-table th", "position")).toBe("sticky");
     expect(value(".records-table th", "top")).toBe("0");
     expect(value(".records-table-wrap", "overflow")).toBe("auto");
     expect(value(".records-table-wrap", "scrollbar-gutter")).toBe("stable"); // scrollbar表示でも列幅が変わらない
-    expect(value(".records-table", "table-layout")).toBe("fixed");
-    expect(declared(".records-table", "min-width")).toBe(true); // 狭い画面では表の内部だけが横スクロール
+    expect(value(".records-table", "table-layout")).toBe("auto"); // 各列は内容の最小幅(列幅の固定はしない)
+    expect(value(".records-table", "width")).toBe("100%"); // コンテナ幅を使い、余った幅は「モニター」列へ。狭い画面では表の内部だけが横スクロール
+    expect(value(".records-table", "min-width")).toBe("0");
     expect(value(".records-area.compact", "height")).toMatch(/^clamp\(/); // viewport基準の高さ
     expect(value(".records-area.tall", "height")).toMatch(/clamp\(/);
     expect(value("body", "overflow-x")).toBe("hidden"); // ページ全体には横スクロールを出さない
@@ -178,8 +179,8 @@ describe("画面揺れ防止(CSS)", () => {
     for (const selector of [".records-table td", ".card-values strong", ".status-item strong", ".drawer-fields dd"]) expect(declared(selector, "font-variant-numeric")).toBe(true);
     expect(value(".records-table td", "font-variant-numeric")).toBe("tabular-nums");
   });
-  it("Monitorカードは通知欄の高さを確保し、バッジの有無・値の桁数で高さが動かない", async () => {
-    expect(value(".monitor-card .card-notices", "min-height")).toMatch(/px$/);
+  it("Monitorカードは行内で高さが揃い(stretch)、正常時に通知欄の余白を作らない", async () => {
+    expect(value(".monitor-card .card-notices", "min-height")).toBe("0");
     expect(declared(".monitor-card .card-values", "min-height")).toBe(true);
     expect(value(".monitor-card", "align-self")).toBe("stretch");
     expect(declared(".preview-wrap", "height")).toBe(true); // ライブ画像は固定高さ

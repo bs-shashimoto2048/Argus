@@ -16,8 +16,8 @@ const propertyValue = (body: string, property: string) => new RegExp(String.raw`
 const value = (selector: string, property: string) => { const hits = rules(selector).map((b) => propertyValue(b, property)).filter(Boolean); return hits[hits.length - 1]; };
 const declared = (selector: string, property: string) => rules(selector).some((b) => propertyValue(b, property) !== undefined);
 
-// DashboardがMonitorカードの補助表示用に取得する「最新の記録」(limit=100)は、履歴表の取得ではないので除く
-const calls = (all: Call[]) => all.filter((c) => c.url.startsWith("/api/records?")).map((c) => new URL(c.url, "http://x").searchParams).filter((p) => p.get("limit") !== "100");
+// DashboardがMonitorカードの補助表示用に取得する「最新の記録」(limit=100)と、使用量推移グラフ用の取得(limit=1000)は、履歴表の取得ではないので除く
+const calls = (all: Call[]) => all.filter((c) => c.url.startsWith("/api/records?")).map((c) => new URL(c.url, "http://x").searchParams).filter((p) => p.get("limit") !== "100" && p.get("limit") !== "1000");
 
 /** 総件数totalの記録を、offset/limitに応じて返す(新しい順にidが小さくなる)。 */
 function pagedRecords(total: number, delayMs = 0) {
@@ -87,7 +87,7 @@ describe("計測履歴のヘッダー: 説明とフィルタが同じ行", () =>
     expect(title).toHaveTextContent("1時間ごとに自動記録（毎時00分）。詳細な検索・Excel出力は「履歴・データ」から行えます。");
     expect(within(controls).getByRole("combobox", { name: "モニター" })).toBeInTheDocument();
     expect(within(controls).getByRole("group", { name: "表示期間" })).toBeInTheDocument();
-    expect(within(controls).getAllByRole("button").map((b) => b.textContent)).toEqual(["今日", "過去7日", "任意期間"]);
+    expect(within(controls).getAllByRole("button").map((b) => b.textContent)).toEqual(["今日", "過去7日", "任意期間", "Export (XL)"]);
     expect(title.contains(controls)).toBe(false);
     // フィルタはヘッダー(records-head)の外にも無い
     expect(document.querySelectorAll(".record-filters")).toHaveLength(1);
@@ -185,7 +185,7 @@ describe("計測履歴: ページ送りなし・スクロールで全件", () =>
     // 行の重複がない(古い順に連続したid)
     const ids = [...document.querySelectorAll(".records-table tbody tr[data-record-id]")].map((r) => Number((r as HTMLElement).dataset.recordId));
     expect(new Set(ids).size).toBe(1200);
-  });
+  }, 20000); // 1200行を描画する重いテスト(CIの遅い実行環境でも既定の5秒を超えないよう明示)
 
   it("追加取得中に何度スクロールしても、同じ続きを二重に取得しない", async () => {
     let release: () => void = () => undefined;
@@ -266,23 +266,23 @@ describe("画面揺れ防止(compact化後も維持)", () => {
 });
 
 describe("Dashboard全体をviewport内に収め、計測履歴の表が残り高さで内部スクロールする", () => {
-  it("Dashboardのルートは viewport(100dvh) - 上部ナビ の高さの縦flex。overflow:hiddenで切らない", () => {
+  it("Dashboardのルートは viewport(100dvh) - 上部ナビ を下限とする縦flex(高さは固定せず、カード領域・グラフ・履歴の順に積む)。overflow:hiddenで切らない", () => {
     expect(value(".dashboard-page", "display")).toBe("flex");
     expect(value(".dashboard-page", "flex-direction")).toBe("column");
-    expect(rules(".dashboard-page").some((b) => /height:\s*calc\(100dvh - var\(--nav-h\)\)/.test(b))).toBe(true); // dvh基準(100vhはフォールバックとして先に宣言)
-    expect(rules(".dashboard-page").some((b) => /height:\s*calc\(100vh - var\(--nav-h\)\)/.test(b))).toBe(true);
+    expect(rules(".dashboard-page").some((b) => /min-height:\s*calc\(100dvh - var\(--nav-h\)\)/.test(b))).toBe(true); // dvh基準(100vhはフォールバックとして先に宣言)
+    expect(rules(".dashboard-page").some((b) => /min-height:\s*calc\(100vh - var\(--nav-h\)\)/.test(b))).toBe(true);
+    expect(value(".dashboard-page", "height")).toBe("auto"); // Monitor台数でページを伸ばさない(カード領域は最大高さ+内部スクロール)
     expect(value(":root", "--nav-h")).toBe("52px");
     expect(value(".app-nav", "min-height")).toBe("var(--nav-h)");
     for (const selector of [".dashboard-page", ".dashboard-page .monitor-grid", ".dashboard-page .records-section"]) {
       expect(["hidden", "clip"]).not.toContain(value(selector, "overflow")); // 単純なoverflow:hiddenで内容を切らない
     }
-    expect(value(".dashboard-page", "min-height")).toBe("0");
   });
 
-  it("上部(toolbar)とMonitorカードは固定サイズ(flex: 0 0 auto)、計測履歴のsectionが残り領域(flex: 1 1 auto; min-height: 0)を使う", () => {
+  it("上部(toolbar)・カード領域・グラフは固定サイズ(flex: 0 0 auto)、計測履歴のsectionが残り領域(flex: 1 1 auto)を使い、最低でも数行ぶんの高さ(min-height)を持つ", () => {
     expect(value(".dashboard-page > *", "flex")).toBe("0 0 auto");
     expect(value(".dashboard-page .records-section", "flex")).toBe("1 1 auto");
-    expect(value(".dashboard-page .records-section", "min-height")).toBe("0");
+    expect(parseInt(value(".dashboard-page .records-section", "min-height")!)).toBeGreaterThanOrEqual(280); // 1366x768でも表が数行見える
     expect(value(".dashboard-page .records-section", "display")).toBe("flex");
     expect(value(".dashboard-page .records-section", "flex-direction")).toBe("column");
     expect(value(".dashboard-page .records-head", "flex")).toBe("0 0 auto"); // ヘッダー(1行)は高さを増やさない
@@ -312,10 +312,10 @@ describe("Dashboard全体をviewport内に収め、計測履歴の表が残り�
       expect(card.querySelector(".status-badge")).not.toBeNull(); // 状態
       expect(card.querySelector(".card-notices")).not.toBeNull(); // 通知欄
     }
-    expect(value(".monitor-card .card-notices", "min-height")).toBe("56px");
+    expect(value(".monitor-card .card-notices", "min-height")).toBe("0"); // 警告が無い正常時は余白を作らない(カード高さは同じ行のカードに揃う)
     expect(value(".monitor-grid", "align-items")).toBe("stretch"); // 3枚の高さを揃える
     expect(value(".monitor-card", "align-self")).toBe("stretch");
-    expect(value(".preview-wrap", "height")).toMatch(/^clamp\(104px, 17vh, 220px\)$/);
+    expect(value(".monitor-card .card-body .preview-wrap", "height")).toBe("clamp(110px, 15vh, 170px)");
     expect(value(".video-image", "object-fit")).toBe("contain"); // 画像はaspect-ratioを維持
   });
 

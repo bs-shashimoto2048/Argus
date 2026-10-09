@@ -133,7 +133,8 @@ export type RecordCorrection = {
   original_image_path:string|null;overlay_image_path:string|null;client_host:string;context:Record<string,unknown>|null;
 };
 export type CorrectionRequest = {value:string;reason:string;operator:string;rebase_current_baseline:boolean};
-export type CorrectionResult = {record_id:number;correction:RecordCorrection;next_record:{record_id:number;hour_bucket:string;value:string|null;value_source:string;old_usage:string|null;new_usage:string|null}|null;rebase:{requested:boolean;performed:boolean;old_baseline?:string|null;new_baseline?:string|null};record:ReadingRecord};
+export type RecomputedRecord = {record_id:number;hour_bucket:string;value:string|null;value_source:string;old_usage:string|null;new_usage:string|null};
+export type CorrectionResult = {record_id:number;correction:RecordCorrection;next_record:RecomputedRecord|null;recomputed_records?:RecomputedRecord[];rebase:{requested:boolean;performed:boolean;old_baseline?:string|null;new_baseline?:string|null};record:ReadingRecord};
 export type RecordsPage = {items:ReadingRecord[];total:number;limit:number;offset:number};
 export type RecordsQuery = {monitorIds:number[];from?:string;to?:string;limit:number;offset:number};
 export type ExcelExportRequest = {monitor_ids:number[];from?:string;to?:string;save_to_server:boolean};

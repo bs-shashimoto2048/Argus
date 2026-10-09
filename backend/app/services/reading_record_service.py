@@ -89,6 +89,28 @@ def set_hourly_records_enabled(db: Session, enabled: bool) -> None:
     db.commit()
 
 
+def is_trusted_values(*, numeric: Decimal | None, value_source: str | None, display: str | None, baseline_conflict: bool, corrected: bool) -> bool:
+    """usage計算上、「現在の正式値として信頼できる」記録か。
+
+    - 手動修正済み(運用者が画像等を確認して正式値を確定した)は、記録時にbaseline conflict・carried_forward・
+      decrease_detected等だったとしても信頼できる(記録時の証跡そのものは変更しない。usage計算の失格条件だけをoverrideする)。
+    - 未修正は、通常のConfirmed(value_source=confirmed)で、display_statusが正常系・baseline conflictなしの場合だけ。
+      未修正のcarried_forwardは、正式値欄に値があっても信頼しない(実際の使用量0とは保証できない)。
+    """
+    if numeric is None:
+        return False
+    if corrected:
+        return True
+    return value_source == "confirmed" and display in _VALUE_OK_STATUSES and not baseline_conflict
+
+
+def is_trusted_record(record: ReadingRecord | None) -> bool:
+    if record is None:
+        return False
+    return is_trusted_values(numeric=_decimal(record.numeric_value), value_source=record.value_source, display=record.display_status,
+                             baseline_conflict=bool(record.baseline_conflict), corrected=(record.correction_count or 0) > 0)
+
+
 def compute_usage(
     db: Session,
     monitor_id: int,
@@ -98,25 +120,29 @@ def compute_usage(
     display: str,
     baseline_conflict: bool,
     now_utc: datetime,
+    value_source: str | None = "confirmed",
+    corrected: bool = False,
 ) -> str | None:
-    """使用量 = 今回の定時計測値 - 前回の定時計測値。連続した正常なデータでなければNone。
+    """使用量 = 今回の定時計測値 - 直前1時間の定時計測値。今回と直前の**両方**が信頼できる記録でなければNone。
 
-    Noneになる条件: 前回記録なし/どちらかの値なし/値が減少/どちらかが正常でない
-    (display_statusが正常・要確認以外、またはbaseline conflict)/前回記録以降にbaselineの
-    reset・rebase・自動クリアがあった。
+    Noneになる条件: 直前記録なし/どちらかが信頼できない(is_trusted_values: 未修正のcarried_forward・baseline conflict・
+    正常系でないdisplay_status等。手動修正済みは信頼できる)/値が減少/直前記録以降にbaselineのreset・rebase・自動クリアがあった。
+    直前が信頼できない区間を飛ばして、複数時間分を1時間の使用量として計上しない。
+    baselineのrebaseは、その新しい値が前後どちらかの信頼できる記録の値と一致する場合(=運用者が確認した値への再設定)は
+    連続性を壊さないものとして扱う(監査履歴は変更しない)。
     """
     if previous is None or numeric is None:
         return None
     previous_numeric = _decimal(previous.numeric_value)
     if previous_numeric is None:
         return None
-    if display not in _VALUE_OK_STATUSES or previous.display_status not in _VALUE_OK_STATUSES:
+    if not is_trusted_values(numeric=numeric, value_source=value_source, display=display, baseline_conflict=baseline_conflict, corrected=corrected):
         return None
-    if baseline_conflict or previous.baseline_conflict:
+    if not is_trusted_record(previous):
         return None
     if numeric < previous_numeric:
         return None
-    query = select(func.count()).select_from(ReadingBaselineEvent).where(
+    query = select(ReadingBaselineEvent).where(
         ReadingBaselineEvent.monitor_id == monitor_id,
         ReadingBaselineEvent.action.in_(_BASELINE_RESET_ACTIONS),
         ReadingBaselineEvent.occurred_at > previous.recorded_at,
@@ -124,7 +150,9 @@ def compute_usage(
     )
     if monitor_created_at is not None:
         query = query.where(ReadingBaselineEvent.occurred_at >= monitor_created_at)
-    if (db.scalar(query) or 0) > 0:
+    for event in db.scalars(query):
+        if event.action == "rebase" and _decimal(event.new_value) in (numeric, previous_numeric):
+            continue  # 確認済みの値への再設定は、連続性を壊さない
         return None
     return format(numeric - previous_numeric, "f")
 
@@ -191,7 +219,7 @@ def build_record(db: Session, monitor: Monitor, bucket: datetime, now_utc: datet
 
     previous = db.scalar(select(ReadingRecord).where(
         ReadingRecord.monitor_id == monitor.id, ReadingRecord.hour_bucket == (bucket - timedelta(hours=1)).isoformat()))
-    usage = compute_usage(db, monitor.id, monitor.created_at, previous, numeric, display, baseline_conflict, now_utc)
+    usage = compute_usage(db, monitor.id, monitor.created_at, previous, numeric, display, baseline_conflict, now_utc, value_source)
     inference = monitor.inference
     if use_snapshot:
         confidence = snapshot.confirmed_confidence if has_value else None

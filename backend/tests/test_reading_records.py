@@ -183,14 +183,14 @@ def test_value_source_follows_the_latest_validation_status(db, monkeypatch, vali
     assert (record.value, record.raw_value, record.validation_status, record.value_source) == ("372413.8", "372413.0", validation, source)
 
 
-def test_carried_forward_keeps_usage_calculation_when_the_series_is_continuous(db, monkeypatch):
+def test_carried_forward_usage_is_null_until_it_is_corrected(db, monkeypatch):
     monitor = make_monitor(db, value="372412.4")
     svc.record_due(db, jst(14, 0, 5))
     set_latest(db, monitor, value="372413.8")
     monkeypatch.setattr(svc, "_live_raw_and_validation", lambda _id: ("372413.0", "decrease_detected"))  # 回転途中でRawが棄却されている
     svc.record_due(db, jst(15, 0, 5))
     second = records_of(db, monitor.id)[1]
-    assert (second.value, second.value_source, second.previous_value, second.usage) == ("372413.8", "carried_forward", "372412.4", "1.4")
+    assert (second.value, second.value_source, second.previous_value, second.usage) == ("372413.8", "carried_forward", "372412.4", None)  # 未修正のcarried_forwardは信頼値にしない(実際の使用量は保証できない)
 
 
 def test_backfill_value_source_sets_the_origin_of_existing_records():

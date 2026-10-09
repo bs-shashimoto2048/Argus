@@ -1,4 +1,4 @@
-import { DASHBOARD_DISPLAY_FPS_OPTIONS } from "../hooks/useDashboardSettings";
+import { DASHBOARD_DISPLAY_FPS_DEFAULT, DASHBOARD_DISPLAY_FPS_OPTIONS, DASHBOARD_HIGH_FPS } from "../hooks/useDashboardSettings";
 import type { DashboardDisplayFps, DashboardSettings } from "../hooks/useDashboardSettings";
 import { CsvExportSettingsPanel } from "./CsvExportSettingsPanel";
 
@@ -21,13 +21,15 @@ export function DashboardSettingsModal({ settings, onChange, onClose }: Props) {
             value={settings.displayFps}
             onChange={(event) => onChange({ displayFps: Number(event.target.value) as DashboardDisplayFps })}
           >
-            {DASHBOARD_DISPLAY_FPS_OPTIONS.map((fps) => <option key={fps} value={fps}>{fps} FPS</option>)}
+            {DASHBOARD_DISPLAY_FPS_OPTIONS.map((fps) => <option key={fps} value={fps}>{fps} FPS{fps === DASHBOARD_DISPLAY_FPS_DEFAULT ? "（推奨）" : ""}</option>)}
           </select>
         </label>
+        {settings.displayFps >= DASHBOARD_HIGH_FPS && <p className="muted small fps-warning" role="note">高いFPSでは、Monitor台数やネットワーク環境によりブラウザ・通信負荷が増加します。</p>}
         <p className="muted">
           Dashboard一覧に表示するプレビュー映像の更新頻度です。既存の映像取得・推論設定
           (video_fps / inference_fps)には影響しません。全モニターへ一括で適用され、
-          ブラウザを閉じても保持されます。
+          ブラウザを閉じても保持されます。画面の外にあるMonitorカードや、
+          非表示のタブでは、画像の更新を止めます。
         </p>
       </section>
       {/* CSV出力(Issue #17)は表示設定(Frontend-only/localStorage)とは独立させ、
