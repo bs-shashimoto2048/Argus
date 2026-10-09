@@ -244,7 +244,7 @@ describe("計測履歴: ページ送りなし・スクロールで全件", () =>
 
 describe("画面揺れ防止(compact化後も維持)", () => {
   it("履歴領域は固定の高さ(viewport基準)で、件数表示の行も高さを確保している", () => {
-    expect(value(".records-area.compact", "height")).toBe("clamp(340px, 54vh, 660px)");
+    expect(value(".records-area.compact", "height")).toBe("clamp(340px, 54vh, 660px)"); // Dashboard以外(単体)の既定。Dashboardでは残り高さに置き換わる(下記)
     expect(value(".records-area.tall", "height")).toMatch(/^clamp\(.*100vh/);
     expect(value(".records-count", "min-height")).toBe("20px"); // 件数テキストの有無で高さが変わらない
     expect(value(".records-table-wrap", "scrollbar-gutter")).toBe("stable");
@@ -261,5 +261,76 @@ describe("画面揺れ防止(compact化後も維持)", () => {
     expect(await within(area).findByText("この条件に該当する計測記録はありません。")).toBeInTheDocument();
     expect(document.querySelectorAll(".records-area")).toHaveLength(1);
     expect(document.querySelector(".records-count")).not.toBeNull();
+  });
+});
+
+describe("Dashboard全体をviewport内に収め、計測履歴の表が残り高さで内部スクロールする", () => {
+  it("Dashboardのルートは viewport(100dvh) - 上部ナビ の高さの縦flex。overflow:hiddenで切らない", () => {
+    expect(value(".dashboard-page", "display")).toBe("flex");
+    expect(value(".dashboard-page", "flex-direction")).toBe("column");
+    expect(rules(".dashboard-page").some((b) => /height:\s*calc\(100dvh - var\(--nav-h\)\)/.test(b))).toBe(true); // dvh基準(100vhはフォールバックとして先に宣言)
+    expect(rules(".dashboard-page").some((b) => /height:\s*calc\(100vh - var\(--nav-h\)\)/.test(b))).toBe(true);
+    expect(value(":root", "--nav-h")).toBe("52px");
+    expect(value(".app-nav", "min-height")).toBe("var(--nav-h)");
+    for (const selector of [".dashboard-page", ".dashboard-page .monitor-grid", ".dashboard-page .records-section"]) {
+      expect(["hidden", "clip"]).not.toContain(value(selector, "overflow")); // 単純なoverflow:hiddenで内容を切らない
+    }
+    expect(value(".dashboard-page", "min-height")).toBe("0");
+  });
+
+  it("上部(toolbar)とMonitorカードは固定サイズ(flex: 0 0 auto)、計測履歴のsectionが残り領域(flex: 1 1 auto; min-height: 0)を使う", () => {
+    expect(value(".dashboard-page > *", "flex")).toBe("0 0 auto");
+    expect(value(".dashboard-page .records-section", "flex")).toBe("1 1 auto");
+    expect(value(".dashboard-page .records-section", "min-height")).toBe("0");
+    expect(value(".dashboard-page .records-section", "display")).toBe("flex");
+    expect(value(".dashboard-page .records-section", "flex-direction")).toBe("column");
+    expect(value(".dashboard-page .records-head", "flex")).toBe("0 0 auto"); // ヘッダー(1行)は高さを増やさない
+  });
+
+  it("履歴の表の領域は残り高さで伸縮し(flex: 1 1 0 / height:auto / min-height)、表の容器だけがoverflow-y:autoでスクロールする", () => {
+    expect(value(".dashboard-page .records-area.compact", "flex")).toBe("1 1 0");
+    expect(value(".dashboard-page .records-area.compact", "height")).toBe("auto"); // 固定のviewport比(54vh)ではなく残り高さ
+    expect(declared(".dashboard-page .records-area.compact", "min-height")).toBe(true);
+    expect(value(".dashboard-page .records-area .records-table-wrap", "overflow-y")).toBe("auto");
+    expect(value(".dashboard-page .records-area .records-table-wrap", "min-height")).toBe("0");
+    expect(value(".dashboard-page .records-area .records-table-wrap", "height")).toBe("100%");
+    expect(value(".records-area", "min-height")).toBe("0");
+    expect(value(".records-table th", "position")).toBe("sticky"); // ヘッダー固定は維持
+  });
+
+  it("Monitorカードは情報(画像・現在値・信頼度・更新・状態・通知)を残したまま高さを詰め、通知欄の高さは常に確保する", async () => {
+    standardMocks();
+    renderApp("/");
+    await waitFor(() => expect(document.querySelectorAll(".monitor-card")).toHaveLength(3));
+    for (const card of document.querySelectorAll(".monitor-card")) {
+      expect(card.querySelector(".preview-wrap, .no-video")).not.toBeNull(); // 画像(または未設定表示)
+      expect(card.querySelector(".card-value-primary")).not.toBeNull(); // 現在値
+      expect(card.querySelector(".card-value-confidence")).not.toBeNull(); // 信頼度
+      expect(card.querySelector(".card-value-updated")).not.toBeNull(); // 更新時刻
+      expect(card.querySelector(".card-meta")).toHaveTextContent("取得状態"); // 取得状態
+      expect(card.querySelector(".status-badge")).not.toBeNull(); // 状態
+      expect(card.querySelector(".card-notices")).not.toBeNull(); // 通知欄
+    }
+    expect(value(".monitor-card .card-notices", "min-height")).toBe("56px");
+    expect(value(".monitor-grid", "align-items")).toBe("stretch"); // 3枚の高さを揃える
+    expect(value(".monitor-card", "align-self")).toBe("stretch");
+    expect(value(".preview-wrap", "height")).toMatch(/^clamp\(104px, 17vh, 220px\)$/);
+    expect(value(".video-image", "object-fit")).toBe("contain"); // 画像はaspect-ratioを維持
+  });
+
+  it("Dashboardのページ全体で縦overflowを起こすルール(固定高さのmin-heightや履歴領域の固定px高さ)が残っていない", () => {
+    expect(value(".dashboard-page .monitor-grid", "min-height")).toBe("0"); // 以前の470px確保を解除
+    expect(value(".dashboard-page .records-area", "height") ?? "auto").toBe("auto");
+  });
+
+  it("ページ送りなし・段階読み込みは維持(Dashboardの履歴がスクロール領域内に描画され、続きの取得が動く)", async () => {
+    const mocks = standardMocks([pagedRecords(1200)]);
+    renderApp("/");
+    await waitFor(() => expect(rowCount()).toBe(500));
+    expect(document.querySelector(".dashboard-page .records-area .records-table-wrap")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: /前へ|次へ/ })).not.toBeInTheDocument();
+    scrollTo(screen.getByTestId("records-scroll"), 9500);
+    await waitFor(() => expect(rowCount()).toBe(1000));
+    expect(calls(mocks.calls).map((p) => p.get("offset"))).toEqual(["0", "500"]);
   });
 });
