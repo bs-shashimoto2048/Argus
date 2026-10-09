@@ -185,6 +185,16 @@ class ImageLinker:
 
 # --- 書き込み ---
 
+_EDGE_WS_CTRL = re.compile(r"^[\s\x00-\x1f]+|[\s\x00-\x1f]+$")
+
+
+def display_monitor_name(text: str | None) -> str:
+    """Excelの「Monitor名」セル用の表示整形。先頭・末尾の空白/制御文字(タブ・CR・LF等)だけを除き、内部の通常スペースは維持する。
+
+    DBのreading_records.monitor_name(記録時点のスナップショット=証跡)は変更しない。"""
+    return _EDGE_WS_CTRL.sub("", text or "")
+
+
 def _decimal_number(text: str | None) -> float | None:
     if text is None or text == "":
         return None
@@ -277,7 +287,7 @@ def _write_row(ws, row: int, record: ReadingRecord, fmt: dict, linker: ImageLink
     """1行を書く。戻り値は追加したハイパーリンク数。"""
     ws.write_datetime(row, 0, _to_excel_datetime(record.recorded_at), fmt["date"])
     ws.write_number(row, 1, record.monitor_id)
-    ws.write_string(row, 2, record.monitor_name or "")
+    ws.write_string(row, 2, display_monitor_name(record.monitor_name))
     for col, text in ((_COL_VALUE, record.value), (_COL_PREVIOUS, record.previous_value), (_COL_USAGE, record.usage)):
         number = _decimal_number(text)
         if number is not None:

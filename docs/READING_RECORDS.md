@@ -77,6 +77,12 @@ Drumメーターは桁の回転中に、最新Rawが6桁以下になったり `i
 - 空き容量: 10GB未満でwarning、5GB未満で新規の画像保存を停止（既定。`/api/system/data-storage`で変更可）。停止中も計測値の記録は続く。
 - 状態は `GET /api/system/data-storage/status`（UIの警告用）とログで確認できる。保存先の変更は、設定画面（Phase 4）までは`PUT /api/system/data-storage`で行う。
 
+### carried_forward の例（Raw棄却中でも、それ以前に確定済みの値を保持）
+
+07:00 の正式値が `215836`、07:00〜08:00 の間に正常Confirmed `215858`、08:00 の瞬間のRawが `0215850`（`decrease_detected`）だった場合、
+08:00 の記録は `value=215858` / `value_source=carried_forward` / `raw_value=0215850` / `validation_status=decrease_detected` / `usage=22` になります。
+「08:00時点の最新Rawは棄却したが、それ以前に正常確定済みの215858を保持した」という意味で、不具合ではありません。
+
 ## Excel出力（Phase 3）
 
 `reading_records`を正式なデータ源として、Excel(.xlsx)を出力します（`inference_results`は使いません）。
@@ -95,6 +101,8 @@ Drumメーターは桁の回転中に、最新Rawが6桁以下になったり `i
   baseline_conflict / engine / model_id / 元画像パス / 推論画像パス。古い順。ヘッダー太字・オートフィルタ・先頭行固定。
 - セル型: 確定値・前回値・使用量・信頼度は**数値**（信頼度は`0.000`）、null/値なしは**空セル**。Raw値は**文字列**（先頭0を保持。例 `0265803`）。
   計測日時は`recorded_at`をUTC→JSTへ変換した`yyyy/mm/dd hh:mm:ss`（`hour_bucket`ではなく実際の記録時刻）。
+- 「Monitor名」セルは、先頭・末尾の空白/制御文字（タブ・CR・LF等）だけを除いて表示する（内部のスペースは維持。DBの`monitor_name`スナップショットは変更しない）。
+- `to`は排他的（`2026-10-08`は`2026-10-08 00:00`）。終了日を含めたいときは呼び出し側（Phase 4 UI）が翌日0:00を渡す。Backendは補正しない。
 - `value_source`（confirmed / carried_forward / none）、`usage`、`validation_status`等は**DBの値をそのまま**出力する。Excel側で再判定・再計算しない。
   `carried_forward`は、記録時のRawが回転途中・見切れ・検証失敗等で確定できず、直前の正常Confirmed値を正式値として保持した記録。
 - 画像: 埋め込まず、パス（`<現在の画像保存先>` + DBの相対パス）を出力する。ファイルが存在すればハイパーリンク、無ければ（保存先が不通でも）

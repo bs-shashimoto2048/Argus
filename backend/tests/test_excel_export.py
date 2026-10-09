@@ -229,6 +229,28 @@ def test_usage_and_values_are_not_recomputed(client, db):
     assert row[5] == 999
 
 
+def test_monitor_name_cell_is_normalized_but_db_is_untouched(client, db):
+    assert excel.display_monitor_name("Drum Meter\t") == "Drum Meter"
+    assert excel.display_monitor_name("\r\n Drum  Meter \t\n") == "Drum  Meter"  # 内部のスペースは維持
+    assert excel.display_monitor_name(None) == ""
+    m = make_monitor(db, "名前")
+    record = add_record(db, m, 18, monitor_name="Drum Meter\t")
+    ws = open_book(export(client, [m.id]))["名前"]
+    assert ws.cell(2, 3).value == "Drum Meter"
+    db.expire_all()
+    assert db.get(ReadingRecord, record.id).monitor_name == "Drum Meter\t"  # 証跡はそのまま
+
+
+def test_carried_forward_keeps_earlier_confirmed_value_with_rejected_raw(client, db):
+    # 07:00の正式値215836。その後に正常確定した215858を、08:00の瞬間のRaw(0215850, decrease_detected)を棄却したうえで保持する。
+    m = make_monitor(db, "保持")
+    add_record(db, m, 7, value="215836", raw_value="0215836")
+    add_record(db, m, 8, value="215858", numeric_value="215858", raw_value="0215850", previous_value="215836", usage="22",
+               value_source="carried_forward", validation_status="decrease_detected")
+    row = rows_of(open_book(export(client, [m.id]))["保持"])[1]
+    assert (row[3], row[4], row[5], row[6], row[8], row[9]) == (215858, 215836, 22, "0215850", "decrease_detected", "carried_forward")
+
+
 def test_datetime_is_jst_and_formatted(client, db):
     m = make_monitor(db, "日時")
     add_record(db, m, 18, recorded_at=jst(18) + timedelta(seconds=5))
