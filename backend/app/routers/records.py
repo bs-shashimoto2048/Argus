@@ -5,7 +5,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.background import BackgroundTask
@@ -13,12 +13,22 @@ from sqlalchemy.orm import Session
 
 from ..core.database import get_db
 from ..services import excel_export_service as excel
+from ..services import reading_correction_service as corrections
 from ..services import reading_record_service as svc
 from ..services.record_image_service import resolve_image_path
 from ..services.storage_settings_service import StorageTimeout, excel_output_folder, load_config
 from runtime.hourly_record_worker import hourly_record_worker
 
 router = APIRouter(prefix="/api/records", tags=["records"])
+
+
+class CorrectionInput(BaseModel):
+    """読取値(正式値)の手動修正。value=修正後の正式値、reason/operatorは必須。rebase_current_baseline=trueのときだけ現在の読取基準値も再設定する。"""
+
+    value: str = Field(max_length=64)
+    reason: str = Field(max_length=2000)
+    operator: str = Field(max_length=200)
+    rebase_current_baseline: bool = False
 
 
 class RecordSettingsInput(BaseModel):
@@ -124,6 +134,26 @@ def export_excel(body: ExcelExportInput, db: Session = Depends(get_db)):
         _export_lock.release()
         if not keep_work_dir:
             shutil.rmtree(work_dir, ignore_errors=True)
+
+
+@router.post("/{record_id}/correct")
+def correct_record(record_id: int, body: CorrectionInput, request: Request, db: Session = Depends(get_db)):
+    """carried_forward / 基準値競合中の記録の正式値を、運用者が修正する(監査履歴を残す)。元証跡(Raw・画像・判定)は変更しない。"""
+    try:
+        result = corrections.correct_record(db, record_id, body.value, body.reason, body.operator, request.client.host if request.client else "", body.rebase_current_baseline)
+    except corrections.CorrectionError as exc:
+        raise HTTPException(exc.status, {"code": exc.code, "message": str(exc)}) from exc
+    record = svc.get_record(db, record_id)
+    return {**result, "record": svc.serialize(record)}
+
+
+@router.get("/{record_id}/corrections")
+def list_record_corrections(record_id: int, db: Session = Depends(get_db)):
+    """記録の修正履歴(新しい順)。old/new・理由・操作者・コンテキスト。"""
+    rows = corrections.list_corrections(db, record_id)
+    if rows is None:
+        raise HTTPException(404, "計測記録が見つかりません")
+    return {"record_id": record_id, "corrections": rows}
 
 
 @router.get("/{record_id}")

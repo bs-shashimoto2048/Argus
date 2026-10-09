@@ -41,6 +41,8 @@ _VALUE_OK_STATUSES = ("normal", "warning")
 _ACCEPTED_VALIDATION = ("confirmed", "low_confidence")
 # 1時間記録の画像に使うフレームの鮮度の上限(秒)。映像が止まっているときの古いフレームを証跡にしない。
 _FRAME_MAX_AGE_SECONDS = 10.0
+# 記録に使う推論snapshotの鮮度の上限(秒)。映像/推論が止まって古い推論結果を、定時計測の証跡にしない。
+_SNAPSHOT_MAX_AGE_SECONDS = 10.0
 # usageを無効にする、baselineの操作イベント。
 _BASELINE_RESET_ACTIONS = ("reset", "rebase", "auto_semantic_reset")
 
@@ -136,22 +138,50 @@ def _live_raw_and_validation(monitor_id: int) -> tuple[str | None, str | None]:
     return confirmed.raw_value, confirmed.validation_status.value
 
 
-def build_record(db: Session, monitor: Monitor, bucket: datetime, now_utc: datetime) -> ReadingRecord:
-    """計測枠bucketの記録(未保存)を組み立てる。"""
+def get_fresh_snapshot(monitor_id: int, now_utc: datetime):
+    """そのMonitorの、直近の完了した推論tickのsnapshotを**1回だけ**取得する(古い場合・無い場合はNone)。
+
+    定時計測recordの値・Raw・判定・画像・engine/modelは、すべてこの1つのsnapshotから作る(別tickの値を混ぜない)。
+    """
+    runtime = runtime_manager.get_runtime(monitor_id)
+    scheduler = getattr(runtime, "inference_scheduler", None) if runtime else None
+    getter = getattr(scheduler, "get_record_snapshot", None) if scheduler else None
+    snapshot = getter() if getter else None
+    if snapshot is None or (now_utc - snapshot.inference_at).total_seconds() > _SNAPSHOT_MAX_AGE_SECONDS:
+        return None
+    return snapshot
+
+
+def build_record(db: Session, monitor: Monitor, bucket: datetime, now_utc: datetime, snapshot=None) -> ReadingRecord:
+    """計測枠bucketの記録(未保存)を組み立てる。
+
+    snapshot(1推論tickの不変な情報)がある場合は、値・Raw・Rawのconfidence・判定・baseline conflict・engine/model・推論時刻を
+    すべてそのsnapshotだけから使う(LatestResult等を読み直さない)。snapshotが無い場合(推論が無効/停止中など)は従来の経路。
+    """
     latest = monitor.latest_result
-    display = display_status(monitor.status, latest.status if latest else None)
-    conflict_summary = summarize_baseline(monitor.reading_baseline)
-    baseline_conflict = bool(conflict_summary and conflict_summary.get("conflict"))
+    use_snapshot = snapshot is not None and monitor.status == "running"
+    if use_snapshot:
+        display = display_status(monitor.status, snapshot.inference_status or (latest.status if latest else None))
+        baseline_conflict = bool(snapshot.baseline_conflict)
+    else:
+        display = display_status(monitor.status, latest.status if latest else None)
+        conflict_summary = summarize_baseline(monitor.reading_baseline)
+        baseline_conflict = bool(conflict_summary and conflict_summary.get("conflict"))
     # 正式記録値: 映像が稼働中なら、直前の正常Confirmed値(LatestResult.value)を記録する。最新のRawが棄却中
     # (pending/invalid_format/decrease_detected/rate_exceeded/no_reading等、桁の回転途中・見切れ中を含む)でも、
     # 「直近の最高値」ではなく直前の正常確定値を保持する(value_source=carried_forward)。映像が稼働していない
     # (通信異常・停止中・接続中)間は記録しない(value_source=none)。
-    has_value = monitor.status == "running" and latest is not None and latest.value is not None
-    value = latest.value if has_value else None
+    if use_snapshot:
+        has_value = snapshot.confirmed_value is not None
+        value = snapshot.confirmed_value if has_value else None
+        raw_value, validation_status = snapshot.raw_value, snapshot.validation_status
+    else:
+        has_value = monitor.status == "running" and latest is not None and latest.value is not None
+        value = latest.value if has_value else None
+        raw_value, validation_status = _live_raw_and_validation(monitor.id)
+        if validation_status is None and has_value:
+            validation_status = {"ok": "confirmed", "low_confidence": "low_confidence"}.get(latest.status or "", "no_reading")
     numeric = _decimal(value)
-    raw_value, validation_status = _live_raw_and_validation(monitor.id)
-    if validation_status is None and has_value:
-        validation_status = {"ok": "confirmed", "low_confidence": "low_confidence"}.get(latest.status or "", "no_reading")
     if not has_value:
         value_source = "none"
     elif validation_status in _ACCEPTED_VALIDATION:
@@ -163,6 +193,16 @@ def build_record(db: Session, monitor: Monitor, bucket: datetime, now_utc: datet
         ReadingRecord.monitor_id == monitor.id, ReadingRecord.hour_bucket == (bucket - timedelta(hours=1)).isoformat()))
     usage = compute_usage(db, monitor.id, monitor.created_at, previous, numeric, display, baseline_conflict, now_utc)
     inference = monitor.inference
+    if use_snapshot:
+        confidence = snapshot.confirmed_confidence if has_value else None
+        engine = snapshot.engine or (inference.engine if inference else None)
+        model_id = snapshot.model_id or (inference.model_id if inference else None)
+        raw_confidence, inference_at = snapshot.raw_confidence, _naive_utc(snapshot.inference_at)
+    else:
+        confidence = latest.confidence if has_value else None
+        engine = (latest.engine if latest and latest.engine else None) or (inference.engine if inference else None)
+        model_id = inference.model_id if inference else None
+        raw_confidence, inference_at = None, None  # snapshotによる同一tick保証が無い記録(推測で補わない)
     return ReadingRecord(
         monitor_id=monitor.id,
         monitor_name=monitor.display_name or monitor.name,
@@ -174,12 +214,14 @@ def build_record(db: Session, monitor: Monitor, bucket: datetime, now_utc: datet
         raw_value=raw_value if has_value else None,
         previous_value=previous.value if previous is not None else None,
         usage=usage,
-        confidence=latest.confidence if has_value else None,
+        confidence=confidence,
+        raw_confidence=raw_confidence,
+        inference_at=inference_at,
         validation_status=validation_status,
         display_status=display,
         baseline_conflict=baseline_conflict,
-        engine=(latest.engine if latest and latest.engine else None) or (inference.engine if inference else None),
-        model_id=inference.model_id if inference else None,
+        engine=engine,
+        model_id=model_id,
         image_status="not_saved",  # record_dueが、画像保存の設定/フレームの有無に応じてpending/disabled/failedへ更新する
     )
 
@@ -231,11 +273,13 @@ def record_due(db: Session, now_utc: datetime | None = None, started_at: datetim
             outcomes.append(RecordOutcome(monitor.id, key, "waiting"))
             continue
         try:
-            record = build_record(db, monitor, bucket, now_utc)
+            # 推論snapshotは記録ごとに1回だけ取得し、同じsnapshotだけから記録(Raw/判定/値)と画像ジョブを作る。
+            snapshot = get_fresh_snapshot(monitor.id, now_utc)
+            record = build_record(db, monitor, bucket, now_utc, snapshot)
             db.add(record)
             db.commit()  # 計測値の記録を先に確定する(画像保存の成否に関わらず残る)
             outcomes.append(RecordOutcome(monitor.id, key, "created", record.id))
-            _attach_images(db, monitor, record, storage_config, writer)
+            _attach_images(db, monitor, record, storage_config, writer, snapshot)
         except IntegrityError:
             db.rollback()  # 同時に別のtickが作成済み(UNIQUE制約)
             outcomes.append(RecordOutcome(monitor.id, key, "exists"))
@@ -266,14 +310,20 @@ def _capture_frames(monitor_id: int) -> tuple[bytes | None, bytes | None]:
     return original, overlay
 
 
-def _attach_images(db: Session, monitor: Monitor, record: ReadingRecord, config: StorageConfig, writer) -> None:
-    """記録の作成直後に、画像保存のジョブを作る。失敗しても計測値の記録には影響しない。"""
+def _attach_images(db: Session, monitor: Monitor, record: ReadingRecord, config: StorageConfig, writer, snapshot=None) -> None:
+    """記録の作成直後に、画像保存のジョブを作る。失敗しても計測値の記録には影響しない。
+
+    snapshotがある場合、元画像とoverlayは記録と同じsnapshot(同じ推論tick・同じフレーム)から取り出す。
+    """
     try:
         if not config.enabled:
             record.image_status = "disabled"
             db.commit()
             return
-        original, overlay = _capture_frames(monitor.id)
+        if snapshot is not None and record.inference_at is not None:
+            original, overlay = snapshot.original_jpeg, snapshot.overlay_jpeg
+        else:
+            original, overlay = _capture_frames(monitor.id)
         job = ImageJob(record_id=record.id, monitor_id=monitor.id, monitor_name=record.monitor_name, recorded_at=record.recorded_at,
                        value=record.value, original=original, overlay=overlay, want_original=config.save_original, want_overlay=config.save_overlay)
         if not ((config.save_original and original) or (config.save_overlay and overlay)):
@@ -305,6 +355,21 @@ def backfill_value_source(connection) -> None:
 
 # --- 参照 ---
 
+# 手動修正の対象になる読取判定(基準値と矛盾して棄却された記録)。
+_CONFLICT_VALIDATIONS = ("decrease_detected", "rate_exceeded")
+
+
+def correctable_reason(record: ReadingRecord) -> str | None:
+    """正式値を手動修正できる理由(carried_forward / baseline_conflict)。修正できない記録(通常のconfirmed等)はNone。"""
+    if record.value is None:
+        return None  # 正式値が無い記録(通信異常等)は修正の対象外
+    if record.value_source == "carried_forward":
+        return "carried_forward"
+    if record.baseline_conflict or (record.validation_status in _CONFLICT_VALIDATIONS):
+        return "baseline_conflict"
+    return None
+
+
 def serialize(record: ReadingRecord) -> dict:
     return {
         "id": record.id, "monitor_id": record.monitor_id, "monitor_name": record.monitor_name,
@@ -315,6 +380,13 @@ def serialize(record: ReadingRecord) -> dict:
         "baseline_conflict": record.baseline_conflict, "engine": record.engine, "model_id": record.model_id,
         "original_image_path": record.original_image_path, "overlay_image_path": record.overlay_image_path,
         "image_status": record.image_status, "image_error": record.image_error,
+        # 証跡の整合性: raw_confidenceは最新Raw側のconfidence(confidenceは正式値側)。inference_atはその証跡snapshotの推論時刻。
+        # inference_atがNULLの記録は、snapshotによる同一tick保証が無かった既存データ。
+        "raw_confidence": record.raw_confidence, "inference_at": _iso(record.inference_at), "snapshot_consistent": record.inference_at is not None,
+        # 手動修正(監査の正本は reading_record_corrections / GET /api/records/{id}/corrections)。元証跡は修正しても変わらない。
+        "is_corrected": (record.correction_count or 0) > 0, "correction_count": record.correction_count or 0, "original_value": record.original_value,
+        "corrected_at": _iso(record.corrected_at), "corrected_by": record.corrected_by,
+        "correctable": correctable_reason(record) is not None, "correctable_reason": correctable_reason(record),
     }
 
 

@@ -57,7 +57,7 @@ export function RecordsTable({ items, onOpen, selectedId, hasMore = false, loadi
             <td className="num c-prev">{formatValue(record.previous_value)}</td>
             <td className="num c-usage">{formatUsage(record.usage)}</td>
             <td className="num c-conf">{formatConfidence(record.confidence)}</td>
-            <td><StateBadge state={state} /></td>
+            <td><StateBadge state={state} />{record.is_corrected && <span className="corrected-badge small" title={`元の正式値 ${formatValue(record.original_value)}`}>修正済み</span>}</td>
             <td>{hasImage(record) ? <button type="button" className="link-button" onClick={() => onOpen(record)}>画像</button> : <span className="muted small" title={record.image_error ?? undefined}>{imageStatusLabels[record.image_status]}</span>}</td>
             <td><button type="button" className="secondary small-button" onClick={() => onOpen(record)} aria-label={`${formatRecordTime(record.recorded_at)} ${record.monitor_name.trim()} の詳細`}>詳細</button></td>
           </tr>;

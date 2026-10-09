@@ -114,3 +114,45 @@ Drumメーターは桁の回転中に、最新Rawが6桁以下になったり `i
 - 障害の隔離: 出力は同時に1件だけ（409）。保存先の不通・権限・容量不足・60秒の無応答は、このAPIだけが503で失敗し、映像・推論・Reading・
   HourlyRecordWorker・RecordWriterには影響しない（保存先へのアクセスはタイムアウト付きの別スレッド）。
 - 依存: `XlsxWriter`（書き出し）。`openpyxl`はテストでブックを開いて検証するために使う。
+
+## 証跡の整合性: 1推論tick = 1 immutable snapshot
+
+定時計測recordの値・Raw・信頼度・判定・画像は、**同じ推論tick**のものでなければ正式な証跡になりません。以前は、recordの作成中も推論が続くため、
+Raw・validation_status・正式値と、元画像・overlayが別のtickのものになる可能性がありました。次の仕組みで、新しい記録からこれを保証します。
+
+- `InferenceScheduler`は、1回の推論（Engine推論 → overlay生成 → `ReadingStabilizer.update()` → 運用値の保存）がすべて終わったあとに、そのtickの
+  情報だけを`InferenceRecordSnapshot`（`backend/runtime/record_snapshot.py`、frozen dataclass）にまとめ、**丸ごと差し替え**ます（Lockつき）。
+  内容: 推論時刻・フレーム取得時刻・元画像JPEG（推論に使ったフレームそのもの）・overlay JPEG・Raw値/Rawの信頼度/エラー・読取判定・合意候補・一致数・
+  正式値/正式値の信頼度/確定時刻（`ResultStore`が保存した運用値）・engine/model/処理時間・baseline値/epoch/conflict。
+- `HourlyRecordWorker`（`record_due`）は、記録ごとに`get_record_snapshot()`を**1回だけ**取得し、その同じsnapshotだけから`reading_records`（`raw_value`・
+  `raw_confidence`・`validation_status`・`value`・`confidence`・`baseline_conflict`・`engine`/`model_id`・`inference_at`）と画像ジョブ（元画像・overlay）を作ります。
+  その後に`LatestResult`などを読み直さないので、画像保存が遅れていても、推論が次のtickへ進んでも、記録の内容は変わりません。
+- `recorded_at`は定時計測をDBへ保存した時刻、**`inference_at`は証跡snapshotの推論時刻**（例: 08:00:00.243に行われた実推論）で、別の値です。`hour_bucket`は従来どおりです。
+- `confidence`は**正式値側**の信頼度、`raw_confidence`は**記録snapshotの最新Raw側**の信頼度です。`carried_forward`では別のtickの値になるため、UIの詳細Drawerでも分けて表示します
+  （「正式値の信頼度」「最新推論値の信頼度」）。
+- 推論が止まって古い（10秒超）snapshotは使いません（従来の経路で記録し、`inference_at`は空）。通信異常等のMonitorは従来どおり値なしの記録です。
+- **既存のrecord・保存画像は書き換えません**。この仕組みの導入前に作られた記録（`inference_at`が空 / API`snapshot_consistent=false`）は
+  「厳密な同一tick保証が無かった既存データ」としてそのまま保持し、画像やRawを後から推測で補正しません。
+
+## 読取値（正式値）の手動修正と監査履歴
+
+- **修正できる記録**: `value_source=carried_forward`（UI: 前回確定値を保持）、または基準値競合中の記録（`baseline_conflict=true`、または`validation_status`が
+  `decrease_detected`/`rate_exceeded`）だけ。通常のconfirmedな記録は修正できません（409）。履歴の詳細Drawerに、対象記録の場合だけ「読取値を修正」を表示します。
+- **修正ダイアログ**: 記録日時・正式値・最新Raw・Rawの信頼度・保存したoverlay画像・読取判定・値の由来・現在の読取基準値と競合候補を見ながら、修正後の値・修正理由（必須）・
+  操作者（必須）を入力します。「最新推論値 〇〇 を入力」ボタンは入力欄を埋めるだけで、自動確定はしません。
+- **変更するもの**: `value`/`numeric_value`と、それに連動する`usage`/`previous_value`だけ。**元証跡（`raw_value`・`raw_confidence`・`validation_status`・`value_source`・
+  画像・`inference_at`）は変更しません**。`value_source`は`manual_corrected`へ上書きせず、`carried_forward`のまま、`correction_count`/`original_value`/`corrected_at`/`corrected_by`で修正済みを表します
+  （UI: 「前回確定値を保持 → 手動修正済み」、一覧に「修正済み」badge）。
+- **usageの再計算**: 修正した記録と、**次の1時間の記録**の`usage`/`previous_value`を、同じ規則（通信異常・読取不能・baseline conflict・reset/rebase・値の減少はnull）で再評価します
+  （例: 07:00=215836、08:00=215858→215850、09:00=215865 → 08:00のusage 22→14、09:00のusage 7→15）。次の記録が同じ誤った値を保持していても、値は書き換えません
+  （必要なら個別に修正）。連続区間の一括補正は別機能として未実装です。
+- **監査履歴**: `reading_record_corrections`（追記のみ。複数回修正しても全履歴が残る）。old/newの値とusage、理由、操作者、修正時点の元証跡のコピー、client_host、context（次の記録のusage変化など）。
+  `GET /api/records/{id}/corrections`で新しい順に取得できます。
+- **baselineとの関係**: 履歴の修正だけでは、現在の読取基準値（runtimeのbaseline）を変更しません。修正ダイアログの「現在の読取基準値もこの値へ再設定する」（既定OFF、現在も競合が続いている場合に表示）を
+  ONにしたときだけ、既存のrebase処理を呼びます（force要求・検証・baseline側の監査履歴はそのまま。修正の監査履歴にも実施有無を残します）。rebaseが失敗した場合、記録の修正も行いません。
+- **Excel**: 確定値・使用量は修正後の正式値です。末尾に`Raw信頼度`/`推論時刻`/`修正済み`/`修正回数`/`最終修正日時`/`修正前値`の列を追加しました（元証跡の列は変わりません）。
+
+## 一覧の順序
+
+`GET /api/records`は、`hour_bucket` DESC → Monitorの表示順（`display_order` ASC） → `monitor_id` → `id` の安定した順序で返し、`limit`/`offset`（段階読み込み）もこの順序で行います
+（同じ計測枠の行が取得境界をまたいでも連続し、すでに表示している行が動かないため）。

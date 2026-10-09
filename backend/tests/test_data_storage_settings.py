@@ -138,3 +138,27 @@ def test_excel_default_folder_is_probed_and_created_when_unset(client, tmp_path,
     assert body["excel_output_folder"] is None and body["effective_excel_output_folder"] == str(default)
     result = client.post("/api/system/data-storage/test", json={"target": "excel"}).json()
     assert result["ok"] is True and default.is_dir()
+
+
+def test_new_settings_row_defaults_to_overlay_on(client):
+    from app.models.system_settings import SystemSettings
+
+    db = SessionLocal()
+    try:
+        row = SystemSettings()  # 値を指定しない新規環境の行
+        assert row.save_overlay_image is None or row.save_overlay_image is True
+        assert SystemSettings.__table__.c.save_overlay_image.default.arg is True
+    finally:
+        db.close()
+
+
+def test_existing_overlay_off_is_kept_across_restart_and_old_images_are_not_deleted(client, tmp_path):
+    old_image = tmp_path / "old_overlay.jpg"
+    old_image.write_bytes(b"jpeg")
+    client.put("/api/system/data-storage", json={"image_root_folder": str(tmp_path), "save_overlay_image": False})
+    with TestClient(app) as restarted:  # 再起動(lifespanのDB初期化)しても既存の保存値を勝手に変えない
+        body = restarted.get("/api/system/data-storage").json()
+        assert body["save_overlay_image"] is False
+        restarted.put("/api/system/data-storage", json={"save_overlay_image": True})
+        assert restarted.get("/api/system/data-storage").json()["save_overlay_image"] is True
+    assert old_image.read_bytes() == b"jpeg"  # 設定の切り替えで保存済み画像は削除されない

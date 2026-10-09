@@ -42,6 +42,19 @@ class ReadingRecord(Base):
     baseline_conflict: Mapped[bool] = mapped_column(Boolean, default=False)
     engine: Mapped[str | None] = mapped_column(String(32), nullable=True)
     model_id: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    # --- 証跡の整合性(snapshot): 1推論tick = 1 snapshotから、Raw・信頼度・判定・画像・engine/modelを記録する ---
+    # raw_confidence: 記録snapshotの最新Raw側のconfidence。`confidence`は正式値(運用値)側のconfidenceで、carried_forwardでは別のtickの値になる。
+    raw_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # inference_at: その証跡snapshotの推論時刻(naive UTC)。recorded_at(定時計測をDBへ保存した時刻)とは別。
+    # NULLの記録は、snapshotによる同一tick保証が無かった既存データ(推測で補正しない)。
+    inference_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # --- 読取値の手動修正(監査の正本はreading_record_corrections) ---
+    # 修正してもraw_value/raw_confidence/validation_status/value_source/画像/inference_atは変更しない(記録時にAIが何を見てどう判断したかの元証跡)。
+    # 変更するのは正式値(value/numeric_value)と、それに連動するusage/previous_valueだけ。
+    original_value: Mapped[str | None] = mapped_column(String(128), nullable=True)  # 最初の修正前の正式値(未修正ならNULL)
+    correction_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    corrected_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # 最終修正日時(naive UTC)
+    corrected_by: Mapped[str | None] = mapped_column(String(80), nullable=True)  # 最終修正者
     # 記録画像(Phase 2): DBには画像ルートからの相対パスを保存する。
     original_image_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     overlay_image_path: Mapped[str | None] = mapped_column(String(500), nullable=True)

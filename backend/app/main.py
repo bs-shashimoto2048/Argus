@@ -20,8 +20,8 @@ from .services.monitor_service import _build_inference_settings, backfill_displa
 
 logger = logging.getLogger("argus.startup")
 
-def _set_result(monitor_id: int, result) -> None:
-    save_result(monitor_id, result)
+def _set_result(monitor_id: int, result):
+    return save_result(monitor_id, result)  # そのtickの運用値の状態(snapshot用)を返す
 
 def _set_status(monitor_id: int, status: str) -> None:
     db = SessionLocal()
@@ -59,6 +59,12 @@ async def lifespan(_app: FastAPI):
                 ("system_settings", "storage_stop_free_gb", "FLOAT DEFAULT 5"),
                 ("reading_records", "value_source", "VARCHAR(16) DEFAULT 'none'"),
                 ("monitors", "display_order", "INTEGER"),
+                ("reading_records", "raw_confidence", "FLOAT"),
+                ("reading_records", "inference_at", "DATETIME"),
+                ("reading_records", "original_value", "VARCHAR(128)"),
+                ("reading_records", "correction_count", "INTEGER DEFAULT 0"),
+                ("reading_records", "corrected_at", "DATETIME"),
+                ("reading_records", "corrected_by", "VARCHAR(80)"),
                 ("inference_settings", "reading", "JSON"),
                 ("inference_settings", "roi_mode", "VARCHAR(32) DEFAULT 'filter_only'"),
                 ("inference_settings", "context_margin", "FLOAT DEFAULT 1.0"),

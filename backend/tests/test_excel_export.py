@@ -24,7 +24,8 @@ from runtime.hourly_record_worker import hourly_record_worker
 pytestmark = pytest.mark.integration
 
 HEADER = ["計測日時", "Monitor ID", "Monitor名", "確定値", "前回値", "使用量", "Raw値", "信頼度", "validation_status", "value_source",
-          "display_status", "baseline_conflict", "engine", "model_id", "元画像パス", "推論画像パス"]
+          "display_status", "baseline_conflict", "engine", "model_id", "元画像パス", "推論画像パス",
+          "Raw信頼度", "推論時刻", "修正済み", "修正回数", "最終修正日時", "修正前値"]
 
 
 def jst(hour: int, day: int = 8, minute: int = 0) -> datetime:

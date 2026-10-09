@@ -1,4 +1,4 @@
-import type {BaselineEvent,BaselineStatus,History,Monitor,Source,Inference,SystemInference,ReadingDiagnostics,ModelCatalogEntry,RuntimeDiagnostics,CsvExportStatus,CsvExportRunOutcome,RecordsPage,RecordsQuery,ReadingRecord,ExcelExportRequest,ExcelExportSaved,DataStorageSettings,DataStorageInput,DataStorageStatus,StorageTestResult} from "../types";
+import type {BaselineEvent,BaselineStatus,History,Monitor,Source,Inference,SystemInference,ReadingDiagnostics,ModelCatalogEntry,RuntimeDiagnostics,CsvExportStatus,CsvExportRunOutcome,RecordsPage,RecordsQuery,ReadingRecord,RecordCorrection,CorrectionRequest,CorrectionResult,ExcelExportRequest,ExcelExportSaved,DataStorageSettings,DataStorageInput,DataStorageStatus,StorageTestResult} from "../types";
 const request=async<T>(url:string,init?:RequestInit):Promise<T>=>{const r=await fetch(url,{headers:{"Content-Type":"application/json",...(init?.headers||{})},...init});if(!r.ok){const body=await r.json().catch(()=>({}));throw new Error(body.detail||`HTTP ${r.status}`)}return r.status===204?undefined as T:r.json()};
 // baseline操作用: 409(FORCE_REQUIRED/READING_DISABLED)等のdetailがオブジェクトのため、statusとdetailを保持する。
 export class ApiError extends Error{status:number;detail:unknown;constructor(status:number,detail:unknown){super(typeof detail==="string"?detail:(detail&&typeof detail==="object"&&"message" in detail?String((detail as {message:unknown}).message):`HTTP ${status}`));this.status=status;this.detail=detail}}
@@ -39,6 +39,9 @@ export const api={
  // --- 計測記録 / Excel出力 / データ保存設定 (UI再設計 Phase 1〜3のAPI) ---
  records:(q:RecordsQuery)=>{const p=new URLSearchParams();q.monitorIds.forEach(id=>p.append("monitor_id",String(id)));if(q.from)p.set("from",q.from);if(q.to)p.set("to",q.to);p.set("limit",String(q.limit));p.set("offset",String(q.offset));return baselineRequest<RecordsPage>(`/api/records?${p}`)},
  record:(id:number)=>baselineRequest<ReadingRecord>(`/api/records/${id}`),
+ // 読取値(正式値)の手動修正と、その監査履歴(carried_forward / 基準値競合の記録だけ修正できる。元証跡は変わらない)
+ correctRecord:(id:number,body:CorrectionRequest)=>baselineRequest<CorrectionResult>(`/api/records/${id}/correct`,{method:'POST',body:JSON.stringify(body)}),
+ recordCorrections:(id:number)=>baselineRequest<{record_id:number;corrections:RecordCorrection[]}>(`/api/records/${id}/corrections`),
  recordImage:(id:number,kind:"original"|"overlay")=>`/api/records/${id}/image/${kind}`,
  exportExcelSave:(body:ExcelExportRequest)=>baselineRequest<ExcelExportSaved>('/api/records/export/excel',{method:'POST',body:JSON.stringify(body)}),
  exportExcelDownload:async(body:ExcelExportRequest):Promise<{blob:Blob;filename:string;totalRows:number|null}>=>{

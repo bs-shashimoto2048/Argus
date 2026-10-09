@@ -16,7 +16,9 @@ export function record(over: Partial<ReadingRecord> & { id: number }): ReadingRe
   return {
     monitor_id: 2, monitor_name: "エネセン内ガスメータ用２", hour_bucket: "2026-10-09T08:00:00+09:00", recorded_at: "2026-10-08T23:00:20", value: "265803", value_source: "confirmed",
     numeric_value: "265803", raw_value: "0265803", previous_value: "265799", usage: "4", confidence: 0.957, validation_status: "confirmed", display_status: "normal", baseline_conflict: false,
-    engine: "cpp_onnx", model_id: "digital_production_v1.onnx", original_image_path: "a/orig.jpg", overlay_image_path: "a/over.jpg", image_status: "ok", image_error: null, ...over,
+    engine: "cpp_onnx", model_id: "digital_production_v1.onnx", original_image_path: "a/orig.jpg", overlay_image_path: "a/over.jpg", image_status: "ok", image_error: null,
+    raw_confidence: 0.957, inference_at: "2026-10-08T23:00:14.243", snapshot_consistent: true,
+    is_corrected: false, correction_count: 0, original_value: null, corrected_at: null, corrected_by: null, correctable: false, correctable_reason: null, ...over,
   };
 }
 
