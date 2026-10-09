@@ -1,4 +1,4 @@
-﻿param([int]$StartPort = 8000)
+﻿param([int]$StartPort = 8000, [switch]$NoReload)
 
 $port = $StartPort
 while (Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue) {
@@ -14,7 +14,14 @@ Set-Content -Path $portFile -Value $port -Encoding ascii -NoNewline
 Write-Host "Argus Backend: http://localhost:$port"
 Write-Host "Frontend proxy target: start_frontend_dev.ps1が自動検出します(手動設定不要)"
 try {
-  & uvicorn app.main:app --reload --app-dir backend --port $port
+  if ($NoReload) {
+    # 実運用確認中など、ファイル変更で再起動させたくない場合
+    & uvicorn app.main:app --app-dir backend --port $port
+  } else {
+    # 監視対象をbackend配下に限定する。リポジトリ配下の別worktree(.claude/worktrees等)の
+    # 変更で、動作中のBackend(監視Runtime)が再起動するのを防ぐ。
+    & uvicorn app.main:app --reload --reload-dir backend --app-dir backend --port $port
+  }
 } finally {
   Remove-Item -Path $portFile -ErrorAction SilentlyContinue
 }
