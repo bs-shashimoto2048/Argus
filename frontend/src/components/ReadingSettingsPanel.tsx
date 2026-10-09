@@ -10,6 +10,7 @@ export function ReadingSettingsPanel({ value, onChange, open, onToggleOpen }: { 
       <button type="button" className="collapsible-header" onClick={onToggleOpen} aria-expanded={open}>
         <span className="chevron" aria-hidden="true">{open ? "▾" : "▸"}</span>
         <h3>読取安定化設定</h3>
+        <span className="section-summary">{value.enabled ? "有効" : "無効"} / {value.mode} / {value.required_matches}一致 / {value.monotonic ? "単調増加" : "減少を許可"}</span>
       </button>
       <div className="collapsible-body" style={open ? undefined : { display: "none" }}>
         <label>

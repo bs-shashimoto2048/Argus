@@ -72,8 +72,8 @@ describe("Dashboard", () => {
     const mocks = standardMocks([get("/api/records", { items: [record({ id: 1 })], total: 1, limit: 20, offset: 0 })]);
     renderApp("/");
     expect(await screen.findByText("1時間ごとに自動記録（毎時00分）。詳細な検索・Excel出力は「履歴・データ」から行えます。")).toBeInTheDocument();
-    await waitFor(() => expect(mocks.calls.some((c) => c.url.startsWith("/api/records?") && c.url.includes("limit=20"))).toBe(true));
-    const url = new URL(mocks.calls.filter((c) => c.url.startsWith("/api/records?") && c.url.includes("limit=20")).pop()!.url, "http://x");
+    await waitFor(() => expect(mocks.calls.some((c) => c.url.startsWith("/api/records?") && c.url.includes("limit=500"))).toBe(true));
+    const url = new URL(mocks.calls.filter((c) => c.url.startsWith("/api/records?") && c.url.includes("limit=500")).pop()!.url, "http://x");
     expect(url.searchParams.get("from")).toBe("2026-10-09T00:00:00+09:00");
     expect(url.searchParams.get("to")).toBe("2026-10-10T00:00:00+09:00");
     expect(screen.queryByRole("button", { name: "Excel出力" })).not.toBeInTheDocument(); // Excel出力は履歴・データ画面

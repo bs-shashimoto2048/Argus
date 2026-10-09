@@ -19,14 +19,12 @@ export function RecordFilters({ monitors, value, onChange, hideMonitor = false }
   const selected = value.monitorIds.length === 1 ? String(value.monitorIds[0]) : "";
   return <div className="record-filters">
     {!hideMonitor && <label className="filter-select">
-      <span className="filter-label">モニター</span>
       <select aria-label="モニター" value={selected} onChange={(e) => onChange({ ...value, monitorIds: e.target.value === "" ? [] : [Number(e.target.value)] })}>
         <option value="">すべてのモニター</option>
         {monitors.map((m) => <option key={m.id} value={m.id}>{m.display_name.trim()}</option>)}
       </select>
     </label>}
     <div className="filter-group" role="group" aria-label="表示期間">
-      <span className="filter-label">表示期間</span>
       <span className="segmented">
         {periodButtons.map((p) => <button type="button" key={p.mode} className={`segment${value.period.mode === p.mode ? " active" : ""}`} aria-pressed={value.period.mode === p.mode} onClick={() => setPeriod({ mode: p.mode })}>{p.label}</button>)}
       </span>

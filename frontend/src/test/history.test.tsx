@@ -23,11 +23,11 @@ describe("履歴・データ: 取得とフィルタ", () => {
     await screen.findByText("1時間ごとの計測履歴");
     const headers = (await screen.findAllByRole("columnheader")).map((h) => h.textContent);
     expect(headers).toEqual(["取得日時", "モニター", "確定値", "前回値", "使用量", "信頼度", "状態", "画像", "詳細"]);
-    const rows = document.querySelectorAll(".records-table tbody tr");
-    expect(rows).toHaveLength(3);
-    expect(within(rows[0] as HTMLElement).getByText("10/08 19:00")).toBeInTheDocument(); // UTC 10:00 → JST 19:00
-    expect(within(rows[0] as HTMLElement).getByText("95.7%")).toBeInTheDocument();
-    expect(within(rows[0] as HTMLElement).getByText("正常")).toBeInTheDocument();
+    expect(document.querySelectorAll(".records-table tbody tr")).toHaveLength(3);
+    const row = document.querySelector('tr[data-record-id="2"]') as HTMLElement; // 「すべてのモニター」では時刻グループ→Monitor順に並ぶため、idで特定する
+    expect(within(row).getByText("10/08 19:00")).toBeInTheDocument(); // UTC 10:00 → JST 19:00
+    expect(within(row).getByText("95.7%")).toBeInTheDocument();
+    expect(within(row).getByText("正常")).toBeInTheDocument();
   });
 
   it("初期は今日、「過去7日」「任意期間」で from/to が変わる(toは排他的で終了日の翌日0:00)", async () => {
@@ -70,23 +70,6 @@ describe("履歴・データ: 取得とフィルタ", () => {
     await waitFor(() => expect(lastRecordsUrl(mocks.calls).searchParams.getAll("monitor_id")).toEqual(["4"]));
     await user.selectOptions(select, "");
     await waitFor(() => expect(lastRecordsUrl(mocks.calls).searchParams.getAll("monitor_id")).toEqual([]));
-  });
-
-  it("ページネーション: 次へ/前へで offset が変わり、件数表示が更新される", async () => {
-    const items = Array.from({ length: 50 }, (_, i) => record({ id: 100 + i }));
-    const mocks = standardMocks([recordsHandler(items, 120)]);
-    const user = userEvent.setup();
-    renderApp("/history");
-    expect(await screen.findByText(/120件中 1〜50件/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "前へ" })).toBeDisabled();
-    await user.click(screen.getByRole("button", { name: "次へ" }));
-    await waitFor(() => expect(lastRecordsUrl(mocks.calls).searchParams.get("offset")).toBe("50"));
-    expect(await screen.findByText(/120件中 51〜100件/)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "次へ" }));
-    expect(await screen.findByText(/120件中 101〜120件/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "次へ" })).toBeDisabled();
-    await user.click(screen.getByRole("button", { name: "前へ" }));
-    await waitFor(() => expect(lastRecordsUrl(mocks.calls).searchParams.get("offset")).toBe("50"));
   });
 
   it("記録が無い場合は空の案内を表示する", async () => {

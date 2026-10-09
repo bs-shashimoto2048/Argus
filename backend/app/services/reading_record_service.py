@@ -335,7 +335,12 @@ def list_records(db: Session, monitor_ids: list[int] | None = None, start: datet
                  limit: int = 100, offset: int = 0) -> tuple[list[ReadingRecord], int]:
     query = _base_query(monitor_ids, start, end)
     total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
-    rows = db.scalars(query.order_by(ReadingRecord.recorded_at.desc(), ReadingRecord.id.desc()).limit(limit).offset(offset)).all()
+    # 正式な順序: 計測枠(hour_bucket)の新しい順 -> 同じ計測枠の中ではMonitorの表示順(display_order) -> monitor_id -> id。
+    # hour_bucketはJSTの固定オフセット表記(例 2026-10-09T13:00:00+09:00)なので、文字列の降順が時刻の新しい順になる。
+    # limit/offset(段階読み込み)もこの順序で行うため、同じ計測枠の行が取得境界をまたいでも連続し、既存の行の位置が動かない。
+    display_order = func.coalesce(select(Monitor.display_order).where(Monitor.id == ReadingRecord.monitor_id).scalar_subquery(), 2147483647)
+    ordered = query.order_by(ReadingRecord.hour_bucket.desc(), display_order.asc(), ReadingRecord.monitor_id.asc(), ReadingRecord.id.desc())
+    rows = db.scalars(ordered.limit(limit).offset(offset)).all()
     return list(rows), int(total)
 
 

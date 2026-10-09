@@ -1,4 +1,5 @@
 import { NavLink, Outlet } from "react-router-dom";
+import { Clock } from "./Clock";
 
 const links = [
   { to: "/", label: "ダッシュボード", end: true },
@@ -16,6 +17,8 @@ export function AppLayout() {
         <span className="app-nav-logo">ARGUS</span>
         <span className="app-nav-sub">遠方監視システム</span>
       </NavLink>
+      {/* 時計はロゴ(左)の右隣。右側のメニューの位置は変えない。 */}
+      <Clock />
       <nav className="app-nav-links" aria-label="メインナビゲーション">
         {links.map((link) => <NavLink key={link.to} to={link.to} end={link.end} className={({ isActive }) => `app-nav-link${isActive ? " active" : ""}`}>{link.label}</NavLink>)}
       </nav>

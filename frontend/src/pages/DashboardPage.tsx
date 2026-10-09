@@ -53,10 +53,10 @@ export function DashboardPage() {
   return <main className="page dashboard-page">
     {/* ページタイトルは置かない(上部ナビゲーションに「ダッシュボード」があるため)。 */}
     <div className="dashboard-toolbar">
-      <div className="summary-cards" aria-label="状態サマリー">
-        <div className="summary-card tone-ok"><small>正常</small><strong data-testid="count-normal">{counts.normal}</strong></div>
-        <div className="summary-card tone-caution"><small>要確認</small><strong data-testid="count-warning">{counts.warning}</strong></div>
-        <div className="summary-card tone-danger"><small>通信異常</small><strong data-testid="count-error">{counts.error}</strong></div>
+      <div className="summary-chips" aria-label="状態サマリー">
+        <span className="summary-chip tone-ok"><span className="chip-label">正常</span><strong data-testid="count-normal">{counts.normal}</strong></span>
+        <span className="summary-chip tone-caution"><span className="chip-label">要確認</span><strong data-testid="count-warning">{counts.warning}</strong></span>
+        <span className="summary-chip tone-danger"><span className="chip-label">通信異常</span><strong data-testid="count-error">{counts.error}</strong></span>
       </div>
       {/* [モニター追加] と Monitoring表示は同じ操作グループ(同じ高さ・角丸・枠線のトーン)として横並びにする。 */}
       <div className="action-group" role="group" aria-label="ダッシュボード操作">
@@ -73,7 +73,7 @@ export function DashboardPage() {
       {monitors.map((monitor) => <MonitorCard key={monitor.id} monitor={monitor} displayFps={settings.displayFps} latestRecord={latestRecords[monitor.id]} onClick={() => navigate(`/monitors/${monitor.id}`)} />)}
       {monitors.length === 0 && <div className="empty"><h2>モニターがありません</h2><p>最初のモニターを追加してください。</p><button onClick={() => navigate("/monitors/new")}>モニター追加</button></div>}
     </div>
-    <RecordsSection monitors={monitors} pageSize={20} title="計測履歴" description="1時間ごとに自動記録（毎時00分）。詳細な検索・Excel出力は「履歴・データ」から行えます。" refreshMs={60000} />
+    <RecordsSection monitors={monitors} title="計測履歴" description="1時間ごとに自動記録（毎時00分）。詳細な検索・Excel出力は「履歴・データ」から行えます。" refreshMs={60000} />
     {showSettings && <DashboardSettingsModal settings={settings} onChange={update} onClose={() => setShowSettings(false)} />}
   </main>;
 }

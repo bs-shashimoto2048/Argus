@@ -36,8 +36,9 @@ export function SourceSettings({ source, onChange, onCheck, open, onToggleOpen }
     <button type="button" className="collapsible-header" onClick={onToggleOpen} aria-expanded={open}>
       <span className="chevron" aria-hidden="true">{open ? "▾" : "▸"}</span>
       <h3>映像ソース</h3>
+      <span className="section-summary">{current.source_type === "camera" ? `接続カメラ Camera ${current.device_id ?? 0}` : `URL ${(current.url ?? "").replace(/^[a-z]+:\/\//i, "").slice(0, 40) || "未設定"}`}</span>
     </button>
-    <div className="collapsible-body" style={open ? undefined : { display: "none" }}>
+    <div className="collapsible-body source-body" style={open ? undefined : { display: "none" }}>
       <label>入力方式<select value={current.source_type} onChange={(e) => update({ source_type: e.target.value as Source["source_type"] })}><option value="camera">接続カメラ</option><option value="url">URL</option></select></label>
       {current.source_type === "camera" ? <div className="camera-source">
         <div className="current-source">現在の設定: Camera {current.device_id ?? 0}</div>
@@ -52,7 +53,7 @@ export function SourceSettings({ source, onChange, onCheck, open, onToggleOpen }
         {scanError && <div className="alert error" role="alert">{scanError}</div>}
       </div> : <>
         <label>保存済みURL<select value="" onChange={(e) => { const selected = history.find((item) => String(item.id) === e.target.value); if (selected) update({ url: selected.url, username: selected.username, history_id: selected.id, has_password: selected.has_password }); }}><option value="">選択してください</option>{history.map((item) => <option key={item.id} value={item.id}>{item.url}</option>)}</select></label>
-        <label>URL<input value={current.url ?? ""} onChange={(e) => update({ url: e.target.value, history_id: undefined })} placeholder="rtsp:// または http://" /></label>
+        <label className="span-2">URL<input value={current.url ?? ""} onChange={(e) => update({ url: e.target.value, history_id: undefined })} placeholder="rtsp:// または http://" /></label>
       </>}
       <h3>Basic認証</h3>
       <label>ユーザー名<input value={current.username ?? ""} onChange={(e) => update({ username: e.target.value })} /></label>

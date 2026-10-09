@@ -20,12 +20,13 @@ describe("上部ナビゲーション: ロゴは左、メニューは右", () =>
     standardMocks();
     renderApp("/");
     const header = screen.getByRole("banner");
-    const [brand, nav] = [...header.children];
+    const [brand, clock, nav] = [...header.children];
     expect(brand).toHaveClass("app-nav-brand");
     expect(brand).toHaveTextContent("ARGUS");
     expect(brand).toHaveTextContent("遠方監視システム");
+    expect(clock).toHaveClass("app-nav-clock"); // 時計はロゴの右隣
     expect(nav).toHaveClass("app-nav-links");
-    expect(header.children).toHaveLength(2);
+    expect(header.children).toHaveLength(3);
     expect(within(nav as HTMLElement).getAllByRole("link").map((a) => a.textContent)).toEqual(["ダッシュボード", "モニター管理", "履歴・データ", "システム設定"]);
   });
 
