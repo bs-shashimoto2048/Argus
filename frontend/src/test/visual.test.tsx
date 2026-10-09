@@ -7,7 +7,8 @@ import { get, monitor, record, renderApp, standardMocks } from "./helpers";
 import type { Call } from "./helpers";
 import type { Inference, Monitor, ReadingRecord } from "../types";
 import { formatJstClock } from "../components/Clock";
-import { formatUsage, sortByTimeThenMonitor } from "../components/RecordsTable";
+import { formatUsage } from "../components/RecordsTable";
+import { compareRecordOrder } from "../utils/records";
 
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
@@ -105,11 +106,11 @@ describe("常時リアルタイム時計(共通トップナビ)", () => {
 const monitors = [monitor({ id: 4, display_name: "Drum" }), monitor({ id: 2, display_name: "Digital A" }), monitor({ id: 3, display_name: "Digital B" })] as Monitor[]; // 表示順 4 → 2 → 3
 const B = (hour: number) => `2026-10-09T${String(hour).padStart(2, "0")}:00:00+09:00`;
 const mk = (id: number, monitorId: number, hour: number, over: Partial<ReadingRecord> = {}) => record({ id, monitor_id: monitorId, monitor_name: monitors.find((m) => m.id === monitorId)!.display_name, hour_bucket: B(hour), recorded_at: `2026-10-09T${String(hour - 9).padStart(2, "0")}:00:10`, ...over });
-// サーバーは recorded_at DESC, id DESC で返す(同一時刻内はid順)
+// サーバー(GET /api/records)は hour_bucket DESC → Monitor表示順(4 → 2 → 3) → id の正式順序で返す
 const items: ReadingRecord[] = [
-  mk(33, 3, 13), mk(32, 2, 13, { usage: "0.0" }), mk(31, 4, 13, { usage: null, previous_value: null }),
-  mk(23, 3, 12, { value_source: "carried_forward", validation_status: "decrease_detected", raw_value: "0215850" }), mk(22, 2, 12), mk(21, 4, 12, { baseline_conflict: true }),
-  mk(13, 3, 11), mk(12, 2, 11, { display_status: "read_error" }), mk(11, 4, 11),
+  mk(31, 4, 13, { usage: null, previous_value: null }), mk(32, 2, 13, { usage: "0.0" }), mk(33, 3, 13),
+  mk(21, 4, 12, { baseline_conflict: true }), mk(22, 2, 12), mk(23, 3, 12, { value_source: "carried_forward", validation_status: "decrease_detected", raw_value: "0215850" }),
+  mk(11, 4, 11), mk(12, 2, 11, { display_status: "read_error" }), mk(13, 3, 11),
 ];
 const handler = get("/api/records", (c: Call) => { const p = new URL(c.url, "http://x").searchParams; const ids = p.getAll("monitor_id").map(Number); const rows = ids.length ? items.filter((r) => ids.includes(r.monitor_id)) : items; return { items: rows, total: rows.length, limit: Number(p.get("limit")), offset: 0 }; });
 const mocks = () => standardMocks([get("/api/monitors", { monitors }), handler]);
@@ -257,9 +258,12 @@ describe("計測履歴: 時刻グループ(すべてのモニターのときだ�
     expect(dataRows().filter((r) => r.classList.contains("group-start"))).toHaveLength(2);
   });
 
-  it("並べ替えのロジック: 時刻DESC → Monitor表示順(未知のMonitorは最後)", () => {
-    const out = sortByTimeThenMonitor([mk(1, 3, 12), mk(2, 4, 11), mk(3, 2, 12), mk(4, 4, 12), record({ id: 5, monitor_id: 99, hour_bucket: B(12) })], [4, 2, 3]);
-    expect(out.map((r) => r.id)).toEqual([4, 3, 1, 5, 2]);
+  it("正式な順序の比較: hour_bucket DESC → Monitor表示順 → monitor_id → id(Backendと同じ。未知のMonitorは最後)", () => {
+    const rank = new Map([[4, 0], [2, 1], [3, 2]]);
+    const sorted = [mk(1, 3, 12), mk(2, 4, 11), mk(3, 2, 12), mk(4, 4, 12), record({ id: 5, monitor_id: 99, hour_bucket: B(12) })].sort((a, b) => compareRecordOrder(a, b, rank));
+    expect(sorted.map((r) => r.id)).toEqual([4, 3, 1, 5, 2]);
+    // 同じMonitor・同じ枠は id の新しい順(実際にはUNIQUEで起きない)
+    expect(compareRecordOrder(record({ id: 9, monitor_id: 2, hour_bucket: B(12) }), record({ id: 8, monitor_id: 2, hour_bucket: B(12) }), rank)).toBeLessThan(0);
   });
 });
 

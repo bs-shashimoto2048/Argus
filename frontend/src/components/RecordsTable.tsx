@@ -1,35 +1,24 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 import type { ReadingRecord } from "../types";
 import { formatConfidence, formatRecordTime, formatValue, hasImage, imageStatusLabels, recordState } from "../utils/records";
 import { StateBadge } from "./StateBadge";
 
 // hasMore/onNearEnd/loadingMore: スクロール末尾に近づいたら続きを読み込む(ページ送りなし)。
-// groupByTime: 「すべてのモニター」のとき、同じ計測枠(取得時刻)の行を1グループとして扱い(時刻DESC → 同一時刻内はMonitorの表示順)、交互の背景と強い区切り線を付ける。
-// monitorOrder: Monitorの表示順(display_order順のID配列)。単一Monitorの表示ではgroupByTime=falseにする。
-type Props = { items: ReadingRecord[]; onOpen: (record: ReadingRecord) => void; selectedId?: number | null; hasMore?: boolean; loadingMore?: boolean; onNearEnd?: () => void; groupByTime?: boolean; monitorOrder?: number[] };
+// groupByTime: 「すべてのモニター」のとき、同じ計測枠(hour_bucket)の行を1グループとして、交互の背景と強い区切り線を付ける。
+// 行の順序はBackend(GET /api/records)が hour_bucket DESC → Monitor表示順 → id で保証する。ここでは並べ替えない
+// (追加読込・定期更新で、すでに表示している行の位置が動かないようにするため)。グループ判定は連続する行のhour_bucketの比較だけ。
+// 単一Monitorの表示ではgroupByTime=falseにする。
+type Props = { items: ReadingRecord[]; onOpen: (record: ReadingRecord) => void; selectedId?: number | null; hasMore?: boolean; loadingMore?: boolean; onNearEnd?: () => void; groupByTime?: boolean };
 
 /** 使用量の表示。nullは「-」(0.0は0.0のまま)。DB/APIの値は変えない、表示だけの変換。 */
 export function formatUsage(value: string | null | undefined): string {
   return value == null || value === "" ? "-" : value;
 }
 
-/** 時刻(計測枠)の新しい順 → 同じ時刻の中ではMonitorの表示順。 */
-export function sortByTimeThenMonitor(items: ReadingRecord[], monitorOrder: number[]): ReadingRecord[] {
-  const rank = new Map(monitorOrder.map((id, index) => [id, index]));
-  const rankOf = (id: number) => rank.get(id) ?? Number.MAX_SAFE_INTEGER;
-  return [...items].sort((a, b) => {
-    if (a.hour_bucket !== b.hour_bucket) return a.hour_bucket < b.hour_bucket ? 1 : -1;
-    return rankOf(a.monitor_id) - rankOf(b.monitor_id) || a.id - b.id;
-  });
-}
-
-// 1時間ごとの計測履歴(reading_records)。値は記録の value(先頭0除去後の正式値)をそのまま表示する。
-// 前回確定値を保持した記録(carried_forward)は、行を強調し、棄却された最新Rawも併記して「Rawの取りこぼし」に気付けるようにする。
 const NEAR_END_PX = 120;
 
-export function RecordsTable({ items, onOpen, selectedId, hasMore = false, loadingMore = false, onNearEnd, groupByTime = false, monitorOrder = [] }: Props) {
-  const orderKey = monitorOrder.join(",");
-  const rows = useMemo(() => (groupByTime ? sortByTimeThenMonitor(items, orderKey ? orderKey.split(",").map(Number) : []) : items), [items, groupByTime, orderKey]);
+export function RecordsTable({ items, onOpen, selectedId, hasMore = false, loadingMore = false, onNearEnd, groupByTime = false }: Props) {
+  const rows = items;
   const wrapRef = useRef<HTMLDivElement>(null);
   const nearEnd = () => { const el = wrapRef.current; return !!el && el.scrollHeight - el.scrollTop - el.clientHeight <= NEAR_END_PX; };
   // 読み込んだ行が枠に満たない(スクロールできない)間は、続きを自動で読み込む。

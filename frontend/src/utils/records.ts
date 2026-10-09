@@ -1,4 +1,16 @@
 import type { DataStorageState, ImageStatus, ReadingRecord } from "../types";
+
+/**
+ * 計測履歴の正式な順序(Backend GET /api/records と同じ): 計測枠(hour_bucket)の新しい順 → 同じ計測枠の中ではMonitorの表示順 →
+ * monitor_id → id(新しい順)。a が b より前に並ぶなら負の値。表示順(rank)に無いMonitor(削除済み等)は最後。
+ * 一覧はBackendがこの順序でpaginationするため、画面側では並べ替えず、定期更新で先頭へ差し込む位置の判定にだけ使う。
+ */
+export function compareRecordOrder(a: Pick<ReadingRecord, "hour_bucket" | "monitor_id" | "id">, b: Pick<ReadingRecord, "hour_bucket" | "monitor_id" | "id">, rank: Map<number, number>): number {
+  if (a.hour_bucket !== b.hour_bucket) return a.hour_bucket < b.hour_bucket ? 1 : -1;
+  const ra = rank.get(a.monitor_id) ?? Number.MAX_SAFE_INTEGER;
+  const rb = rank.get(b.monitor_id) ?? Number.MAX_SAFE_INTEGER;
+  return ra - rb || a.monitor_id - b.monitor_id || b.id - a.id;
+}
 import { ApiError } from "../api/client";
 import { parseUtcTimestamp } from "./datetime";
 

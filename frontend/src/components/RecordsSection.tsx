@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import type { ReadingRecord } from "../types";
-import { periodError, periodToRange, todayJst } from "../utils/records";
+import { compareRecordOrder, periodError, periodToRange, todayJst } from "../utils/records";
 import { ExcelExportPanel } from "./ExcelExportPanel";
 import { RecordDrawer } from "./RecordDrawer";
 import { RecordFilters } from "./RecordFilters";
@@ -77,6 +77,8 @@ export function RecordsSection({ monitors, title, description, showExport = fals
   }, [fetchChunk, total]);
 
   // 定期更新: 新しい記録(先頭側)だけを軽く取得して差し込む(スクロール位置・読み込み済みの行は保持する)。
+  // 先頭chunk(正式順序で並んだ最新100件)で、その範囲の行を置き換え、それより後ろの(すでに読み込んだ)行はそのまま残す。
+  const monitorKeyOrder = monitors.map((m) => m.id).join(",");
   useEffect(() => {
     if (!refreshMs || !from || !to) return;
     const timer = window.setInterval(() => {
@@ -84,16 +86,17 @@ export function RecordsSection({ monitors, title, description, showExport = fals
       const id = generation.current;
       fetchChunk(0, 100).then((page) => {
         if (id !== generation.current) return;
-        const fresh = new Map(page.items.map((r) => [r.id, r]));
-        const updated = itemsRef.current.map((r) => fresh.get(r.id) ?? r);
-        const known = new Set(updated.map((r) => r.id));
-        const added = page.items.filter((r) => !known.has(r.id));
-        const merged = [...added, ...updated];
+        const rank = new Map(monitorKeyOrder ? monitorKeyOrder.split(",").map((id, index) => [Number(id), index] as [number, number]) : []);
+        const freshIds = new Set(page.items.map((r) => r.id));
+        const last = page.items[page.items.length - 1];
+        // 先頭chunkが全件(または末尾が未取得)でなければ、その末尾より後ろの既存の行だけを残す(行の位置は動かさない)。
+        const tail = last && page.items.length < page.total ? itemsRef.current.filter((r) => !freshIds.has(r.id) && compareRecordOrder(r, last, rank) > 0) : [];
+        const merged = [...page.items, ...tail];
         itemsRef.current = merged; setItems(merged); setTotal(page.total);
       }).catch(() => { /* 次回の更新で再試行する */ });
     }, refreshMs);
     return () => window.clearInterval(timer);
-  }, [refreshMs, fetchChunk, from, to]);
+  }, [refreshMs, fetchChunk, from, to, monitorKeyOrder]);
 
   const changeFilter = (next: RecordFilterValue) => setFilter(fixedMonitorId != null ? { ...next, monitorIds: [fixedMonitorId] } : next);
   const loaded = items?.length ?? 0;
@@ -112,7 +115,7 @@ export function RecordsSection({ monitors, title, description, showExport = fals
     {error && <div className="alert error" role="alert">{error}</div>}
     {/* 表のエリアは常に同じ高さ(読込中・0件・多数件でも変わらない)。表の中だけがスクロールする。 */}
     <div className={`records-area ${size}`} aria-busy={items === null && !error}>
-      {!invalid && items && items.length > 0 && <RecordsTable items={items} onOpen={setSelected} selectedId={selected?.id} hasMore={loaded < total} loadingMore={loadingMore} onNearEnd={loadMore} groupByTime={filter.monitorIds.length === 0} monitorOrder={monitors.map((m) => m.id)} />}
+      {!invalid && items && items.length > 0 && <RecordsTable items={items} onOpen={setSelected} selectedId={selected?.id} hasMore={loaded < total} loadingMore={loadingMore} onNearEnd={loadMore} groupByTime={filter.monitorIds.length === 0} />}
       {!invalid && items && items.length === 0 && !error && <div className="records-empty">この条件に該当する計測記録はありません。</div>}
       {!invalid && !items && !error && <div className="records-empty">読み込み中…</div>}
       {invalid && <div className="records-empty">期間を指定してください。</div>}

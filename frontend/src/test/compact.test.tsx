@@ -1,11 +1,11 @@
 /// <reference types="vite/client" />
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import stylesheet from "../styles.css?raw";
 import { get, monitor, record, renderApp, standardMocks } from "./helpers";
 import type { Call } from "./helpers";
-import type { Monitor } from "../types";
+import type { Monitor, ReadingRecord } from "../types";
 
 beforeEach(() => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-09T05:30:00Z")); });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
@@ -35,6 +35,7 @@ const scrollTo = (wrap: HTMLElement, top: number, height = 10000, client = 400) 
   fireEvent.scroll(wrap);
 };
 const rowCount = () => document.querySelectorAll(".records-table tbody tr[data-record-id]").length;
+const dataRows = () => [...document.querySelectorAll(".history-table tbody tr[data-record-id]")] as HTMLElement[];
 
 describe("Dashboard上部: 状態サマリーは横1行のcompact chip", () => {
   it("正常 / 要確認 / 通信異常が、項目名と値を横に並べた3つのchipとして1行に並ぶ(縦長のカードではない)", async () => {
@@ -332,5 +333,129 @@ describe("Dashboard全体をviewport内に収め、計測履歴の表が残り�
     scrollTo(screen.getByTestId("records-scroll"), 9500);
     await waitFor(() => expect(rowCount()).toBe(1000));
     expect(calls(mocks.calls).map((p) => p.get("offset"))).toEqual(["0", "500"]);
+  });
+});
+
+// ===== 500件境界で同じhour_bucketが分断されても、既存の行・グループ表示が動かない =====
+describe("段階読み込み(500件境界)と時刻グループ", () => {
+  // 3台のMonitor(表示順 4 → 2 → 3)が毎時1件ずつ記録する。Backendの正式順序(hour_bucket DESC → 表示順 → id)で返す。
+  // 1503件(=501計測枠 × 3)。500件の境界は、167番目の計測枠(498〜500行目の次)の途中(2行目と3行目の間)に来る。
+  const TOTAL_BUCKETS = 501;
+  const rankOrder = [4, 2, 3];
+  const bucketOf = (n: number) => `2026-09-${String(30 - Math.floor(n / 24)).padStart(2, "0")}T${String(23 - (n % 24)).padStart(2, "0")}:00:00+09:00`; // n=0が最新
+  const all = (): ReadingRecord[] => Array.from({ length: TOTAL_BUCKETS * 3 }, (_, i) => {
+    const bucket = Math.floor(i / 3), monitorId = rankOrder[i % 3];
+    return record({ id: 100000 - i, monitor_id: monitorId, monitor_name: `M${monitorId}`, hour_bucket: bucketOf(bucket), recorded_at: "2026-10-08T23:00:20" });
+  });
+  const boundaryHandler = (extra?: { head?: ReadingRecord[] }) => get("/api/records", (c: Call) => {
+    const p = new URL(c.url, "http://x").searchParams;
+    const offset = Number(p.get("offset")), limit = Number(p.get("limit"));
+    const rows = [...(extra?.head ?? []), ...all()];
+    return { items: rows.slice(offset, offset + limit), total: rows.length, limit, offset };
+  });
+  const snapshot = () => dataRows().map((r) => ({ id: Number(r.dataset.recordId), bucket: r.dataset.hourBucket, group: r.classList.contains("group-a") ? "a" : "b", start: r.classList.contains("group-start") }));
+
+  it("500件の直前と直後に同じhour_bucketの行があり、追加読込後も連続する(ページ境界で分断されて見えない)", async () => {
+    const mocks = standardMocks([get("/api/monitors", { monitors: [monitor({ id: 4 }), monitor({ id: 2 }), monitor({ id: 3 })] }), boundaryHandler()]);
+    renderApp("/");
+    await waitFor(() => expect(rowCount()).toBe(500));
+    const first = snapshot();
+    // 境界の直前: 500行目は 167番目の計測枠の2行目(同じ計測枠が3行目へ続く)
+    expect(first[498].bucket).toBe(first[499].bucket);
+    expect(first[497].bucket).not.toBe(first[498].bucket);
+    scrollTo(screen.getByTestId("records-scroll"), 9500);
+    await waitFor(() => expect(rowCount()).toBe(1000));
+    const second = snapshot();
+    // 境界の直後(501行目)は、500行目と同じhour_bucket
+    expect(second[500].bucket).toBe(second[499].bucket);
+    expect(second[500].bucket).toBe(second[498].bucket);
+    // 同じhour_bucketの行は必ず連続する(各bucketの行が途切れず3行ずつ)
+    const runs: number[] = []; let run = 1;
+    for (let i = 1; i < second.length; i++) { if (second[i].bucket === second[i - 1].bucket) run += 1; else { runs.push(run); run = 1; } }
+    expect(runs.every((n) => n === 3)).toBe(true);
+    expect(new Set(second.map((r) => r.bucket)).size).toBe(Math.ceil(1000 / 3));
+    expect(calls(mocks.calls).map((p) => p.get("offset"))).toEqual(["0", "500"]); // 二重取得なし
+  });
+
+  it("追加読込で、すでに表示している行(無関係な時刻グループ含む)の順序・背景・先頭線は変わらない", async () => {
+    standardMocks([get("/api/monitors", { monitors: [monitor({ id: 4 }), monitor({ id: 2 }), monitor({ id: 3 })] }), boundaryHandler()]);
+    renderApp("/");
+    await waitFor(() => expect(rowCount()).toBe(500));
+    const first = snapshot();
+    scrollTo(screen.getByTestId("records-scroll"), 9500);
+    await waitFor(() => expect(rowCount()).toBe(1000));
+    const second = snapshot();
+    expect(second.slice(0, 500)).toEqual(first); // 既存の500行は、id・bucket・背景(group-a/b)・group-startとも完全に同じ
+  });
+
+  it("同じ計測枠の中はMonitorの表示順(4 → 2 → 3)のまま、chunkの境界でも崩れない", async () => {
+    standardMocks([get("/api/monitors", { monitors: [monitor({ id: 4 }), monitor({ id: 2 }), monitor({ id: 3 })] }), boundaryHandler()]);
+    renderApp("/");
+    await waitFor(() => expect(rowCount()).toBe(500));
+    scrollTo(screen.getByTestId("records-scroll"), 9500);
+    await waitFor(() => expect(rowCount()).toBe(1000));
+    const monitors = dataRows().map((r) => r.querySelector(".cell-monitor")!.textContent);
+    expect(monitors.every((name, i) => name === `M${rankOrder[i % 3]}`)).toBe(true);
+  });
+
+  it("交互の背景は追加読込をまたいで継続し(chunkごとにリセットしない)、グループ先頭の2px上罫線も正しい", async () => {
+    standardMocks([get("/api/monitors", { monitors: [monitor({ id: 4 }), monitor({ id: 2 }), monitor({ id: 3 })] }), boundaryHandler()]);
+    renderApp("/");
+    await waitFor(() => expect(rowCount()).toBe(500));
+    scrollTo(screen.getByTestId("records-scroll"), 9500);
+    await waitFor(() => expect(rowCount()).toBe(1000));
+    const rows = snapshot();
+    // 境界の行(500行目→501行目): 同じグループなので背景は同じで、group-startは付かない
+    expect(rows[500].group).toBe(rows[499].group);
+    expect(rows[500].start).toBe(false);
+    // 次の計測枠の先頭(502行目)は、背景が反転し、強い上罫線が付く。その次の行(503行目)は同じグループ
+    expect(rows[501].start).toBe(true);
+    expect(rows[501].group).not.toBe(rows[500].group);
+    expect(rows[502].start).toBe(false);
+    expect(rows[502].group).toBe(rows[501].group);
+    // 全体で、グループが変わるたびに背景が必ず反転し(A→B→A…)、先頭行にだけ線がある
+    for (let i = 1; i < rows.length; i++) {
+      const changed = rows[i].bucket !== rows[i - 1].bucket;
+      expect(rows[i].start).toBe(changed);
+      expect(rows[i].group !== rows[i - 1].group).toBe(changed);
+    }
+    expect(rows[0].start).toBe(false); // 表の最初の行には付けない
+  });
+
+  it("スクロール位置は追加読込で動かされない", async () => {
+    standardMocks([get("/api/monitors", { monitors: [monitor({ id: 4 }), monitor({ id: 2 }), monitor({ id: 3 })] }), boundaryHandler()]);
+    renderApp("/");
+    await waitFor(() => expect(rowCount()).toBe(500));
+    const wrap = screen.getByTestId("records-scroll");
+    scrollTo(wrap, 9500);
+    await waitFor(() => expect(rowCount()).toBe(1000));
+    expect(wrap.scrollTop).toBe(9500); // コンポーネントはscrollTopを書き換えない(追記は末尾なので、ブラウザのスクロール位置も保たれる)
+    expect(wrap).toBe(screen.getByTestId("records-scroll")); // 表のDOM(スクロール容器)は作り直されない
+  });
+
+  it("60秒ごとの更新で新しい計測枠が先頭に差し込まれても、すでに表示している行の相対順序は変わらない(同じ計測枠は連続)", async () => {
+    vi.useRealTimers();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-09T05:30:00Z"));
+    const head = ["2026-10-01T00:00:00+09:00"].flatMap((bucket) => [4, 2, 3].map((m, i) => record({ id: 200000 - i, monitor_id: m, monitor_name: `M${m}`, hour_bucket: bucket, recorded_at: "2026-10-08T23:00:20" })));
+    let serveHead = false;
+    const m = standardMocks([get("/api/monitors", { monitors: [monitor({ id: 4 }), monitor({ id: 2 }), monitor({ id: 3 })] }), get("/api/records", (c: Call) => {
+      const p = new URL(c.url, "http://x").searchParams;
+      const offset = Number(p.get("offset")), limit = Number(p.get("limit"));
+      const rows = [...(serveHead ? head : []), ...all().slice(0, 12)];
+      return { items: rows.slice(offset, offset + limit), total: rows.length, limit, offset };
+    })]);
+    renderApp("/");
+    await act(async () => { await vi.advanceTimersByTimeAsync(10); });
+    expect(rowCount()).toBe(12);
+    const before = snapshot().map((r) => r.id);
+    serveHead = true;
+    await act(async () => { await vi.advanceTimersByTimeAsync(60000); });
+    const after = snapshot();
+    expect(after.slice(0, 3).map((r) => r.id)).toEqual([200000, 199999, 199998]); // 新しい計測枠が先頭に(4 → 2 → 3)
+    expect(after.slice(3).map((r) => r.id)).toEqual(before); // 既存の12行は相対順序もそのまま
+    expect(after[0].group).toBe(after[1].group);
+    expect(after[3].start).toBe(true); // 新旧の計測枠の間に強い線
+    expect(m.fn).toBeDefined();
   });
 });

@@ -332,6 +332,45 @@ def test_records_api_lists_filters_and_paginates(client, db):
     assert client.get("/api/records", params={"limit": 0}).status_code == 422
 
 
+def test_records_api_order_is_bucket_desc_then_display_order_and_stable_across_pages(client, db):
+    # 正式な順序: hour_bucket DESC -> Monitorの表示順(display_order) ASC -> monitor_id -> id。paginationもこの順序で行う。
+    m1, m2, m3 = make_monitor(db, value="1"), make_monitor(db, value="2"), make_monitor(db, value="3")
+    for monitor, order in ((m1, 2), (m2, 0), (m3, 1)):  # 表示順は m2 -> m3 -> m1(idの順とは異なる)
+        db.execute(Monitor.__table__.update().where(Monitor.id == monitor.id).values(display_order=order))
+    db.commit()
+    for hour in (13, 14, 15, 16):
+        svc.record_due(db, jst(hour, 0, 5))
+    ids = [m1.id, m2.id, m3.id]
+    full = client.get("/api/records", params={"monitor_id": ids, "limit": 100}).json()
+    assert full["total"] == 12
+    expected = [(h, m) for h in (16, 15, 14, 13) for m in (m2.id, m3.id, m1.id)]
+    assert [(int(i["hour_bucket"][11:13]), i["monitor_id"]) for i in full["items"]] == expected
+    # 同じ計測枠の行は必ず連続する
+    buckets = [i["hour_bucket"] for i in full["items"]]
+    assert buckets == sorted(buckets, reverse=True)
+    # どの境界(limit)で区切っても、連結すると全件と一致する(重複・欠落・順序の入れ替わりがない)
+    for limit in (1, 2, 4, 5, 7):
+        collected = []
+        for offset in range(0, 12, limit):
+            collected += client.get("/api/records", params={"monitor_id": ids, "limit": limit, "offset": offset}).json()["items"]
+        assert [i["id"] for i in collected] == [i["id"] for i in full["items"]]
+    # 単一Monitorは hour_bucket DESC
+    single = client.get("/api/records", params={"monitor_id": [m1.id]}).json()["items"]
+    assert [int(i["hour_bucket"][11:13]) for i in single] == [16, 15, 14, 13]
+    # 表示順を入れ替えると、同じ計測枠の中の順序もそれに従う
+    for monitor, order in ((m1, 0), (m2, 1), (m3, 2)):
+        db.execute(Monitor.__table__.update().where(Monitor.id == monitor.id).values(display_order=order))
+    db.commit()
+    again = client.get("/api/records", params={"monitor_id": ids, "limit": 100}).json()["items"]
+    assert [i["monitor_id"] for i in again[:3]] == [m1.id, m2.id, m3.id]
+    # 削除済みMonitorの記録(表示順なし)は、同じ計測枠の最後
+    db.delete(db.get(Monitor, m2.id))
+    db.commit()
+    db.info["created"].remove(m2.id)
+    after = client.get("/api/records", params={"monitor_id": ids, "limit": 100}).json()["items"]
+    assert [i["monitor_id"] for i in after[:3]] == [m1.id, m3.id, m2.id]
+
+
 def test_records_api_get_one_and_404(client, db):
     monitor = make_monitor(db, value="372412.4")
     svc.record_due(db, jst(14, 0, 5))
