@@ -342,6 +342,9 @@ describe("Monitor Detail: タブ(日本語表記)", () => {
     const panel = screen.getByRole("tabpanel");
     for (const heading of ["基本情報", "映像ソース", "推論エンジン / モデル", "前処理", "ROI（関心領域）", "読取安定化設定", "危険な操作"]) expect(within(panel).getByRole("heading", { name: heading })).toBeInTheDocument();
     for (const english of ["Source", "Engine / Model", "Preprocessing", "Reading Settings", "Danger Zone", "カメラ / 映像URL", "推論設定（次フェーズ）"]) expect(within(panel).queryByRole("heading", { name: english })).not.toBeInTheDocument();
+    // 前処理・ROIは既定で閉じている(現在値の概要はヘッダーに表示)。開くと編集ボタンが現れる。
+    await user.click(within(panel).getByRole("button", { name: /^前処理/ }));
+    await user.click(within(panel).getByRole("button", { name: /^ROI（関心領域）/ }));
     expect(within(panel).getByRole("button", { name: "前処理を編集" })).toBeInTheDocument();
     expect(within(panel).getByRole("button", { name: "ROIを編集" })).toBeInTheDocument();
     expect(within(panel).getByRole("button", { name: "設定を保存" })).toBeInTheDocument();

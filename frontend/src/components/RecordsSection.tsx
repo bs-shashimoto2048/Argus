@@ -112,7 +112,7 @@ export function RecordsSection({ monitors, title, description, showExport = fals
     {error && <div className="alert error" role="alert">{error}</div>}
     {/* 表のエリアは常に同じ高さ(読込中・0件・多数件でも変わらない)。表の中だけがスクロールする。 */}
     <div className={`records-area ${size}`} aria-busy={items === null && !error}>
-      {!invalid && items && items.length > 0 && <RecordsTable items={items} onOpen={setSelected} selectedId={selected?.id} hasMore={loaded < total} loadingMore={loadingMore} onNearEnd={loadMore} />}
+      {!invalid && items && items.length > 0 && <RecordsTable items={items} onOpen={setSelected} selectedId={selected?.id} hasMore={loaded < total} loadingMore={loadingMore} onNearEnd={loadMore} groupByTime={filter.monitorIds.length === 0} monitorOrder={monitors.map((m) => m.id)} />}
       {!invalid && items && items.length === 0 && !error && <div className="records-empty">この条件に該当する計測記録はありません。</div>}
       {!invalid && !items && !error && <div className="records-empty">読み込み中…</div>}
       {invalid && <div className="records-empty">期間を指定してください。</div>}

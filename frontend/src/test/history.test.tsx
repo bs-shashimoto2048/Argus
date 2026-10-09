@@ -23,11 +23,11 @@ describe("履歴・データ: 取得とフィルタ", () => {
     await screen.findByText("1時間ごとの計測履歴");
     const headers = (await screen.findAllByRole("columnheader")).map((h) => h.textContent);
     expect(headers).toEqual(["取得日時", "モニター", "確定値", "前回値", "使用量", "信頼度", "状態", "画像", "詳細"]);
-    const rows = document.querySelectorAll(".records-table tbody tr");
-    expect(rows).toHaveLength(3);
-    expect(within(rows[0] as HTMLElement).getByText("10/08 19:00")).toBeInTheDocument(); // UTC 10:00 → JST 19:00
-    expect(within(rows[0] as HTMLElement).getByText("95.7%")).toBeInTheDocument();
-    expect(within(rows[0] as HTMLElement).getByText("正常")).toBeInTheDocument();
+    expect(document.querySelectorAll(".records-table tbody tr")).toHaveLength(3);
+    const row = document.querySelector('tr[data-record-id="2"]') as HTMLElement; // 「すべてのモニター」では時刻グループ→Monitor順に並ぶため、idで特定する
+    expect(within(row).getByText("10/08 19:00")).toBeInTheDocument(); // UTC 10:00 → JST 19:00
+    expect(within(row).getByText("95.7%")).toBeInTheDocument();
+    expect(within(row).getByText("正常")).toBeInTheDocument();
   });
 
   it("初期は今日、「過去7日」「任意期間」で from/to が変わる(toは排他的で終了日の翌日0:00)", async () => {

@@ -21,11 +21,12 @@ import { currentValueText, formatDiff, inferenceErrorText } from "../utils/monit
 // 閉じてもDOMからは外さず(display:noneのみ)、フォーム値・API呼び出しに一切影響しない。
 type SectionKey = "basic" | "source" | "preprocess" | "roi" | "reading" | "baseline" | "inference" | "danger";
 
-function CollapsibleSection({ title, open, onToggle, className, children }: { title: string; open: boolean; onToggle: () => void; className?: string; children: React.ReactNode }) {
+function CollapsibleSection({ title, summary, open, onToggle, className, children }: { title: string; summary?: string; open: boolean; onToggle: () => void; className?: string; children: React.ReactNode }) {
   return <section className={`panel collapsible-panel${className ? ` ${className}` : ""}`}>
     <button type="button" className="collapsible-header" onClick={onToggle} aria-expanded={open}>
       <span className="chevron" aria-hidden="true">{open ? "▾" : "▸"}</span>
       <h3>{title}</h3>
+      {summary && <span className="section-summary">{summary}</span>}
     </button>
     <div className="collapsible-body" style={open ? undefined : { display: "none" }}>{children}</div>
   </section>;
@@ -66,7 +67,7 @@ export function MonitorDetailPage() {
   // 右ペイン各セクションの開閉状態(Frontend表示のみ・永続化なし)。
   // 日常監視では設定編集の頻度が低いため、初期状態は全セクション折りたたみ(画面を短く保つ)。
   const [openSections, setOpenSections] = useState<Record<SectionKey, boolean>>({
-    basic: true, source: true, preprocess: true, roi: true, reading: true, baseline: true, inference: true, danger: false,
+    basic: true, source: true, preprocess: false, roi: false, reading: false, baseline: true, inference: true, danger: false,
   });
   const toggleSection = (key: SectionKey) => setOpenSections((current) => ({ ...current, [key]: !current[key] }));
   // Issue #20/#25: 基本情報(name/display_name/location)専用のフォーム状態。
@@ -223,28 +224,29 @@ export function MonitorDetailPage() {
       {tab === "history" && <RecordsSection monitors={[{ id: monitor.id, display_name: monitor.display_name }]} fixedMonitorId={monitor.id} title="この Monitor の計測履歴" description="1時間ごとの正式な記録（reading_records）。" size="tall" />}
 
       {tab === "settings" && <section className="settings-tab">
-        <div className="settings-tab-grid">
-        <CollapsibleSection title="基本情報" open={openSections.basic} onToggle={() => toggleSection("basic")}>
-          <div className="readonly-field"><small>Monitor ID</small><strong>{monitor.id}</strong></div>
-          <label>
-            内部名（name）
-            <input required pattern="[A-Za-z0-9_-]+" value={basicInfo.name} onChange={(e) => setBasicInfo({ ...basicInfo, name: e.target.value })} placeholder="gas_meter_01" />
-          </label>
-          <p className="muted" style={{ fontSize: "0.74rem", margin: "-4px 0 10px" }}>
-            半角英数字・アンダースコア・ハイフンのみ（例: <code>gas_meter_01</code>）。他のMonitorと重複できません。
-            実行時の識別には常にMonitor IDが使われるため、変更してもRuntime・映像・CSVの過去行には影響しません
-            （CSVの新しい追記行から新しい内部名が反映されます）。
-          </p>
-          <label>表示名<input required value={basicInfo.display_name} onChange={(e) => setBasicInfo({ ...basicInfo, display_name: e.target.value })} /></label>
-          <label>設置場所<input value={basicInfo.location} onChange={(e) => setBasicInfo({ ...basicInfo, location: e.target.value })} /></label>
+        <div className="settings-columns">
+          <div className="settings-col settings-col-left">
+        <CollapsibleSection title="基本情報" summary={`${basicInfo.display_name.trim()} / Monitor ID ${monitor.id}`} open={openSections.basic} onToggle={() => toggleSection("basic")}>
+          <div className="basic-grid">
+            <label>
+              内部名（name）
+              <input required pattern="[A-Za-z0-9_-]+" value={basicInfo.name} onChange={(e) => setBasicInfo({ ...basicInfo, name: e.target.value })} placeholder="gas_meter_01" />
+            </label>
+            <label>表示名<input required value={basicInfo.display_name} onChange={(e) => setBasicInfo({ ...basicInfo, display_name: e.target.value })} /></label>
+            <label>設置場所<input value={basicInfo.location} onChange={(e) => setBasicInfo({ ...basicInfo, location: e.target.value })} /></label>
+          </div>
+          <details className="settings-hint">
+            <summary>内部名について</summary>
+            <p className="muted">
+              半角英数字・アンダースコア・ハイフンのみ（例: <code>gas_meter_01</code>）。他のMonitorと重複できません。
+              実行時の識別には常にMonitor IDが使われるため、変更してもRuntime・映像・CSVの過去行には影響しません
+              （CSVの新しい追記行から新しい内部名が反映されます）。
+            </p>
+          </details>
           <div className="settings-actions"><button className="save-button" onClick={saveBasicInfo} disabled={savingBasicInfo || !basicInfo.display_name.trim() || !/^[A-Za-z0-9_-]+$/.test(basicInfo.name)}>{savingBasicInfo ? "保存中..." : "基本情報を保存"}</button></div>
         </CollapsibleSection>
         <SourceSettings source={source} onChange={setSource} onCheck={check} open={openSections.source} onToggleOpen={() => toggleSection("source")} />
-        <InferenceSettings value={inference} onChange={setInference} open={openSections.inference} onToggleOpen={() => toggleSection("inference")} />
-        <CollapsibleSection title="前処理" open={openSections.preprocess} onToggle={() => toggleSection("preprocess")}>
-          <button className="secondary" onClick={() => setEditor("preprocess")}>前処理を編集</button>
-        </CollapsibleSection>
-        <CollapsibleSection title="ROI（関心領域）" open={openSections.roi} onToggle={() => toggleSection("roi")}>
+        <CollapsibleSection title="ROI（関心領域）" summary={`幅${(inference.roi.width * 100).toFixed(0)}% × 高さ${(inference.roi.height * 100).toFixed(0)}%`} open={openSections.roi} onToggle={() => toggleSection("roi")}>
           {inference.method === "object_detection" && inference.engine === "cpp_onnx" && <p className="muted" style={{ fontSize: "0.76rem", margin: "0 0 8px" }}>
             C++ ONNXではROIそのものを切り出して推論します（ROIモードは適用されません）。
           </p>}
@@ -253,23 +255,35 @@ export function MonitorDetailPage() {
           </p>}
           <button className="secondary" onClick={() => setEditor("roi")}>ROIを編集</button>
         </CollapsibleSection>
-        <ReadingSettingsPanel value={inference.reading} onChange={(reading) => setInference({ ...inference, reading })} open={openSections.reading} onToggleOpen={() => toggleSection("reading")} />
-        </div>
-        <div className="settings-actions"><button className="save-button" onClick={save} disabled={cppModelMissing} title={cppModelMissing ? "C++ ONNXではモデルを選択してください" : undefined}>設定を保存</button></div>
-
-        <CollapsibleSection title="危険な操作" open={openSections.danger} onToggle={() => toggleSection("danger")} className="danger-zone">
-          {!confirmingDelete ? (
-            <button className="danger" onClick={() => setConfirmingDelete(true)}>このモニターを削除</button>
-          ) : (
-            <div className="danger-confirm">
-              <p>「{monitor.display_name}」（{monitor.name}）を削除します。この操作は取り消せません。よろしいですか？</p>
-              <div className="danger-confirm-actions">
-                <button className="danger" onClick={deleteMonitor} disabled={deleting}>{deleting ? "削除中..." : "削除する"}</button>
-                <button className="secondary" onClick={() => setConfirmingDelete(false)} disabled={deleting}>キャンセル</button>
-              </div>
-            </div>
-          )}
+        <CollapsibleSection title="前処理" summary={`${Object.keys(inference.preprocessing ?? {}).length}項目を設定`} open={openSections.preprocess} onToggle={() => toggleSection("preprocess")}>
+          <button className="secondary" onClick={() => setEditor("preprocess")}>前処理を編集</button>
         </CollapsibleSection>
+          </div>
+          <div className="settings-col settings-col-right">
+        <InferenceSettings value={inference} onChange={setInference} open={openSections.inference} onToggleOpen={() => toggleSection("inference")} />
+        <ReadingSettingsPanel value={inference.reading} onChange={(reading) => setInference({ ...inference, reading })} open={openSections.reading} onToggleOpen={() => toggleSection("reading")} />
+        <section className="panel settings-save" aria-label="保存関連">
+          <h3>保存</h3>
+          <div className="settings-actions"><button className="save-button" onClick={save} disabled={cppModelMissing} title={cppModelMissing ? "C++ ONNXではモデルを選択してください" : undefined}>設定を保存</button></div>
+          <p className="muted tiny">映像ソース・推論エンジン / モデル・前処理・ROI・読取安定化設定をまとめて保存します（基本情報は上の「基本情報を保存」）。</p>
+        </section>
+          <div className="settings-admin">
+          <CollapsibleSection title="危険な操作" summary="モニターの削除など（通常の設定とは別）" open={openSections.danger} onToggle={() => toggleSection("danger")} className="danger-zone">
+            {!confirmingDelete ? (
+              <button className="danger" onClick={() => setConfirmingDelete(true)}>このモニターを削除</button>
+            ) : (
+              <div className="danger-confirm">
+                <p>「{monitor.display_name}」（{monitor.name}）を削除します。この操作は取り消せません。よろしいですか？</p>
+                <div className="danger-confirm-actions">
+                  <button className="danger" onClick={deleteMonitor} disabled={deleting}>{deleting ? "削除中..." : "削除する"}</button>
+                  <button className="secondary" onClick={() => setConfirmingDelete(false)} disabled={deleting}>キャンセル</button>
+                </div>
+              </div>
+            )}
+          </CollapsibleSection>
+          </div>
+          </div>
+        </div>
       </section>}
 
       {tab === "diagnostics" && <DiagnosticsTab monitor={monitor} readingDiagnostics={readingDiagnostics} runtimeDiagnostics={runtimeDiagnostics} lightbox={lightbox} onLightbox={setLightbox} />}
