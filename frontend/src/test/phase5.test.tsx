@@ -126,7 +126,7 @@ describe("履歴表: ヘッダー固定・スクロール", () => {
   it("表はスクロール領域の中に1つのtable(thead + colgroup)として描画され、列がずれない", async () => {
     standardMocks([recordsHandler([record({ id: 1 }), record({ id: 2 })])]);
     renderApp("/");
-    await screen.findByText("2件中 1〜2件");
+    await screen.findByText("2件（全件表示）");
     const area = document.querySelector(".records-area") as HTMLElement;
     const wrap = area.querySelector(".records-table-wrap") as HTMLElement;
     expect(wrap).not.toBeNull();
@@ -140,11 +140,11 @@ describe("履歴表: ヘッダー固定・スクロール", () => {
   it("Dashboardは固定高さ・履歴・データ画面は画面に応じた高さの領域になる(件数で伸びない)", async () => {
     standardMocks([recordsHandler()]);
     const { unmount } = renderApp("/");
-    await screen.findByText("1件中 1〜1件");
+    await screen.findByText("1件（全件表示）");
     expect(document.querySelector(".records-area")).toHaveClass("compact");
     unmount();
     renderApp("/history");
-    await screen.findByText("1件中 1〜1件");
+    await screen.findByText("1件（全件表示）");
     expect(document.querySelector(".records-area")).toHaveClass("tall");
   });
 
@@ -164,7 +164,7 @@ describe("履歴表: ヘッダー固定・スクロール", () => {
     expect(value(".records-table-wrap", "scrollbar-gutter")).toBe("stable"); // scrollbar表示でも列幅が変わらない
     expect(value(".records-table", "table-layout")).toBe("fixed");
     expect(declared(".records-table", "min-width")).toBe(true); // 狭い画面では表の内部だけが横スクロール
-    expect(value(".records-area.compact", "height")).toMatch(/px$/);
+    expect(value(".records-area.compact", "height")).toMatch(/^clamp\(/); // viewport基準の高さ
     expect(value(".records-area.tall", "height")).toMatch(/clamp\(/);
     expect(value("body", "overflow-x")).toBe("hidden"); // ページ全体には横スクロールを出さない
   });
@@ -247,7 +247,7 @@ describe("Monitor Detail: タブ(日本語表記)", () => {
     expect(await screen.findByRole("tab", { name: "診断" })).toHaveAttribute("aria-selected", "true");
     const user = userEvent.setup();
     await user.click(screen.getByRole("tab", { name: "履歴" }));
-    expect(await screen.findByText("1件中 1〜1件")).toBeInTheDocument();
+    expect(await screen.findByText("1件（全件表示）")).toBeInTheDocument();
   });
 
   it("breadcrumbは日本語のまま、Monitor IDは補助表示として残る", async () => {
@@ -316,7 +316,7 @@ describe("Monitor Detail: タブ(日本語表記)", () => {
     const user = userEvent.setup();
     renderApp("/monitors/3");
     await user.click(await screen.findByRole("tab", { name: "履歴" }));
-    await screen.findByText("1件中 1〜1件");
+    await screen.findByText("1件（全件表示）");
     expect(screen.queryByRole("combobox", { name: "モニター" })).not.toBeInTheDocument();
     expect(recordCalls(mocks.calls).pop()!.getAll("monitor_id")).toEqual(["3"]);
     await user.click(screen.getByRole("button", { name: "過去7日" }));

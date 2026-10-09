@@ -220,7 +220,7 @@ export function MonitorDetailPage() {
       {tab === "monitoring" && <MonitoringTab monitor={monitor} rawInferenceValue={rawInferenceValue} rawDiffersFromConfirmed={rawDiffersFromConfirmed} modelMissing={modelMissing}
         readingDiagnostics={readingDiagnostics} runtimeDiagnostics={runtimeDiagnostics} videoTab={videoTab} onVideoTab={setVideoTab} lightbox={lightbox} onLightbox={setLightbox} />}
 
-      {tab === "history" && <RecordsSection monitors={[{ id: monitor.id, display_name: monitor.display_name }]} fixedMonitorId={monitor.id} pageSize={50} title="この Monitor の計測履歴" description="1時間ごとの正式な記録（reading_records）。" size="tall" />}
+      {tab === "history" && <RecordsSection monitors={[{ id: monitor.id, display_name: monitor.display_name }]} fixedMonitorId={monitor.id} title="この Monitor の計測履歴" description="1時間ごとの正式な記録（reading_records）。" size="tall" />}
 
       {tab === "settings" && <section className="settings-tab">
         <div className="settings-tab-grid">

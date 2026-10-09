@@ -72,23 +72,6 @@ describe("履歴・データ: 取得とフィルタ", () => {
     await waitFor(() => expect(lastRecordsUrl(mocks.calls).searchParams.getAll("monitor_id")).toEqual([]));
   });
 
-  it("ページネーション: 次へ/前へで offset が変わり、件数表示が更新される", async () => {
-    const items = Array.from({ length: 50 }, (_, i) => record({ id: 100 + i }));
-    const mocks = standardMocks([recordsHandler(items, 120)]);
-    const user = userEvent.setup();
-    renderApp("/history");
-    expect(await screen.findByText(/120件中 1〜50件/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "前へ" })).toBeDisabled();
-    await user.click(screen.getByRole("button", { name: "次へ" }));
-    await waitFor(() => expect(lastRecordsUrl(mocks.calls).searchParams.get("offset")).toBe("50"));
-    expect(await screen.findByText(/120件中 51〜100件/)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "次へ" }));
-    expect(await screen.findByText(/120件中 101〜120件/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "次へ" })).toBeDisabled();
-    await user.click(screen.getByRole("button", { name: "前へ" }));
-    await waitFor(() => expect(lastRecordsUrl(mocks.calls).searchParams.get("offset")).toBe("50"));
-  });
-
   it("記録が無い場合は空の案内を表示する", async () => {
     standardMocks([recordsHandler([], 0)]);
     renderApp("/history");
