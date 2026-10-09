@@ -16,7 +16,7 @@ from .services.secret_store import decrypt
 from .services.result_store import save_result
 from .services.reading_record_service import backfill_value_source
 from .services.reading_baseline_service import restore_baseline
-from .services.monitor_service import _build_inference_settings
+from .services.monitor_service import _build_inference_settings, backfill_display_order
 
 logger = logging.getLogger("argus.startup")
 
@@ -58,6 +58,7 @@ async def lifespan(_app: FastAPI):
                 ("system_settings", "storage_warn_free_gb", "FLOAT DEFAULT 10"),
                 ("system_settings", "storage_stop_free_gb", "FLOAT DEFAULT 5"),
                 ("reading_records", "value_source", "VARCHAR(16) DEFAULT 'none'"),
+                ("monitors", "display_order", "INTEGER"),
                 ("inference_settings", "reading", "JSON"),
                 ("inference_settings", "roi_mode", "VARCHAR(32) DEFAULT 'filter_only'"),
                 ("inference_settings", "context_margin", "FLOAT DEFAULT 1.0"),
@@ -67,6 +68,8 @@ async def lifespan(_app: FastAPI):
                     connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}"))
                     if (table, column) == ("reading_records", "value_source"):
                         backfill_value_source(connection)
+            # 表示順が未設定(NULL)のMonitorは、現在の安定した順序(id昇順)の順位で補完する。設定済みの値は変更しない(冪等)。
+            backfill_display_order(connection)
     runtime_manager.set_status_callback(_set_status)
     runtime_manager.set_result_callback(_set_result)
     runtime_manager.set_baseline_provider(restore_baseline)

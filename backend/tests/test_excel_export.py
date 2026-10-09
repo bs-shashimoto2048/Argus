@@ -103,6 +103,22 @@ def test_one_sheet_per_monitor_and_multiple_monitors(client, db):
         assert ws.freeze_panes == "A2" and ws.auto_filter.ref
 
 
+def test_sheets_follow_monitor_display_order(client, db):
+    # worksheetの順序は現在のMonitor表示順(display_order ASC -> id ASC)。値の意味は変えない。
+    a, b, c = make_monitor(db, "順A"), make_monitor(db, "順B"), make_monitor(db, "順C")
+    for m in (a, b, c):
+        add_record(db, m, 18)
+    for monitor_id, order in ((c.id, 0), (a.id, 1), (b.id, 2)):
+        db.execute(Monitor.__table__.update().where(Monitor.id == monitor_id).values(display_order=order))
+    db.commit()
+    assert open_book(export(client, [a.id, b.id, c.id])).sheetnames == ["順C", "順A", "順B"]
+    # 表示順を入れ替えると、シート順もそれに従う
+    for monitor_id, order in ((a.id, 0), (b.id, 1), (c.id, 2)):
+        db.execute(Monitor.__table__.update().where(Monitor.id == monitor_id).values(display_order=order))
+    db.commit()
+    assert open_book(export(client, [a.id, b.id, c.id])).sheetnames == ["順A", "順B", "順C"]
+
+
 def test_all_monitors_when_monitor_ids_is_empty(client, db):
     a, b = make_monitor(db, "全A"), make_monitor(db, "全B")
     add_record(db, a), add_record(db, b)

@@ -211,7 +211,10 @@ def _to_excel_datetime(value: datetime) -> datetime:
 
 def _monitor_ids_with_records(db: Session, monitor_ids: list[int] | None, start: datetime | None, end: datetime | None) -> list[int]:
     sub = _base_query(monitor_ids, start, end).subquery()
-    return [row for row in db.scalars(select(sub.c.monitor_id).distinct().order_by(sub.c.monitor_id))]
+    ids = [row for row in db.scalars(select(sub.c.monitor_id).distinct().order_by(sub.c.monitor_id))]
+    # worksheetの順序は現在のMonitor表示順(display_order ASC -> id ASC)。削除済みのMonitorの記録は最後(id順)。
+    orders = dict(db.execute(select(Monitor.id, Monitor.display_order).where(Monitor.id.in_(ids))).all()) if ids else {}
+    return sorted(ids, key=lambda monitor_id: (orders.get(monitor_id) if orders.get(monitor_id) is not None else 2147483647, monitor_id))
 
 
 def _sheet_title(db: Session, monitor_id: int, start: datetime | None, end: datetime | None) -> str | None:

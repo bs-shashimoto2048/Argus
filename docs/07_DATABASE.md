@@ -15,7 +15,7 @@ Migrationツール、migrationファイル、Alembic設定は確認できませ�
 
 | Table | Model | 主なカラム |
 |---|---|---|
-| `monitors` | `Monitor` | `id`, `name`, `display_name`, `location`, `enabled`, `status`（映像Runtime接続状態専用。`connecting`/`running`/`reconnecting`/`stopped`/`error`。RuntimeManager/MonitorRuntimeのみが書き込む）, `created_at`, `updated_at` |
+| `monitors` | `Monitor` | `id`, `name`, `display_name`, `location`, `enabled`, `status`（映像Runtime接続状態専用。`connecting`/`running`/`reconnecting`/`stopped`/`error`。RuntimeManager/MonitorRuntimeのみが書き込む）, `display_order`（Dashboard/モニター管理の表示順。小さいほど先頭。欠番可。既存DBへの追加時はid昇順の順位0,1,2…で起動時に1回補完、新規は末尾=最大+1）, `created_at`, `updated_at` |
 | `video_sources` | `VideoSource` | `id`, `monitor_id`, `source_type`, `device_id`, `url`, `username`, `encrypted_password`, timestamps |
 | `url_histories` | `UrlHistory` | `id`, `url`, `username`, `last_verified_at` |
 | `inference_settings` | `InferenceSettings` | `method`, `engine`, `model_id`, `device`, FPS、Confidence、IoU、ImageSize、`roi`/`preprocessing`/`reading`（JSON） |

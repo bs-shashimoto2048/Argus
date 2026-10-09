@@ -12,8 +12,9 @@ Backend Routerの実装から確認できるAPIです。全Endpointは`/api`配�
 
 | Method | Endpoint | Request | Response |
 |---|---|---|---|
-| GET | `/api/monitors` | なし | `{"monitors": MonitorResponse[]}` |
-| POST | `/api/monitors` | `MonitorCreate` | `MonitorResponse`、201 |
+| GET | `/api/monitors` | なし | `{"monitors": MonitorResponse[]}`。**表示順（`display_order` ASC → `id` ASC）**で返す。`MonitorResponse.display_order`は表示順（小さいほど先頭、欠番あり） |
+| PUT | `/api/monitors/order` | `{"monitor_ids": [4, 2, 3]}`（全MonitorのIDを表示したい順に指定） | `{"monitor_ids": [...]}`。**1 transaction**で`display_order`を0,1,2…へ更新する（途中までの更新は残さない）。重複ID→422 `DUPLICATE_ID`、存在しないID→422 `UNKNOWN_MONITOR`、全Monitorが含まれない（一覧が更新された可能性）→409 `ORDER_STALE`。`updated_at`は更新しない。Dashboard・モニター管理・履歴のMonitor選択・Excelのworksheet順に反映される |
+| POST | `/api/monitors` | `MonitorCreate` | `MonitorResponse`、201。新規Monitorは表示順の末尾（現在の最大`display_order` + 1）へ追加 |
 | GET | `/api/monitors/{monitor_id}` | なし | `MonitorResponse` |
 | PATCH | `/api/monitors/{monitor_id}` | `MonitorUpdate` | `MonitorResponse` |
 | DELETE | `/api/monitors/{monitor_id}` | なし | 204 |

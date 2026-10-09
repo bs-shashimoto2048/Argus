@@ -33,10 +33,17 @@ class ReadingBaselineSummary(BaseModel):
     conflict_seconds: int = 0
 
 
+class MonitorOrderInput(BaseModel):
+    """Dashboard/Monitor管理の表示順。先頭から順に表示する、全MonitorのID。"""
+
+    monitor_ids: list[int] = Field(min_length=1)
+
+
 class MonitorResponse(BaseModel):
     id: int
     name: str
     display_name: str
+    display_order: int | None = None
     location: str
     enabled: bool
     status: str

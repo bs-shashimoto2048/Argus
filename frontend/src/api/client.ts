@@ -6,6 +6,8 @@ const baselineRequest=async<T>(url:string,init?:RequestInit):Promise<T>=>{const 
 export const api={
  monitors:()=>request<{monitors:Monitor[]}>('/api/monitors'),
  monitor:(id:number)=>request<Monitor>(`/api/monitors/${id}`),
+ // Dashboard/モニター管理の表示順(全MonitorのIDを表示したい順に指定。1 transactionで更新される)
+ reorderMonitors:(monitorIds:number[])=>baselineRequest<{monitor_ids:number[]}>('/api/monitors/order',{method:'PUT',body:JSON.stringify({monitor_ids:monitorIds})}),
  create:(data:{name:string;display_name:string;location:string})=>request<Monitor>('/api/monitors',{method:'POST',body:JSON.stringify(data)}),
  update:(id:number,data:unknown)=>request<Monitor>(`/api/monitors/${id}`,{method:'PATCH',body:JSON.stringify(data)}),
  remove:(id:number)=>request<void>(`/api/monitors/${id}`,{method:'DELETE'}),
