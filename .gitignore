@@ -15,6 +15,7 @@ data/eval/
 data/dataset_candidates/
 # 1時間記録の画像(証跡。既定の保存先)。リポジトリへはcommitしない
 data/images/
+data/exports/
 data/reports/*.json
 data/reports/*.md
 .env

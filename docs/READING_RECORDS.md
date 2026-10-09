@@ -1,7 +1,7 @@
 # 1時間ごとの計測履歴（reading_records）
 
 正式な計測記録は「**1 Monitor 1時間 1件**」です。値が変わるたびの記録ではありません（変化の履歴は
-`inference_results`）。Excel出力・履歴画面・記録画像は、この記録を基にします（UI再設計 Phase 1 は記録とAPIまで）。
+`inference_results`）。Excel出力・履歴画面・記録画像は、この記録を基にします（UI再設計 Phase 1: 記録とAPI / Phase 2: 記録画像 / Phase 3: Excel出力）。
 
 ## 記録のタイミング
 
@@ -76,3 +76,41 @@ Drumメーターは桁の回転中に、最新Rawが6桁以下になったり `i
 - 保存先I/Oの失敗が3回連続すると、60秒間は保存を試みず`dropped`にして、復旧後に自動再開する。
 - 空き容量: 10GB未満でwarning、5GB未満で新規の画像保存を停止（既定。`/api/system/data-storage`で変更可）。停止中も計測値の記録は続く。
 - 状態は `GET /api/system/data-storage/status`（UIの警告用）とログで確認できる。保存先の変更は、設定画面（Phase 4）までは`PUT /api/system/data-storage`で行う。
+
+### carried_forward の例（Raw棄却中でも、それ以前に確定済みの値を保持）
+
+07:00 の正式値が `215836`、07:00〜08:00 の間に正常Confirmed `215858`、08:00 の瞬間のRawが `0215850`（`decrease_detected`）だった場合、
+08:00 の記録は `value=215858` / `value_source=carried_forward` / `raw_value=0215850` / `validation_status=decrease_detected` / `usage=22` になります。
+「08:00時点の最新Rawは棄却したが、それ以前に正常確定済みの215858を保持した」という意味で、不具合ではありません。
+
+## Excel出力（Phase 3）
+
+`reading_records`を正式なデータ源として、Excel(.xlsx)を出力します（`inference_results`は使いません）。
+既存のCSV出力（`csv_export_log`・`/api/system/csv-*`）は**legacy（従来互換）**としてそのまま残り、新UIの主な出力はExcelです。
+
+- API: `POST /api/records/export/excel`（`docs/06_API_REFERENCE.md`）。`monitor_ids`（空=全Monitor）と期間（`period`=今日/過去7日/任意、
+  任意は`from`/`to`）を指定する。`save_to_server=false`でブラウザダウンロード、`true`でサーバーの指定フォルダへ保存する。
+  どちらも同じ`excel_export_service.build_workbook()`で生成する（生成ロジックは1つ）。
+- 期間: `today`=JSTの今日、`last_7_days`=今日を含む7暦日。`custom`の`to`は含まない（`recorded_at < to`）。`from >= to`は422。
+  該当記録が無ければ404（`NO_RECORDS`）。記録のあるMonitorだけがシートになる。
+- ファイル名: `Argus_MeterRecords_YYYYMMDD_YYYYMMDD.xlsx`（日付はJST。1日だけなら`Argus_MeterRecords_YYYYMMDD.xlsx`、期間指定なしは`..._All.xlsx`）。
+  サーバー保存では既存ファイルを上書きせず、同名があれば`_2`、`_3`…を付ける。
+- **1 Monitor = 1 worksheet**（1つのブック）。シート名は現在のMonitor表示名（削除済みなら記録の表示名）を基に、`: \ / ? * [ ]`を`_`へ置換、
+  31文字以内、大文字小文字を区別しない重複はMonitor IDを末尾に付けて回避（空/`History`は`Monitor_<ID>`）。
+- 列: 計測日時 / Monitor ID / Monitor名 / 確定値 / 前回値 / 使用量 / Raw値 / 信頼度 / validation_status / value_source / display_status /
+  baseline_conflict / engine / model_id / 元画像パス / 推論画像パス。古い順。ヘッダー太字・オートフィルタ・先頭行固定。
+- セル型: 確定値・前回値・使用量・信頼度は**数値**（信頼度は`0.000`）、null/値なしは**空セル**。Raw値は**文字列**（先頭0を保持。例 `0265803`）。
+  計測日時は`recorded_at`をUTC→JSTへ変換した`yyyy/mm/dd hh:mm:ss`（`hour_bucket`ではなく実際の記録時刻）。
+- 「Monitor名」セルは、先頭・末尾の空白/制御文字（タブ・CR・LF等）だけを除いて表示する（内部のスペースは維持。DBの`monitor_name`スナップショットは変更しない）。
+- `to`は排他的（`2026-10-08`は`2026-10-08 00:00`）。終了日を含めたいときは呼び出し側（Phase 4 UI）が翌日0:00を渡す。Backendは補正しない。
+- `value_source`（confirmed / carried_forward / none）、`usage`、`validation_status`等は**DBの値をそのまま**出力する。Excel側で再判定・再計算しない。
+  `carried_forward`は、記録時のRawが回転途中・見切れ・検証失敗等で確定できず、直前の正常Confirmed値を正式値として保持した記録。
+- 画像: 埋め込まず、パス（`<現在の画像保存先>` + DBの相対パス）を出力する。ファイルが存在すればハイパーリンク、無ければ（保存先が不通でも）
+  パス文字列のみで、Excel生成は失敗しない。1シートのハイパーリンクは65,000件まで（Excelの上限対策。超過分は文字列）。
+- 保存先: `system_settings.excel_output_folder`（未設定は`<data_dir>/exports`。既定のフォルダだけ自動作成）。ローカル/UNC対応。保存先のテストは
+  `POST /api/system/data-storage/test`（`target=excel`）を再利用する。
+- 大量データ: DBはMonitor単位・古い順のキーセット（2,000行ずつ）で読み、XlsxWriterの`constant_memory`で1行ずつ書く（全件をメモリへ載せない）。
+  ブックは常にローカルの一時ファイルへ生成し、その後でダウンロード応答/保存先へ書き出す。生成中に保存先へはアクセスしない。
+- 障害の隔離: 出力は同時に1件だけ（409）。保存先の不通・権限・容量不足・60秒の無応答は、このAPIだけが503で失敗し、映像・推論・Reading・
+  HourlyRecordWorker・RecordWriterには影響しない（保存先へのアクセスはタイムアウト付きの別スレッド）。
+- 依存: `XlsxWriter`（書き出し）。`openpyxl`はテストでブックを開いて検証するために使う。
