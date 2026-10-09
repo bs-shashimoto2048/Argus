@@ -84,7 +84,7 @@ export function DashboardPage() {
       {monitors.length > 3 && <span className="card-count-hint" aria-live="polite" title="カード領域を縦にスクロールすると、残りのモニターを表示します">{visibleCards} / {monitors.length}台表示<small>（スクロールで続きを表示）</small></span>}
       {/* [モニター追加] と Monitoring表示は同じ操作グループ(同じ高さ・角丸・枠線のトーン)として横並びにする。 */}
       <div className="action-group" role="group" aria-label="ダッシュボード操作">
-        <button className="action-button" onClick={() => navigate("/monitors/new")}>＋ モニター追加</button>
+        <button className="action-button" onClick={() => navigate("/monitors/new")}><span className="btn-plus">＋</span> モニター追加</button>
         <div className="monitoring-control" aria-label="Monitoring">
           <span className={`monitoring-status${running > 0 ? " live" : ""}`} title={`稼働中 ${running} / ${monitors.length}`}><i aria-hidden="true">●</i>Monitoring</span>
           <span className="monitoring-fps" title="Dashboardのプレビュー表示FPS(video_fps/inference_fpsとは無関係)">{settings.displayFps} FPS</span>

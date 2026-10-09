@@ -615,3 +615,40 @@ describe("読取値の修正 → Backendで再計算されたusageがグラフ�
     expect(document.querySelector(".trend-missing-note")).not.toBeNull();
   });
 });
+
+describe("アクセントボタン: [＋ モニター追加](赤紫寄りの赤) と [Export (XL)](深緑)", () => {
+  it("CSS: 2つとも縦グラデーション(ベタ塗りでない)・薄いborder・控えめなshadow・白文字。高さ・角丸・太さ・transitionは共通", () => {
+    for (const selector of [".action-button", ".records-controls .export-xl-button"]) {
+      expect(value(selector, "background")).toMatch(/^linear-gradient\(180deg/);
+      expect(value(selector, "height")).toBe("40px");
+      expect(value(selector, "border-radius")).toBe("8px");
+      expect(value(selector, "font-weight")).toBe("700");
+      expect(value(selector, "color")).toBe("#fff");
+      expect(value(selector, "border")).toBe("1px solid var(--accent-border)"); // 薄い(白22%)border
+      expect(value(selector, "--accent-border")).toBe("rgb(255 255 255 / 22%)");
+      expect(value(selector, "transition")).toMatch(/background/);
+    }
+    expect(value(".action-button", "--accent-top")).toBe("#b3304f"); // 赤紫寄りの深い赤
+    expect(value(".records-controls .export-xl-button", "--accent-top")).toBe("#1f8a5b"); // 深緑
+    expect(value("button.danger", "background")).toBe("var(--color-danger)"); // 削除の警告の赤(平塗り)とは別
+  });
+  it("CSS: hover(明るく)・active(1px沈む)・focus-visible(リング)・disabled(配色を保つ)", () => {
+    expect(value(".action-button:hover:not(:disabled)", "background")).toMatch(/--accent-hover-top/);
+    expect(value(".action-button:active:not(:disabled)", "transform")).toBe("translateY(1px)");
+    expect(value(".action-button:focus-visible", "box-shadow")).toMatch(/--accent-ring/);
+    expect(value(".action-button:disabled", "cursor")).toBe("not-allowed");
+    expect(value(".records-controls .export-xl-button:disabled", "background")).toMatch(/^linear-gradient/);
+    expect(value(".records-controls .export-xl-button", "--accent-ring")).toMatch(/31 138 91/); // 緑系のring
+    expect(value(".action-button", "--accent-ring")).toMatch(/179 48 79/); // 赤系のring
+  });
+  it("[＋ モニター追加]は＋を少し大きく、文言と機能はそのまま。Export (XL)は実行中にdisabled + aria-busy", async () => {
+    standardMocks([recordsFor(sampleRecords)]);
+    renderApp("/");
+    const add = await screen.findByRole("button", { name: "＋ モニター追加" });
+    expect(add.querySelector(".btn-plus")).toHaveTextContent("＋");
+    expect(parseInt(value(".action-button .btn-plus", "font-size")!)).toBeGreaterThan(14);
+    const xl = await screen.findByRole("button", { name: "Export (XL)" });
+    expect(xl).toHaveAttribute("aria-busy", "false");
+    expect(xl).toBeEnabled();
+  });
+});

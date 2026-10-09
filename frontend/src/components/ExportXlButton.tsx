@@ -69,7 +69,7 @@ export function ExportXlButton({ filter }: { filter: RecordFilterValue }) {
   };
 
   return <>
-    <button type="button" className="export-xl-button" onClick={run} disabled={busy || !range} title="現在のモニター・期間の全件をExcel(.xlsx)で出力します">{busy ? "出力中…" : "Export (XL)"}</button>
+    <button type="button" className="export-xl-button" onClick={run} disabled={busy || !range} aria-busy={busy} title="現在のモニター・期間の全件をExcel(.xlsx)で出力します">{busy ? "出力中…" : "Export (XL)"}</button>
     {error && <span className="export-xl-message error-text" role="alert">{error}</span>}
     {done && <span className="export-xl-message muted" role="status">{done}</span>}
   </>;
