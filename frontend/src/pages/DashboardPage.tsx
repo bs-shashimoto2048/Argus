@@ -22,6 +22,7 @@ export function countVisibleCards(region: HTMLElement, total: number): number {
 
 export function DashboardPage() {
   const [monitors, setMonitors] = useState<Monitor[]>([]);
+  const [trendReload, setTrendReload] = useState(0);
   const [latestRecords, setLatestRecords] = useState<Record<number, ReadingRecord>>({});
   const [error, setError] = useState("");
   const [showSettings, setShowSettings] = useState(false);
@@ -99,8 +100,8 @@ export function DashboardPage() {
       {monitors.length === 0 && <div className="empty"><h2>モニターがありません</h2><p>最初のモニターを追加してください。</p><button onClick={() => navigate("/monitors/new")}>モニター追加</button></div>}
     </div>
     </div>
-    <TrendChart monitors={monitors} filter={filter} refreshMs={60000} />
-    <RecordsSection monitors={monitors} title="計測履歴" description="1時間ごとに自動記録（毎時00分）。詳細な検索・Excel出力は「履歴・データ」から行えます。" refreshMs={60000} filter={filter} onFilterChange={setFilter} showExportXl />
+    <TrendChart monitors={monitors} filter={filter} refreshMs={60000} reloadToken={trendReload} />
+    <RecordsSection monitors={monitors} title="計測履歴" description="1時間ごとに自動記録（毎時00分）。詳細な検索・Excel出力は「履歴・データ」から行えます。" refreshMs={60000} filter={filter} onFilterChange={setFilter} showExportXl onRecordCorrected={() => setTrendReload((n) => n + 1)} />
     {showSettings && <DashboardSettingsModal settings={settings} onChange={update} onClose={() => setShowSettings(false)} />}
   </main>;
 }

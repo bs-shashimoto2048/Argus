@@ -33,11 +33,15 @@ type Props = {
   monitors: { id: number; display_name: string }[];
   filter: RecordFilterValue; // 履歴セクションと共有する条件(Monitor・期間)
   refreshMs?: number;
+  reloadToken?: number; // 値が変わると取り直す(履歴で記録を修正したあと、グラフへ即反映する)
   renderEvent?: EventMarkerRenderer;
 };
 
+export const MISSING_VALUE_WARNING = "※ 値無しの記録があります。該当記録を補正すると、プロットとグラフが正しく表示されます。";
+const MISSING_COLOR = "#dc2626";
+
 // 使用量推移グラフ。履歴と同じ条件(Monitor・期間)のrecordsを取得し、Monitorごとに1本の折れ線(SVG手描き)で表示する。
-export function TrendChart({ monitors, filter, refreshMs, renderEvent = defaultEventRenderer }: Props) {
+export function TrendChart({ monitors, filter, refreshMs, reloadToken = 0, renderEvent = defaultEventRenderer }: Props) {
   const [metric, setMetric] = useState<TrendMetric>("usage");
   const [records, setRecords] = useState<ReadingRecord[] | null>(null);
   const [truncated, setTruncated] = useState(false);
@@ -79,6 +83,12 @@ export function TrendChart({ monitors, filter, refreshMs, renderEvent = defaultE
     setRecords(null); setError(""); setTruncated(false); setHover(null);
     void load(id, false);
   }, [load, from, to]);
+
+  // 記録の修正など、外からの再取得要求。表示は消さずに取り直す。
+  useEffect(() => {
+    if (reloadToken === 0 || !from || !to) return;
+    void load(generation.current, true);
+  }, [reloadToken]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!refreshMs || !from || !to) return;
@@ -132,6 +142,8 @@ export function TrendChart({ monitors, filter, refreshMs, renderEvent = defaultE
   const fmtDelta = (v: number) => (v > 0 ? `+${fmtNumber(v)}` : fmtNumber(v));
   const conditionText = `${filter.monitorIds.length === 0 ? "すべてのモニター" : filter.monitorIds.length === 1 ? (monitors.find((m) => m.id === filter.monitorIds[0])?.display_name.trim() ?? "選択中のモニター") : `${filter.monitorIds.length}台`}・${filter.period.mode === "today" ? "今日" : filter.period.mode === "last7" ? "過去7日" : `${filter.period.startDate} 〜 ${filter.period.endDate}`}`;
   const eventKinds = [...new Set(events.map((e) => e.kind))];
+  // 値無し(null)の点: 折れ線の点にはせず、赤い×で該当時刻に印を付ける。表示中の指標のデータに1件でもあれば警告文を出す。
+  const missing = series.flatMap((s) => s.points.filter((p) => p.y == null).map((p) => ({ monitor_id: s.monitor_id, name: s.name, time: p.time })));
   const summary = series.map((s) => { const last = [...s.points].reverse().find((p) => p.y != null); return `${s.name}: ${last ? fmtNumber(last.y!) : "データなし"}`; }).join("、");
 
   return <section className="panel trend-panel" aria-label="使用量推移グラフ">
@@ -143,6 +155,7 @@ export function TrendChart({ monitors, filter, refreshMs, renderEvent = defaultE
       <span className="trend-condition muted" title="Monitor・期間は計測履歴と共通です">{conditionText}</span>
       {series.length > 0 && <ul className="trend-legend" aria-label="凡例">
         {series.map((s, i) => <li key={s.monitor_id}><i style={{ background: seriesColor(i) }} aria-hidden="true" />{s.name}</li>)}
+        {missing.length > 0 && <li className="legend-event legend-missing"><i className="marker-cross" aria-hidden="true">×</i>値無し</li>}
         {eventKinds.includes("carried_forward") && <li className="legend-event"><i className="marker-diamond" aria-hidden="true" />前回値保持</li>}
         {eventKinds.includes("manual_corrected") && <li className="legend-event"><i className="marker-ring" aria-hidden="true" />手動修正</li>}
       </ul>}
@@ -168,8 +181,16 @@ export function TrendChart({ monitors, filter, refreshMs, renderEvent = defaultE
             const node = renderEvent(event, { x: px(event.time), y: point?.y != null ? py(point.y) : MARGIN.top + plotH, color: colorOf(event.monitor_id) });
             return node ? <g key={k} className={`trend-event event-${event.kind}`} data-monitor-id={event.monitor_id}>{node}</g> : null;
           })}
+          {missing.map((m, k) => {
+            const x = px(m.time), y = MARGIN.top + plotH - 1; // 値が無いので、グラフ下端(軸の位置)に印を置く
+            return <g key={`${m.monitor_id}-${m.time}-${k}`} className="trend-missing" data-monitor-id={m.monitor_id}>
+              <path d={`M${x - 5} ${y - 9}L${x + 5} ${y + 1}M${x - 5} ${y + 1}L${x + 5} ${y - 9}`} stroke={MISSING_COLOR} strokeWidth={2.4} strokeLinecap="round" fill="none" />
+              <title>{`${m.name}: 値無し`}</title>
+            </g>;
+          })}
           {hover != null && <line x1={px(hover)} x2={px(hover)} y1={MARGIN.top} y2={MARGIN.top + plotH} stroke="#94a3b8" strokeDasharray="3 3" />}
         </svg>
+        {missing.length > 0 && <div className="trend-missing-note" role="note">{MISSING_VALUE_WARNING}</div>}
         {hover != null && <div className="trend-tooltip" style={{ left: Math.min(Math.max(px(hover) + 10, 0), Math.max(0, width - 190)) }} role="status">
           <strong>{fullTime.format(new Date(hover))}</strong>
           {hoverRows.map(({ s, i, p }) => metric === "delta"

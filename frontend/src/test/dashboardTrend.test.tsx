@@ -434,3 +434,72 @@ describe("Monitorカード: 画像(約70%)と 現在値・信頼度・更新(縦
     expect(value(".monitor-card", "align-self")).toBe("stretch");
   });
 });
+
+describe("値無し(null)の表示: 赤い×と、左下の警告文(値無しがある時だけ)", () => {
+  const WARNING = "値無しの記録があります。該当記録を補正すると、プロットとグラフが正しく表示されます。";
+  const rows = [rec(1, 3, 8, "5", { value: "100" }), rec(2, 3, 9, null, { value: "105" }), rec(3, 3, 10, "4", { value: "109" })];
+  const crosses = () => [...document.querySelectorAll(".trend-svg .trend-missing")];
+
+  it("値無しあり → 該当時刻に赤い×(path)と警告文。通常の点(丸・菱形)とは別の記号", async () => {
+    standardMocks([recordsFor(rows)]);
+    renderApp("/");
+    await waitFor(() => expect(crosses()).toHaveLength(1));
+    const cross = crosses()[0];
+    expect(cross.querySelector("path")!.getAttribute("stroke")).toBe("#dc2626"); // 赤系
+    expect(cross.querySelector("circle")).toBeNull(); // 丸ではない
+    expect(cross.getAttribute("data-monitor-id")).toBe("3");
+    const note = document.querySelector(".trend-missing-note") as HTMLElement;
+    expect(note).toHaveTextContent(WARNING);
+    expect(value(".trend-body .trend-missing-note", "bottom")).toMatch(/px$/); // 左下寄り
+    expect(value(".trend-body .trend-missing-note", "left")).toMatch(/px$/);
+    expect(within(screen.getByRole("list", { name: "凡例" })).getByText("値無し")).toBeInTheDocument();
+  });
+
+  it("値無しなし → 赤×も警告文も出ない", async () => {
+    standardMocks([recordsFor([rec(1, 3, 8, "5"), rec(2, 3, 9, "4")])]);
+    renderApp("/");
+    await waitFor(() => expect(document.querySelector(".trend-svg")).not.toBeNull());
+    expect(crosses()).toHaveLength(0);
+    expect(document.querySelector(".trend-missing-note")).toBeNull();
+    expect(within(screen.getByRole("list", { name: "凡例" })).queryByText("値無し")).toBeNull();
+  });
+
+  it("タブ切替: 指標ごとに、そのデータに値無しがある時だけ表示する(使用量=あり / 実値・累積増加量=なし)", async () => {
+    standardMocks([recordsFor(rows)]);
+    const user = userEvent.setup();
+    renderApp("/");
+    await waitFor(() => expect(crosses()).toHaveLength(1)); // 使用量
+    await user.click(screen.getByRole("button", { name: "実値" }));
+    expect(crosses()).toHaveLength(0);
+    expect(document.querySelector(".trend-missing-note")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "累積増加量" }));
+    expect(crosses()).toHaveLength(0);
+    await user.click(screen.getByRole("button", { name: "使用量" }));
+    expect(crosses()).toHaveLength(1);
+    expect(document.querySelector(".trend-missing-note")).not.toBeNull();
+  });
+
+  it("確定値が無い記録は、実値・累積増加量でも赤×(補間しない)", async () => {
+    standardMocks([recordsFor([rec(1, 3, 8, null, { value: "100" }), rec(2, 3, 9, null, { value: null }), rec(3, 3, 10, null, { value: "103" })])]);
+    const user = userEvent.setup();
+    renderApp("/");
+    await user.click(await screen.findByRole("button", { name: "実値" }));
+    await waitFor(() => expect(crosses()).toHaveLength(1));
+    await user.click(screen.getByRole("button", { name: "累積増加量" }));
+    expect(crosses()).toHaveLength(1);
+    expect(document.querySelector(".trend-missing-note")).toHaveTextContent(WARNING);
+  });
+
+  it("補正後(reloadTokenで取り直し)、値が入ると赤×と警告文が消えて通常表示になる", async () => {
+    let data = rows;
+    standardMocks([get("/api/records", () => ({ items: data, total: data.length, limit: 1000, offset: 0 }))]);
+    const filter = { monitorIds: [], period: { mode: "today" as const, startDate: "", endDate: "" } };
+    const view = render(<TrendChart monitors={threeMonitors as Monitor[]} filter={filter} reloadToken={0} />);
+    await waitFor(() => expect(crosses()).toHaveLength(1));
+    data = [rows[0], { ...rows[1], usage: "5" }, rows[2]];
+    view.rerender(<TrendChart monitors={threeMonitors as Monitor[]} filter={filter} reloadToken={1} />);
+    await waitFor(() => expect(crosses()).toHaveLength(0));
+    expect(document.querySelector(".trend-missing-note")).toBeNull();
+    expect(polylines().length).toBeGreaterThan(0); // 折れ線が1本につながる
+  });
+});

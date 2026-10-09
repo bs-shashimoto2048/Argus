@@ -27,11 +27,13 @@ type Props = {
   onFilterChange?: (next: RecordFilterValue) => void;
   // 期間コントロールの右に [Export (XL)](現在の条件の全件を.xlsxで出力)を出す。
   showExportXl?: boolean;
+  // 記録を修正したときに呼ばれる(Dashboardのグラフを取り直す)。
+  onRecordCorrected?: () => void;
 };
 
 // 計測履歴(フィルタ + 固定ヘッダーのスクロール表 + 詳細Drawer)。Dashboard下部・履歴・データ画面・Monitor Detailの履歴タブで共用する。
 // ページ送りは無く、現在の条件の全件を縦スクロールだけで確認できる。内部ではchunk単位で段階的に読み込む。
-export function RecordsSection({ monitors, title, description, showExport = false, refreshMs, fixedMonitorId, size = "compact", filter: controlledFilter, onFilterChange, showExportXl = false }: Props) {
+export function RecordsSection({ monitors, title, description, showExport = false, refreshMs, fixedMonitorId, size = "compact", filter: controlledFilter, onFilterChange, showExportXl = false, onRecordCorrected }: Props) {
   const [ownFilter, setOwnFilter] = useState<RecordFilterValue>({ monitorIds: fixedMonitorId != null ? [fixedMonitorId] : [], period: { mode: "today", startDate: todayJst(), endDate: todayJst() } });
   const filter = controlledFilter ?? ownFilter;
   const setFilter = onFilterChange ?? setOwnFilter;
@@ -117,6 +119,7 @@ export function RecordsSection({ monitors, title, description, showExport = fals
     itemsRef.current = merged;
     setItems(merged);
     setSelected(result.record);
+    onRecordCorrected?.();
   };
 
   const changeFilter = (next: RecordFilterValue) => setFilter(fixedMonitorId != null ? { ...next, monitorIds: [fixedMonitorId] } : next);

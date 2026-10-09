@@ -961,3 +961,7 @@ body { overflow-x: hidden; }
 .monitor-card .card-notices .carried-badge, .monitor-card .card-notices .baseline-conflict-badge { width: 100%; box-sizing: border-box; }
 .dashboard-page .preview-wrap { height: clamp(110px, 15vh, 170px); }
 .dashboard-page .monitor-card .card-body .preview-wrap { height: clamp(110px, 15vh, 170px); }
+
+/* 値無し(null)の印: 赤い×(前回値保持=菱形・手動修正=二重丸とは別の記号)。警告文はグラフ内の左下寄りに、値無しがある時だけ出す。 */
+.trend-body .trend-missing-note { position: absolute; left: 64px; bottom: 26px; z-index: 2; max-width: calc(100% - 80px); padding: 2px 8px; border-radius: 4px; background: rgb(254 242 242 / 94%); border: 1px solid #fecaca; color: #b91c1c; font-size: 11.5px; line-height: 1.4; pointer-events: none; }
+.trend-legend .marker-cross { display: inline-block; width: auto; height: auto; margin-right: 4px; background: none; color: #dc2626; font-style: normal; font-weight: 800; font-size: 13px; line-height: 1; }
