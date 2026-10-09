@@ -185,7 +185,7 @@ describe("計測履歴: ページ送りなし・スクロールで全件", () =>
     // 行の重複がない(古い順に連続したid)
     const ids = [...document.querySelectorAll(".records-table tbody tr[data-record-id]")].map((r) => Number((r as HTMLElement).dataset.recordId));
     expect(new Set(ids).size).toBe(1200);
-  });
+  }, 20000); // 1200行を描画する重いテスト(CIの遅い実行環境でも既定の5秒を超えないよう明示)
 
   it("追加取得中に何度スクロールしても、同じ続きを二重に取得しない", async () => {
     let release: () => void = () => undefined;
