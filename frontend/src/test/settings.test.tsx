@@ -16,8 +16,8 @@ describe("システム設定: データ保存", () => {
     expect(imageInput).toHaveValue("");
     expect(imageInput).toHaveAttribute("placeholder", "C:\\Argus\\data\\images");
     expect(screen.getByLabelText("Excel保存先")).toHaveAttribute("placeholder", "C:\\Argus\\data\\exports");
-    expect(screen.getByLabelText("元画像を保存")).toBeChecked();
-    expect(screen.getByLabelText("推論画像を保存")).toBeChecked();
+    expect(screen.getByRole("switch", { name: "元画像を保存" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("switch", { name: "推論結果画像を保存" })).toHaveAttribute("aria-checked", "true");
     expect(screen.getByLabelText("容量警告しきい値 (GB)")).toHaveValue(10);
     expect(screen.getByLabelText("容量停止しきい値 (GB)")).toHaveValue(5);
   });
@@ -138,5 +138,69 @@ describe("システム設定: データ保存", () => {
     await user.click(await screen.findByRole("button", { name: "Excel保存先の書込みテスト" }));
     await waitFor(() => expect(screen.getByText(/書き込みできました/)).toBeInTheDocument());
     expect(mocks.calls.find((c) => c.url === "/api/system/data-storage/test")!.body).toEqual({ target: "excel" });
+  });
+
+  describe("画像保存のトグル", () => {
+    const sw = (name: string) => screen.findByRole("switch", { name });
+
+    it("チェックボックスではなくON/OFFのトグルで、既定はON", async () => {
+      standardMocks();
+      renderApp("/settings");
+      expect(await sw("推論結果画像を保存")).toHaveAttribute("aria-checked", "true");
+      expect(await sw("元画像を保存")).toHaveAttribute("aria-checked", "true");
+      expect(screen.getByRole("switch", { name: "推論結果画像を保存" })).toHaveTextContent("ON");
+      expect(screen.queryByRole("checkbox", { name: /画像を保存/ })).not.toBeInTheDocument();
+    });
+
+    it("既存設定がOFFならOFFのまま表示し、OFFの説明を出す", async () => {
+      standardMocks([get("/api/system/data-storage", { ...storageSettings, save_overlay_image: false })]);
+      renderApp("/settings");
+      const toggle = await sw("推論結果画像を保存");
+      expect(toggle).toHaveAttribute("aria-checked", "false");
+      expect(toggle).toHaveTextContent("OFF");
+      expect(screen.getByText(/OFFの場合、今後の計測記録では推論結果画像を保存しません/)).toBeInTheDocument();
+    });
+
+    it("ON→OFFは確認し、キャンセルならONのまま(保存もしない)", async () => {
+      const mocks = standardMocks();
+      const user = userEvent.setup();
+      renderApp("/settings");
+      await user.click(await sw("推論結果画像を保存"));
+      const dialog = await screen.findByRole("alertdialog", { name: "画像保存のOFFの確認" });
+      expect(within(dialog).getByText(/元画像のみでは、後からAIがどの値を検出したか確認できない場合があります/)).toBeInTheDocument();
+      expect(within(dialog).getByRole("button", { name: "キャンセル" })).toHaveFocus();
+      await user.click(within(dialog).getByRole("button", { name: "キャンセル" }));
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+      expect(screen.getByRole("switch", { name: "推論結果画像を保存" })).toHaveAttribute("aria-checked", "true");
+      expect(putCalls(mocks.calls)).toHaveLength(0);
+    });
+
+    it("確認後にOFFになり、保存APIへsave_overlay_image=falseだけが変わって送られる。OFF→ONは警告なし", async () => {
+      const mocks = standardMocks([route("PUT", "/api/system/data-storage", () => json({ ...storageSettings, save_overlay_image: false }))]);
+      const user = userEvent.setup();
+      renderApp("/settings");
+      await user.click(await sw("推論結果画像を保存"));
+      await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "OFFにする" }));
+      expect(screen.getByRole("switch", { name: "推論結果画像を保存" })).toHaveAttribute("aria-checked", "false");
+      await user.click(screen.getByRole("button", { name: "保存" }));
+      expect(await screen.findByText("データ保存設定を保存しました")).toBeInTheDocument();
+      expect(putCalls(mocks.calls)[0].body).toEqual({ image_root_folder: "", excel_output_folder: "", save_original_image: true, save_overlay_image: false, storage_warn_free_gb: 10, storage_stop_free_gb: 5 });
+      // 過去画像の削除など、設定保存以外のAPIは呼ばない
+      expect(mocks.calls.filter((c) => c.method === "DELETE")).toHaveLength(0);
+
+      await user.click(screen.getByRole("switch", { name: "推論結果画像を保存" }));
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument(); // OFF→ONは確認なし
+      expect(screen.getByRole("switch", { name: "推論結果画像を保存" })).toHaveAttribute("aria-checked", "true");
+    });
+
+    it("元画像のON→OFFも確認する", async () => {
+      standardMocks();
+      const user = userEvent.setup();
+      renderApp("/settings");
+      await user.click(await sw("元画像を保存"));
+      expect(await screen.findByRole("alertdialog", { name: "画像保存のOFFの確認" })).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "OFFにする" }));
+      expect(screen.getByRole("switch", { name: "元画像を保存" })).toHaveAttribute("aria-checked", "false");
+    });
   });
 });
