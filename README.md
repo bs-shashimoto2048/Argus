@@ -1,6 +1,27 @@
 # Argus
 
-カメラ映像から計器を遠隔監視するWebアプリケーションです。Monitor管理、映像ソース設定、接続確認、ライブ映像表示、ROI/前処理編集に加え、YOLO（Ultralytics）/ EasyOCR / Tesseractによる実推論、推論結果の保存とDashboard/Detail表示までを実装しています。
+カメラ映像から計器（ガスメーター等）を遠隔監視するWebアプリケーションです。Monitor管理、映像ソース設定、接続確認、ライブ映像表示、ROI/前処理編集に加え、YOLO（Ultralytics）/ EasyOCR / Tesseract / C++ ONNXによる実推論、時系列で安定化した現在値の表示、1時間ごとの計測履歴（元画像・推論結果画像つき）と使用量の推移グラフ、Excel出力、読取値の手動修正（監査履歴つき）までを実装しています。
+
+## 主要機能
+
+- **Dashboard**: 各Monitorの映像・現在値・信頼度・更新時刻をカードで一覧し、使用量推移グラフと1時間ごとの計測履歴を同じ画面で確認できます。
+- **読取の安定化**: 単発のAI推論結果ではなく、直近の読み取り列を多数決/連続一致で確定した値だけを運用値にします。基準値（monotonic）との矛盾は警告します。
+- **1時間ごとの計測履歴**: 毎時00分に全Monitorの正式値・使用量・元画像・推論結果画像を1件ずつ記録します（1回の推論結果から作る単一のsnapshotで、値と画像が同じ時点のものになります）。
+- **読取値の手動修正**: 前回確定値を保持した記録や基準値競合中の記録は、画像で確認した値へ修正できます。元の証跡は変えず、修正履歴を残します。
+- **Excel出力（Export (XL)）**: 選択中のMonitor・期間の全件を、Monitorごとにシートを分けた.xlsxで保存できます。
+- **LAN内アクセス**: 同じ社内LANの別PCから、FrontendのURL1つで閲覧できます（信頼できる社内LAN限定。下記）。
+
+## Dashboard画面例
+
+![Argus Dashboard（開発中の実運用画面例）](docs/images/dashboard_current.png)
+
+*画面は開発中のため、今後変更される場合があります。画像は`docs/images/dashboard_current.png`を差し替えると更新できます。*
+
+Dashboardでは、各Monitorの現在値・映像・信頼度を確認しながら、使用量推移グラフと1時間ごとの計測履歴を同一画面で確認できます。
+
+- **上段: Monitorカード** — 1行に最大3台。左が映像（約70%）、右が現在値・信頼度・更新時刻（縦並び）で、下段に取得状態と警告を表示します。4台以上は3列のまま、カード領域の内側だけが縦スクロールします（表示順は`display_order`、異常なMonitorを勝手に並べ替えません）。画面外のカードやタブが非表示の間は、映像の更新を止めます。映像の更新頻度（1/2/5/10/15/20/30 FPS、既定5）は右上の設定で変更でき、推論FPSとは独立です。
+- **中段: 使用量推移グラフ** — `使用量`（既定） / `累積増加量`（表示期間の最初の確定値を0とした差分。Monitorごとに0起点なので桁の違うメーターも比較できます） / `実値`（メーターの積算値そのもの）を切り替えます。期間（今日 / 過去7日 / 任意期間）とMonitorは、下段の計測履歴と共通です。値が無い時刻は**赤い×**で示し、値無しがあるときだけ左下に「補正すると正しく表示されます」と警告します。◇は前回確定値の保持、○は手動修正です。
+- **下段: 計測履歴** — 時刻ごとのグループ、縦罫線、数値列の色分け、固定ヘッダーの表で、下へスクロールすると続きを読み込みます（ページ送りなし）。`前回確定値を保持`（Raw棄却中）・`基準値競合`・`修正済み`の状態を表示し、`画像`・`詳細`から記録時に保存した元画像と推論結果画像、修正履歴を確認できます。右上の **Export (XL)** で、いま選択している条件の全件をExcel（.xlsx）へ保存できます（保存先はブラウザの保存ダイアログ。非対応ブラウザでは通常のダウンロード）。
 
 ## 必要環境
 
@@ -111,7 +132,7 @@ Monitor詳細画面の推論設定内「読取安定化」セクション（`inf
 
 **確定値の先頭0**: 確定値（Confirmed/UI表示/DB/CSV）は、桁数検証・小数点位置の適用後に整数部の先頭の0を除去した形です（全Monitor共通。`0265771`→`265771`、`037239.5`→`37239.5`、`000000.5`→`0.5`）。検出・bbox・Raw Readingと`expected_digits`の検証は元の桁列のまま行い、Raw値（Debug API・診断表示）は先頭0を含みます。以前のMonitor単位の`strip_leading_zero`設定は廃止され、DBに残っていても無視されます。過去の履歴は書き換えず、新しい確定値から適用されます。
 
-**1時間ごとの計測履歴**: 毎時00分（Asia/Tokyo）に、有効な全Monitorの最終運用値を`reading_records`へ1件ずつ記録します（既定で有効。`GET /api/records`）。前回（1時間前）の定時計測値との差を使用量（`usage`）として保存します。値が変わるたびの記録ではなく、通信異常・読取不能・baseline conflict・reset/rebase等の状態変化は別の情報（`reading_baseline_events`、runtime情報）で、計測履歴には混在させません。記録時には、その時点の元画像と推論オーバーレイを1組だけ保存します（既定の保存先は`data/images`、`/api/system/data-storage`で変更。UNC対応、空き容量の監視つき。保存に失敗しても推論・読取・計測値の記録は止まりません）。直前の確定値を保持した記録（桁の回転途中など）は`value_source=carried_forward`で区別されます。この記録から、Monitorごとにシートを分けたExcel(.xlsx)を出力できます（`POST /api/records/export/excel`、ブラウザダウンロード/サーバー指定フォルダへ保存。既定の保存先は`data/exports`）。従来のCSV出力はlegacyとして残っています。画面は共通ナビゲーション（ダッシュボード / モニター管理 / 履歴・データ / システム設定）で構成されています（`docs/UI_PHASE4.md`）。Monitor Detailは Monitoring / History / Settings / Diagnostics の4タブで、カメラ一覧（`/api/cameras`）は「カメラ選択（検出）」を押したときだけ取得します（`docs/UI_PHASE5.md`）。詳細は`docs/READING_RECORDS.md`を参照してください。
+**1時間ごとの計測履歴**: 毎時00分（Asia/Tokyo）に、有効な全Monitorの最終運用値を`reading_records`へ1件ずつ記録します（既定で有効。`GET /api/records`）。前回（1時間前）の定時計測値との差を使用量（`usage`）として保存します。値が変わるたびの記録ではなく、通信異常・読取不能・baseline conflict・reset/rebase等の状態変化は別の情報（`reading_baseline_events`、runtime情報）で、計測履歴には混在させません。記録時には、その時点の元画像と推論オーバーレイを1組だけ保存します（既定の保存先は`data/images`、`/api/system/data-storage`で変更。UNC対応、空き容量の監視つき。保存に失敗しても推論・読取・計測値の記録は止まりません）。直前の確定値を保持した記録（桁の回転途中など）は`value_source=carried_forward`で区別されます。この記録から、Monitorごとにシート（シート名=Monitor名、`display_order`順）を分けたExcel(.xlsx)を出力できます（`POST /api/records/export/excel`、ブラウザダウンロード/サーバー指定フォルダへ保存。既定の保存先は`data/exports`。DashboardのExport (XL)は、選択中のMonitor・期間の全件をブラウザへ保存します）。**使用量（usage）**は「今回の値 − 直前1時間の値」で、今回と直前がともに信頼できる記録（通常のConfirmed、または手動修正済み）のときだけ計算し、未修正のcarried_forward等はnullです。前回確定値を保持した記録・基準値競合中の記録は、実メーターの画像を確認して正式値を手動修正できます（`POST /api/records/{id}/correct`。元のRaw・信頼度・判定・画像は変更せず、`reading_record_corrections`に修正履歴を残し、修正した記録と直後の記録のusageを再計算します。詳細は`docs/READING_RECORDS.md`）。従来のCSV出力はlegacyとして残っています。画面は共通ナビゲーション（ダッシュボード / モニター管理 / 履歴・データ / システム設定）で構成されています（`docs/UI_PHASE4.md`）。Monitor Detailは 監視 / 履歴 / 設定 / 診断 の4タブで、カメラ一覧（`/api/cameras`）は「カメラ選択（検出）」を押したときだけ取得します（`docs/UI_PHASE5.md`）。詳細は`docs/READING_RECORDS.md`を参照してください。
 
 **読取基準値（monotonic baseline）**: `monotonic`/`max_rate_per_minute`の検証に使う基準値は、CONFIRMEDのときにDBへ永続化され、Backend再起動・設定保存（Scheduler再構築）後も復元されます（Raw windowと連続失敗回数は再構築で初期化）。誤値が確定して固着した場合（正しい値が`decrease_detected`で棄却され続ける）は、Monitor詳細の「読取基準値」から、実メーターで確認した値を指定して再設定（rebase）するか、基準値をリセットして次の確定値を新しい基準にします。操作には理由と操作者（自己申告）が必須で、すべて監査履歴に残ります。低い値が自動で採用されることはなく、合意候補が基準値と矛盾して5分以上続くと、DashboardとDetailに警告が出ます。詳細は`docs/READING_BASELINE.md`を参照してください。
 
@@ -177,6 +198,8 @@ Backend（既存API契約の既定ポートは8000。使用中なら開発用ス
 .\scripts\start_backend_dev.ps1
 ```
 
+開発用スクリプトは、ファイル変更で自動再読込（`--reload`）しますが、監視対象は`backend/`配下だけです。監視Runtimeを動かしている最中に再起動させたくない場合（実運用の確認中など）は、`-NoReload`を付けて起動してください（`.\scripts\start_backend_dev.ps1 -NoReload`）。別のworktreeを使う場合はリポジトリの外に作成してください。
+
 Frontend（先にBackendを起動しておくこと。Backendが選んだポートを`start_frontend_dev.ps1`が自動検出するため、`ARGUS_BACKEND_URL`を手動設定する必要はない）:
 
 ```powershell
@@ -193,9 +216,9 @@ Backendを別の起動方法（`start_backend_dev.ps1`を経由しない等）�
 
 ViteのFrontendポートは`5180`に固定しています(`strictPort: true`)。LANアクセスするクライアントが知っているURLは1つだけなので、ポートが自動で他の値へ流れて利用者に気づかれないまま古いURLが無効になる事態を防ぐため(Issue #26)。5180が既に使用中の場合はVite側がエラーで起動失敗するので、先に該当プロセスを終了させること。
 
-- Backend: 起動時に表示されたURL
+- Backend: 起動時に表示されたURL（`127.0.0.1`のみ。LANへは公開しません）
 - APIドキュメント: Backend URL + `/docs`
-- Frontend: Vite起動時に表示されたURL
+- Frontend: Vite起動時に表示されたURL（固定ポート`5180`。LANの別PCからは`http://<ArgusPCのLAN IP>:5180`）
 - SQLite: `data/argus.db`
 
 ## LAN内アクセス（同一社内LAN上の別PCから閲覧・設定する場合）
@@ -242,6 +265,11 @@ Internet公開・VPN越し公開・Reverse proxy/HTTPSの本格導入・AD/SSO�
 - YOLO（Ultralytics）/ EasyOCR / Tesseractによる実推論、ModelRegistryによるモデルcache/reuse
 - C++ ONNX推論backend（`engine=cpp_onnx`、Digital/Drum production profile）。Monitor詳細画面の「推論設定」から選択でき、既定は引き続き`ultralytics`。詳細・物理カメラacceptance結果・既知の制約は`docs/CPP_ONNX_INTEGRATION.md`
 - 推論結果（現在値・信頼度・前回値・推論status/エラー）の保存とDashboard/Detail表示
+- Dashboard（Monitorカード3列＋4台以上はカード領域内スクロール、使用量推移グラフ［使用量 / 累積増加量 / 実値、値無しの赤×表示］、計測履歴、Dashboard表示FPS 1〜30）
+- 1時間ごとの計測履歴（`reading_records`）: 1推論tick=1 immutableなsnapshotから値・Raw・信頼度・判定・元画像・推論結果画像を同時点で記録、使用量（信頼できる記録の間だけ計算）、データ保存設定（画像保存先・UNC・空き容量監視・元画像/推論結果画像の保存ON/OFF）
+- 読取値の手動修正と修正履歴（`reading_record_corrections`。元証跡は不変、usageを再計算、基準値の再設定は明示した場合のみ）
+- Excel出力（Export (XL)。Monitorごとのシート、選択中のMonitor・期間の全件、ブラウザの保存ダイアログ/ダウンロード）
+- LAN内の別PCからのDashboard閲覧（FrontendのURL1つ。Backendは非公開）
 - Diagnostics API（`GET /api/system/inference`）によるtorch/CUDA/各推論ライブラリの導入状況確認
 - Frontend Device選択肢の実環境（実GPU）連動
 - Raw Reading→Confirmed Readingの時系列安定化（多数決/連続一致）、monotonic/rate/桁数のValidation、Reading Diagnostics API
@@ -252,7 +280,9 @@ Internet公開・VPN越し公開・Reverse proxy/HTTPSの本格導入・AD/SSO�
 - Argus専用数字検出モデルは"Production Candidate"（`meter_digits_v2_candidate.pt`、`role=candidate`）に留まっている。追加データ収集（実カメラ3個体・167枚）で`meter_digits_v3_candidate.pt`を再学習したが、Full Reading Exact Matchの改善なし・Temporal StabilizerのFalse Confirmed Reading悪化のため`role=production`への昇格は見送り、`role=rejected_candidate`として記録のみ（詳細: `docs/METER_DIGIT_MODEL_EVALUATION.md` 13章）
 - 機械式カウンター方式のメーター（Domain B）は今回のCandidate学習対象外。対応するには専用データ収集・学習が別途必要
 - 実際の物理メーター（積算ガスメーター等）を使ったConfirmed値の長時間安定性検証は、`cpp_onnx`のDigital（液晶）/Drum（機械式ドラム）についてのみ実施済み（1時間soak、`docs/CPP_ONNX_INTEGRATION.md`参照）。それ以外のモデル・メーターは未実施（この開発環境に物理メーターを継続設置できないため。既存の実メーター写真によるオフライン評価、実カメラ・実YOLOでのNO_DETECTION連続時の`no_reading`遷移は実機で確認済み）
-- Alert、グラフ・履歴分析（ConfirmedReadingのみを見る構造は用意済みだが、Alert本体・グラフ画面は未実装）
+- Alert（通知）は未実装。使用量推移グラフと計測履歴は実装済みだが、長期の集計・分析画面（日次/月次の集計等）は未実装
+- 未修正のcarried_forwardの使用量は自動では補完しない（画像を確認して手動修正した時点で、使用量が順次復旧する）。連続したcarried_forward区間の一括補正は未実装
+- 既存の記録のusageは自動では書き換えない。過去の記録へ新しい使用量ルールを適用するには、限定バックフィル（`backend/scripts/backfill_reading_usage.py`。Monitor IDと日付を指定、dry-runが既定、`--apply`で実行前にDBをバックアップ）を使う
 - `datetime.utcnow()`のdeprecation警告が残っている（DB層のdatetime列が全体的にnaive datetime前提のため、部分的なtimezone-aware化はnaive/aware比較エラーを誘発するリスクがあり、今回のscopeでは見送り）
 - カメラ一覧はOpenCVで0〜4番を探索
 - URL認証はOpenCVが受け付ける一時的なURL形式に変換して接続します。機器やOpenCVビルドによっては別途プロキシ等が必要です。
