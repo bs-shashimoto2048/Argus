@@ -181,7 +181,7 @@ describe("記録画像Drawer", () => {
 });
 
 describe("Excel出力", () => {
-  const xlsx = () => new Response(new Blob(["PK"]), { status: 200, headers: { "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Content-Disposition": 'attachment; filename="Argus_MeterRecords_20261009.xlsx"', "X-Argus-Total-Rows": "45" } });
+  const xlsx = () => new Response("PK", { status: 200, headers: { "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Content-Disposition": 'attachment; filename="Argus_MeterRecords_20261009.xlsx"', "X-Argus-Total-Rows": "45" } });
   let downloaded: string[] = [];
   beforeEach(() => {
     downloaded = [];
