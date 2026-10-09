@@ -41,3 +41,5 @@ Phase 1〜3（`reading_records` / 記録画像 / Excel出力）のAPIを使う�
 - 画像保存先の変更後に旧画像を参照できない課題は残っています（将来、記録時のstorage rootを保持する方式を検討）。
 - Monitorカードに「単位」は表示しません（Monitorに単位の設定項目が無いため）。
 - Monitor Detailの再編（タブ化・baseline操作等の整理）はPhase 5です。
+
+> Phase 5で、履歴のMonitor選択はプルダウン（1台または「すべて」）、期間は3択（任意期間のときだけ期間選択BOX）に変更し、履歴表をヘッダー固定のスクロール式にしました。Monitor Detailのタブ化と`/api/cameras`の遅延取得も同Phaseです（`docs/UI_PHASE5.md`）。

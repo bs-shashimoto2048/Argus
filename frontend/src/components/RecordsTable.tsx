@@ -7,8 +7,10 @@ type Props = { items: ReadingRecord[]; onOpen: (record: ReadingRecord) => void; 
 // 1時間ごとの計測履歴(reading_records)。値は記録の value(先頭0除去後の正式値)をそのまま表示する。
 // 前回確定値を保持した記録(carried_forward)は、行を強調し、棄却された最新Rawも併記して「Rawの取りこぼし」に気付けるようにする。
 export function RecordsTable({ items, onOpen, selectedId }: Props) {
+  // 表は固定幅(table-layout: fixed + colgroup)で、ヘッダーはスクロール領域内でstickyに固定する(列位置がずれない)。
   return <div className="records-table-wrap">
     <table className="records-table">
+      <colgroup><col style={{ width: 104 }} /><col /><col style={{ width: 120 }} /><col style={{ width: 100 }} /><col style={{ width: 80 }} /><col style={{ width: 80 }} /><col style={{ width: 150 }} /><col style={{ width: 70 }} /><col style={{ width: 70 }} /></colgroup>
       <thead>
         <tr><th>取得日時</th><th>モニター</th><th className="num">確定値</th><th className="num">前回値</th><th className="num">使用量</th><th className="num">信頼度</th><th>状態</th><th>画像</th><th>詳細</th></tr>
       </thead>

@@ -15,11 +15,15 @@ type Props = {
   description?: string;
   showExport?: boolean;
   refreshMs?: number;
+  // 指定すると、そのMonitorの記録だけを表示し、Monitor選択を出さない(Monitor Detailの履歴タブ)。
+  fixedMonitorId?: number;
+  // 履歴表(スクロール領域)の高さの用途別クラス。
+  size?: "compact" | "tall";
 };
 
 // 計測履歴(フィルタ + テーブル + ページネーション + 詳細Drawer)。Dashboard下部と履歴・データ画面で共用する。
-export function RecordsSection({ monitors, pageSize, title, description, showExport = false, refreshMs }: Props) {
-  const [filter, setFilter] = useState<RecordFilterValue>({ monitorIds: [], period: { mode: "today", startDate: todayJst(), endDate: todayJst() } });
+export function RecordsSection({ monitors, pageSize, title, description, showExport = false, refreshMs, fixedMonitorId, size = "compact" }: Props) {
+  const [filter, setFilter] = useState<RecordFilterValue>({ monitorIds: fixedMonitorId != null ? [fixedMonitorId] : [], period: { mode: "today", startDate: todayJst(), endDate: todayJst() } });
   const [offset, setOffset] = useState(0);
   const [page, setPage] = useState<RecordsPage | null>(null);
   const [error, setError] = useState("");
@@ -46,7 +50,7 @@ export function RecordsSection({ monitors, pageSize, title, description, showExp
     return () => window.clearInterval(timer);
   }, [load, refreshMs]);
 
-  const changeFilter = (next: RecordFilterValue) => { setFilter(next); setOffset(0); };
+  const changeFilter = (next: RecordFilterValue) => { setFilter(fixedMonitorId != null ? { ...next, monitorIds: [fixedMonitorId] } : next); setOffset(0); };
   const total = page?.total ?? 0;
   const from = total === 0 ? 0 : offset + 1;
   const to = Math.min(offset + pageSize, total);
@@ -56,11 +60,15 @@ export function RecordsSection({ monitors, pageSize, title, description, showExp
       <div><h2>{title}</h2>{description && <p className="muted">{description}</p>}</div>
       {showExport && <ExcelExportPanel filter={filter} />}
     </div>
-    <RecordFilters monitors={monitors} value={filter} onChange={changeFilter} />
+    <RecordFilters monitors={monitors} value={filter} onChange={changeFilter} hideMonitor={fixedMonitorId != null} />
     {error && <div className="alert error" role="alert">{error}</div>}
-    {!invalid && page && page.items.length > 0 && <RecordsTable items={page.items} onOpen={setSelected} selectedId={selected?.id} />}
-    {!invalid && page && page.items.length === 0 && !error && <div className="records-empty">この条件に該当する計測記録はありません。</div>}
-    {!invalid && !page && !error && <div className="records-empty">読み込み中…</div>}
+    {/* 表のエリアは常に同じ高さ(読込中・0件・件数が多い場合でも変わらない)。表の中だけがスクロールする。 */}
+    <div className={`records-area ${size}`} aria-busy={loading}>
+      {!invalid && page && page.items.length > 0 && <RecordsTable items={page.items} onOpen={setSelected} selectedId={selected?.id} />}
+      {!invalid && page && page.items.length === 0 && !error && <div className="records-empty">この条件に該当する計測記録はありません。</div>}
+      {!invalid && !page && !error && <div className="records-empty">読み込み中…</div>}
+      {invalid && <div className="records-empty">期間を指定してください。</div>}
+    </div>
     <div className="pager" aria-label="ページ送り">
       <span>{total}件中 {from}〜{to}件{loading && "（更新中）"}</span>
       <button type="button" className="secondary" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - pageSize))}>前へ</button>

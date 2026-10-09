@@ -27,6 +27,7 @@ export function ReadingBaselinePanel({ monitorId, currentValue, open, onToggleOp
   const [force, setForce] = useState<ForceInfo | null>(null);
   const [forceChecked, setForceChecked] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [confirmingRebase, setConfirmingRebase] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -66,7 +67,8 @@ export function ReadingBaselinePanel({ monitorId, currentValue, open, onToggleOp
     }
   };
 
-  const rebase = () => run(() => api.rebaseBaseline(monitorId, { value: value.trim(), reason: reason.trim(), operator: operator.trim(), force: force !== null && forceChecked }), "基準値を再設定しました。次の確定値から反映されます。");
+  // 再設定は、現baseline・最新Raw/合意候補・入力値・理由を確認してから実行する(確認ダイアログ)。
+  const rebase = () => { setConfirmingRebase(false); return run(() => api.rebaseBaseline(monitorId, { value: value.trim(), reason: reason.trim(), operator: operator.trim(), force: force !== null && forceChecked }), "基準値を再設定しました。次の確定値から反映されます。"); };
   const reset = () => {
     if (!window.confirm("基準値をリセットします。次に正常に確定した値が新しい基準になります（表示中の現在値はすぐには変わりません）。よろしいですか？")) return;
     run(() => api.resetBaseline(monitorId, { reason: reason.trim(), operator: operator.trim() }), "基準値をリセットしました。次の確定値を新しい基準にします。");
@@ -122,7 +124,7 @@ export function ReadingBaselinePanel({ monitorId, currentValue, open, onToggleOp
               </div>
             )}
             <div className="settings-actions" style={{ gap: 8, display: "flex", flexWrap: "wrap" }}>
-              <button type="button" className="save-button" disabled={disabled || !inputsReady || value.trim() === "" || (force !== null && !forceChecked)} onClick={rebase}>基準値を指定して再設定</button>
+              <button type="button" className="save-button" disabled={disabled || !inputsReady || value.trim() === "" || (force !== null && !forceChecked)} onClick={() => setConfirmingRebase(true)}>基準値を指定して再設定</button>
               <button type="button" className="secondary" disabled={disabled || !inputsReady} onClick={reset}>基準値をリセット</button>
             </div>
             <p className="muted status-note">「リセット」は、次に正常に確定した値を新しい基準にします（表示中の現在値はすぐには変わりません）。読取が不安定なときは、実メーターで確認した値を指定する再設定を使ってください。</p>
@@ -148,6 +150,22 @@ export function ReadingBaselinePanel({ monitorId, currentValue, open, onToggleOp
           </>
         )}
       </div>
+      {confirmingRebase && status && <div className="modal-backdrop" role="alertdialog" aria-modal="true" aria-label="基準値の再設定の確認">
+        <div className="modal export-modal">
+          <div className="modal-head"><h2>基準値を再設定しますか？</h2></div>
+          <p className="muted">実メーターの表示を確認した値だけを指定してください。この操作は監査履歴に残ります。</p>
+          <dl className="rebase-confirm-values">
+            <dt>現在の基準値</dt><dd>{pending ? "リセット済み" : baseline?.value ?? "なし"}</dd>
+            <dt>最新のRaw</dt><dd>{status.latest_raw ?? "--"}</dd>
+            <dt>合意候補</dt><dd>{status.candidate ? `${status.candidate.value}（一致 ${status.candidate.agreement_count}）` : "--"}</dd>
+            <dt>指定する値</dt><dd>{value.trim()}</dd>
+            <dt>理由</dt><dd>{reason.trim()}</dd>
+            <dt>操作者</dt><dd>{operator.trim()}</dd>
+          </dl>
+          {force !== null && forceChecked && <div className="alert warning">最新のRaw合意値と大きく異なる値を、強制的に指定します。</div>}
+          <div className="modal-actions"><button type="button" className="secondary" onClick={() => setConfirmingRebase(false)}>キャンセル</button><button type="button" className="danger" onClick={rebase}>この値で再設定</button></div>
+        </div>
+      </div>}
     </section>
   );
 }

@@ -5,6 +5,7 @@ from ..core.database import get_db
 from ..models import Monitor
 from ..schemas.system import CsvExportRunResponse, CsvExportSettingsInput, CsvExportSettingsResponse, CsvExportStatusResponse
 from ..services import csv_export_service as svc
+from ..services.monitor_service import MONITOR_ORDER
 from runtime.csv_export_worker import csv_export_worker
 
 router = APIRouter(prefix="/api/system/csv-export", tags=["csv-export"])
@@ -14,7 +15,7 @@ router = APIRouter(prefix="/api/system/csv-export", tags=["csv-export"])
 def get_csv_export_status(db: Session = Depends(get_db)):
     settings = svc.get_settings(db)
     logs = svc.latest_export_log_by_monitor(db)
-    monitors = db.query(Monitor).options(joinedload(Monitor.latest_result)).order_by(Monitor.id).all()
+    monitors = db.query(Monitor).options(joinedload(Monitor.latest_result)).order_by(*MONITOR_ORDER).all()
     last_errors = {outcome.monitor_id: outcome.detail for outcome in csv_export_worker.last_outcomes if outcome.status == "error"}
     monitor_rows = []
     for monitor in monitors:

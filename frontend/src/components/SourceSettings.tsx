@@ -5,7 +5,11 @@ import type { History, Source } from "../types";
 type EditableSource = Source & { password?: string };
 
 export function SourceSettings({ source, onChange, onCheck, open, onToggleOpen }: { source: Source | null; onChange: (s: EditableSource) => void; onCheck: (s: EditableSource) => void; open: boolean; onToggleOpen: () => void }) {
-  const [cameras, setCameras] = useState<{ device_id: number; label: string }[]>([]);
+  // 検出可能なカメラ一覧。null=未スキャン。画面を開いただけでは/api/camerasを呼ばず、
+  // 「カメラ選択(検出)」「再スキャン」を押したときだけ取得する(現在の設定はscan無しで表示できる)。
+  const [cameras, setCameras] = useState<{ device_id: number; label: string }[] | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanError, setScanError] = useState("");
   const [history, setHistory] = useState<History[]>([]);
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -20,9 +24,13 @@ export function SourceSettings({ source, onChange, onCheck, open, onToggleOpen }
   };
 
   useEffect(() => {
-    api.cameras().then((r) => setCameras(r.cameras)).catch(() => undefined);
     api.history().then((r) => setHistory(r.items)).catch(() => undefined);
   }, []);
+
+  const scan = () => {
+    setScanning(true); setScanError("");
+    api.cameras().then((r) => setCameras(r.cameras)).catch((reason: Error) => setScanError(`カメラを検出できませんでした（${reason.message}）`)).finally(() => setScanning(false));
+  };
 
   return <section className="panel collapsible-panel">
     <button type="button" className="collapsible-header" onClick={onToggleOpen} aria-expanded={open}>
@@ -31,7 +39,18 @@ export function SourceSettings({ source, onChange, onCheck, open, onToggleOpen }
     </button>
     <div className="collapsible-body" style={open ? undefined : { display: "none" }}>
       <label>入力方式<select value={current.source_type} onChange={(e) => update({ source_type: e.target.value as Source["source_type"] })}><option value="camera">接続カメラ</option><option value="url">URL</option></select></label>
-      {current.source_type === "camera" ? <label>接続カメラ<select value={current.device_id ?? 0} onChange={(e) => update({ device_id: Number(e.target.value) })}>{cameras.length ? cameras.map((camera) => <option key={camera.device_id} value={camera.device_id}>{camera.label}</option>) : <option value="0">Camera 0（未検出）</option>}</select></label> : <>
+      {current.source_type === "camera" ? <div className="camera-source">
+        <div className="current-source">現在の設定: Camera {current.device_id ?? 0}</div>
+        <div className="scan-row">
+          <button type="button" className="secondary" onClick={scan} disabled={scanning}>{scanning ? "検出中…" : cameras ? "再スキャン" : "カメラ選択（検出）"}</button>
+          {cameras && cameras.length > 0 && <label className="inline-label">接続カメラ<select value={current.device_id ?? 0} onChange={(e) => update({ device_id: Number(e.target.value) })}>
+            {!cameras.some((camera) => camera.device_id === (current.device_id ?? 0)) && <option value={current.device_id ?? 0}>Camera {current.device_id ?? 0}（現在の設定・未検出）</option>}
+            {cameras.map((camera) => <option key={camera.device_id} value={camera.device_id}>{camera.label}</option>)}
+          </select></label>}
+        </div>
+        {cameras && cameras.length === 0 && <p className="muted">カメラが検出されませんでした（現在の設定は変わりません）。</p>}
+        {scanError && <div className="alert error" role="alert">{scanError}</div>}
+      </div> : <>
         <label>保存済みURL<select value="" onChange={(e) => { const selected = history.find((item) => String(item.id) === e.target.value); if (selected) update({ url: selected.url, username: selected.username, history_id: selected.id, has_password: selected.has_password }); }}><option value="">選択してください</option>{history.map((item) => <option key={item.id} value={item.id}>{item.url}</option>)}</select></label>
         <label>URL<input value={current.url ?? ""} onChange={(e) => update({ url: e.target.value, history_id: undefined })} placeholder="rtsp:// または http://" /></label>
       </>}

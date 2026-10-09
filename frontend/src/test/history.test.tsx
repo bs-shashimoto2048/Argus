@@ -59,15 +59,16 @@ describe("履歴・データ: 取得とフィルタ", () => {
     expect(mocks.calls.filter((c) => c.url.startsWith("/api/records?")).length).toBe(before);
   });
 
-  it("Monitorを複数選択して絞り込める(monitor_idを複数送る)。「すべて」で解除", async () => {
+  it("Monitorはプルダウンで選ぶと即時に履歴を再取得する(適用ボタンなし)。「すべてのモニター」で解除", async () => {
     const mocks = standardMocks([recordsHandler()]);
     const user = userEvent.setup();
     renderApp("/history");
-    const group = await screen.findByRole("group", { name: "モニター" });
-    await user.click(await within(group).findByRole("button", { name: "エネセン内ガスメータ用２" }));
-    await user.click(within(group).getByRole("button", { name: "食堂前機械室内メータ用" }));
-    await waitFor(() => expect(lastRecordsUrl(mocks.calls).searchParams.getAll("monitor_id")).toEqual(["2", "4"]));
-    await user.click(within(group).getByRole("button", { name: "すべて" }));
+    const select = await screen.findByRole("combobox", { name: "モニター" });
+    await waitFor(() => expect(within(select).getAllByRole("option")).toHaveLength(4)); // すべて + 3台
+    expect(screen.queryByRole("button", { name: "適用" })).not.toBeInTheDocument();
+    await user.selectOptions(select, "4");
+    await waitFor(() => expect(lastRecordsUrl(mocks.calls).searchParams.getAll("monitor_id")).toEqual(["4"]));
+    await user.selectOptions(select, "");
     await waitFor(() => expect(lastRecordsUrl(mocks.calls).searchParams.getAll("monitor_id")).toEqual([]));
   });
 
@@ -195,7 +196,9 @@ describe("Excel出力", () => {
     const mocks = standardMocks([recordsHandler(), route("POST", "/api/records/export/excel", xlsx)]);
     const user = userEvent.setup();
     renderApp("/history");
-    await user.click(await within(await screen.findByRole("group", { name: "モニター" })).findByRole("button", { name: "エネセン内ガスメータ用２" }));
+    const select = await screen.findByRole("combobox", { name: "モニター" });
+    await waitFor(() => expect(within(select).getAllByRole("option")).toHaveLength(4));
+    await user.selectOptions(select, "2");
     await user.click(screen.getByRole("button", { name: "過去7日" }));
     await user.click(screen.getByRole("button", { name: "Excel出力" }));
     const dialog = screen.getByRole("dialog", { name: "Excel出力" });

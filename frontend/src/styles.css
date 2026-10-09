@@ -492,3 +492,119 @@ button.danger { background: var(--color-danger); }
 .monitor-card { display: flex; flex-direction: column; justify-content: flex-start; align-self: start; }
 .monitor-card .card-meta { padding: 2px 12px 6px; }
 .monitor-card .carried-badge, .monitor-card .baseline-conflict-badge { margin: 0 8px 8px; }
+
+/* ===== UI再設計 Phase 5: 画面揺れ防止 / 履歴表 / Dashboard操作グループ / Monitor Detailタブ ===== */
+html { scrollbar-gutter: stable; }
+body { overflow-x: hidden; }
+.records-table td, .records-table th, .card-values strong, .status-item strong, .drawer-fields dd, .summary-card strong, .monitoring-fps { font-variant-numeric: tabular-nums; }
+
+/* Dashboard操作グループ: [モニター追加] と Monitoring表示を同じ高さ・角丸・枠線のトーンで横並びにする */
+.dashboard-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px 16px; margin-bottom: 14px; }
+.dashboard-toolbar .summary-cards { margin-bottom: 0; }
+.action-group { display: inline-flex; align-items: center; gap: 10px; }
+.action-button, .monitoring-control { height: 40px; border-radius: 8px; font-size: 14px; line-height: 1; }
+.action-button { display: inline-flex; align-items: center; padding: 0 16px; white-space: nowrap; }
+.monitoring-control { display: inline-flex; align-items: center; gap: 0; padding: 0 4px 0 0; border: 1px solid var(--color-border-strong); background: var(--color-surface); color: var(--color-text); box-shadow: var(--shadow-sm); transition: border-color .15s, box-shadow .15s; }
+.monitoring-control:hover { border-color: var(--color-primary); }
+.monitoring-control:focus-within { border-color: var(--color-primary); box-shadow: 0 0 0 3px rgb(37 99 235 / 10%); }
+.monitoring-status, .monitoring-fps { display: inline-flex; align-items: center; height: 100%; padding: 0 12px; font-weight: 650; white-space: nowrap; }
+.monitoring-status { gap: 7px; color: var(--color-text-secondary); }
+.monitoring-status i { font-style: normal; font-size: 12px; color: #94a3b8; }
+.monitoring-status.live { color: var(--color-text); }
+.monitoring-status.live i { color: var(--color-success); }
+.monitoring-fps { border-left: 1px solid var(--color-border); color: var(--color-text-secondary); font-weight: 600; }
+.monitoring-gear { width: 32px; height: 32px; margin-left: 2px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--color-text-secondary); font-size: 16px; line-height: 1; }
+.monitoring-gear:hover { background: var(--color-primary-soft); color: var(--color-primary); }
+
+/* Monitorカード: 値・バッジ・状態が変わっても高さが動かない */
+.monitor-grid { align-items: stretch; }
+.monitor-card { display: flex; flex-direction: column; justify-content: flex-start; align-self: stretch; }
+.monitor-card .preview-wrap { flex: 0 0 auto; }
+.monitor-card .card-values { min-height: 74px; }
+.monitor-card .card-meta { padding: 2px 14px 4px; min-height: 24px; }
+.monitor-card .card-notices { min-height: 92px; padding: 0 8px 8px; }
+.monitor-card .carried-badge, .monitor-card .baseline-conflict-badge { margin: 6px 0 0; }
+.card-value-primary strong { min-height: 1.2em; }
+
+/* 履歴フィルタ: Monitorプルダウン / 3択の期間 / 任意期間のdate range */
+.record-filters { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 10px 18px; }
+.filter-select { display: inline-flex; align-items: center; gap: 8px; margin: 0; }
+.filter-select select { width: auto; min-width: 200px; height: 34px; padding: 0 28px 0 10px; border: 1px solid var(--color-border-strong); border-radius: 8px; background: var(--color-surface); font-size: 13.5px; }
+.segmented { display: inline-flex; border: 1px solid var(--color-border-strong); border-radius: 8px; overflow: hidden; background: var(--color-surface); }
+.segment { height: 32px; padding: 0 14px; border: 0; border-radius: 0; background: transparent; color: var(--color-text); font-size: 13px; font-weight: 600; }
+.segment + .segment { border-left: 1px solid var(--color-border-strong); }
+.segment:hover { background: var(--color-primary-soft); color: var(--color-primary); }
+.segment.active { background: var(--color-primary); color: #fff; }
+.date-range-box { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px; border: 1px solid var(--color-border-strong); border-radius: 8px; background: var(--color-surface); color: var(--color-text-secondary); }
+.date-range-box input { width: auto; height: 28px; padding: 0 4px; border: 0; background: transparent; font-size: 13.5px; color: var(--color-text); }
+.date-range-box:focus-within { border-color: var(--color-primary); box-shadow: 0 0 0 3px rgb(37 99 235 / 10%); }
+
+/* 履歴表: ヘッダー固定・表の中だけスクロール・ページ全体は伸びない */
+.records-area { display: flex; flex-direction: column; min-height: 0; }
+.records-area.compact { height: 380px; }
+.records-area.tall { height: clamp(380px, calc(100vh - 340px), 900px); }
+.records-table-wrap { flex: 1 1 auto; min-height: 0; overflow: auto; scrollbar-gutter: stable; }
+.records-table { width: 100%; min-width: 880px; table-layout: fixed; border-collapse: separate; border-spacing: 0; }
+.records-table th { position: sticky; top: 0; z-index: 2; box-shadow: 0 1px 0 var(--color-border-strong); border-bottom: 0; }
+.records-table td, .records-table th { overflow: hidden; text-overflow: ellipsis; }
+.records-table .record-raw { overflow: hidden; text-overflow: ellipsis; }
+.records-area .records-empty { flex: 1 1 auto; display: grid; place-items: center; }
+.monitors-table { min-width: 760px; }
+.monitors-page .records-area { height: auto; }
+
+/* 記録画像Drawerの画像: 読込前後でサイズが変わらない */
+.drawer-image { aspect-ratio: 16 / 9; min-height: 0; max-height: none; width: 100%; }
+.drawer-image img { width: 100%; height: 100%; max-height: none; object-fit: contain; }
+
+/* Monitor Detail: タブ */
+.detail-tabs { display: flex; gap: 2px; margin: 4px 0 14px; border-bottom: 1px solid var(--color-border-strong); }
+.detail-tab { height: 38px; padding: 0 20px; border: 0; border-bottom: 3px solid transparent; border-radius: 0; background: transparent; color: var(--color-text-secondary); font-size: 14px; font-weight: 700; }
+.detail-tab:hover { background: var(--color-primary-soft); color: var(--color-primary); }
+.detail-tab.active { color: var(--color-primary); border-bottom-color: var(--color-primary); }
+.detail-tab-body { min-height: 420px; }
+.monitoring-summary { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.monitoring-summary > div { min-width: 0; padding: 9px 12px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface-secondary); }
+.monitoring-summary small { display: block; color: var(--color-text-secondary); font-size: 12px; }
+.monitoring-summary strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; }
+.settings-tab-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); gap: 12px; align-items: start; }
+.settings-tab-grid .panel { margin-bottom: 0; }
+.admin-operations { margin-top: 18px; padding: 12px 14px; border: 1px solid #e8c46a; border-left-width: 5px; border-radius: 8px; background: #fffdf6; }
+.admin-operations > h2 { margin: 0 0 4px; font-size: 16px; }
+.diagnostics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); gap: 12px; align-items: start; }
+.diagnostics-grid .panel { margin-bottom: 0; }
+.scan-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
+.current-source { margin: 6px 0; padding: 7px 10px; border: 1px solid var(--color-border); border-radius: 7px; background: var(--color-surface-secondary); font-size: 13px; }
+.rebase-confirm-values { display: grid; grid-template-columns: 150px 1fr; gap: 4px 12px; margin: 10px 0; font-size: 14px; }
+.rebase-confirm-values dt { color: var(--color-text-secondary); }
+.rebase-confirm-values dd { margin: 0; font-weight: 700; word-break: break-all; }
+
+/* Phase 5 微調整: パネル内のlabel/input既定スタイルに負けないよう、フィルタ類を詳細度を上げて上書きする */
+.record-filters .filter-select { display: inline-flex; flex-direction: row; align-items: center; gap: 8px; margin: 0; }
+.record-filters .filter-select select { display: inline-block; width: auto; min-width: 220px; height: 34px; margin: 0; padding: 0 28px 0 10px; }
+.record-filters .filter-label { margin: 0; }
+.record-filters .date-range-box input { display: inline-block; width: auto; height: 28px; margin: 0; padding: 0 4px; border: 0; box-shadow: none; }
+.records-area.tall { height: clamp(300px, calc(100vh - 410px), 900px); }
+.monitor-card .card-notices { min-height: 84px; }
+
+/* 初回描画でカード読込前後に履歴領域が動かないよう、カード領域の高さを確保する */
+.dashboard-page .monitor-grid { min-height: 470px; align-content: start; }
+
+/* Settings / Diagnosticsタブ: 高さの違うパネルでも隙間ができないよう、段組みで並べる */
+.settings-tab-grid, .diagnostics-grid { display: block; column-width: 440px; column-gap: 12px; }
+.settings-tab-grid > *, .diagnostics-grid > * { break-inside: avoid; margin-bottom: 12px; }
+
+/* モニター管理: 表示順の並べ替え(ドラッグ&ドロップ / ↑↓) */
+.monitors-table { table-layout: auto; min-width: 900px; }
+/* 並べ替えハンドル(三本線)は各行の右端に固定幅の列で置き、行ごとに右端位置を揃える */
+.monitors-table .order-col { width: 48px; text-align: center; padding-left: 6px; padding-right: 10px; }
+.drag-handle { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 6px; color: var(--color-text-muted); font-size: 17px; line-height: 1; cursor: grab; user-select: none; transition: color .15s, background .15s; }
+.monitors-table tbody tr:hover .drag-handle { color: var(--color-text-secondary); }
+.drag-handle:hover { color: var(--color-primary); background: var(--color-primary-soft); }
+.drag-handle:active, .drag-handle.dragging { cursor: grabbing; color: var(--color-primary); background: var(--color-primary-soft); }
+.monitors-table tr.row-dragging td { opacity: .45; }
+.monitors-table tr.row-drop-target td { box-shadow: inset 0 3px 0 var(--color-primary); }
+.order-status-slot { margin-left: auto; min-width: 96px; text-align: right; }
+.order-status { font-size: 13px; font-weight: 700; }
+.order-status.saving { color: var(--color-text-secondary); }
+.order-status.saved { color: var(--color-success); }
+.order-hint { margin: 0 0 8px; font-size: 12.5px; }

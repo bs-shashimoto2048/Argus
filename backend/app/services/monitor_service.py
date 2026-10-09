@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select, text, update
 from sqlalchemy.orm import Session, joinedload
 
 from ..core.config import settings as app_settings
@@ -51,13 +51,25 @@ def _ensure_children(db: Session, monitor: Monitor) -> None:
     db.flush()
 
 
+class MonitorOrderError(ValueError):
+    """表示順の更新の不正(code: DUPLICATE_ID / UNKNOWN_MONITOR / ORDER_STALE)。"""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+# 表示順(display_order ASC -> id ASC)。display_orderが未設定(NULL)のものは最後に回し、同順位はidで決める。
+MONITOR_ORDER = (func.coalesce(Monitor.display_order, 2147483647), Monitor.id)
+
+
 def _to_response(monitor: Monitor):
     from ..schemas.monitor import MonitorResponse
 
     source = None
     if monitor.source:
         source = {"source_type": monitor.source.source_type, "device_id": monitor.source.device_id, "url": monitor.source.url, "username": monitor.source.username, "has_password": bool(monitor.source.encrypted_password)}
-    return MonitorResponse(id=monitor.id, name=monitor.name, display_name=monitor.display_name, location=monitor.location, enabled=monitor.enabled, status=monitor.status, created_at=monitor.created_at, updated_at=monitor.updated_at, source=source, inference=monitor.inference, current_value=monitor.latest_result.value if monitor.latest_result else None, previous_value=monitor.latest_result.previous_value if monitor.latest_result else None, confidence=monitor.latest_result.confidence if monitor.latest_result else None, last_updated=monitor.latest_result.timestamp if monitor.latest_result else None, previous_confidence=monitor.latest_result.previous_confidence if monitor.latest_result else None, previous_confirmed_at=monitor.latest_result.previous_confirmed_at if monitor.latest_result else None, inference_status=monitor.latest_result.status if monitor.latest_result else "disabled", last_inference_error=monitor.latest_result.last_error if monitor.latest_result else None, current_inference_error=monitor.latest_result.current_error if monitor.latest_result else None, reading_baseline=summarize_baseline(monitor.reading_baseline))
+    return MonitorResponse(id=monitor.id, name=monitor.name, display_name=monitor.display_name, display_order=monitor.display_order, location=monitor.location, enabled=monitor.enabled, status=monitor.status, created_at=monitor.created_at, updated_at=monitor.updated_at, source=source, inference=monitor.inference, current_value=monitor.latest_result.value if monitor.latest_result else None, previous_value=monitor.latest_result.previous_value if monitor.latest_result else None, confidence=monitor.latest_result.confidence if monitor.latest_result else None, last_updated=monitor.latest_result.timestamp if monitor.latest_result else None, previous_confidence=monitor.latest_result.previous_confidence if monitor.latest_result else None, previous_confirmed_at=monitor.latest_result.previous_confirmed_at if monitor.latest_result else None, inference_status=monitor.latest_result.status if monitor.latest_result else "disabled", last_inference_error=monitor.latest_result.last_error if monitor.latest_result else None, current_inference_error=monitor.latest_result.current_error if monitor.latest_result else None, reading_baseline=summarize_baseline(monitor.reading_baseline))
 
 
 def _normalize_engine(method: str, engine: str) -> str:
@@ -151,8 +163,35 @@ def restart_inference_only(monitor: Monitor, db: Session) -> None:
 
 
 def list_monitors(db: Session):
-    rows = db.scalars(select(Monitor).options(joinedload(Monitor.source), joinedload(Monitor.inference), joinedload(Monitor.latest_result), joinedload(Monitor.reading_baseline)).order_by(Monitor.id)).unique().all()
+    rows = db.scalars(select(Monitor).options(joinedload(Monitor.source), joinedload(Monitor.inference), joinedload(Monitor.latest_result), joinedload(Monitor.reading_baseline)).order_by(*MONITOR_ORDER)).unique().all()
     return [_to_response(monitor) for monitor in rows]
+
+
+def backfill_display_order(connection) -> None:
+    """表示順が未設定(NULL)のMonitorへ、現在のid昇順の順位(0始まり)を設定する。設定済みの値は変更しない(冪等)。"""
+    connection.execute(text("UPDATE monitors SET display_order = (SELECT COUNT(*) FROM monitors AS m2 WHERE m2.id < monitors.id) WHERE display_order IS NULL"))
+
+
+def reorder_monitors(db: Session, monitor_ids: list[int]) -> list[int]:
+    """全Monitorの表示順を、指定したIDの並びへ1 transactionで更新する(途中までの更新は残さない)。"""
+    if len(set(monitor_ids)) != len(monitor_ids):
+        raise MonitorOrderError("DUPLICATE_ID", "monitor_idsに重複があります")
+    existing = set(db.scalars(select(Monitor.id)).all())
+    unknown = [monitor_id for monitor_id in monitor_ids if monitor_id not in existing]
+    if unknown:
+        raise MonitorOrderError("UNKNOWN_MONITOR", f"存在しないモニターIDが含まれています: {unknown}")
+    missing = sorted(existing - set(monitor_ids))
+    if missing:
+        raise MonitorOrderError("ORDER_STALE", f"全モニターを指定してください(不足: {missing})。モニター一覧が更新されている可能性があります")
+    try:
+        for position, monitor_id in enumerate(monitor_ids):
+            # updated_at(onupdate)は表示順の変更では更新しない
+            db.execute(update(Monitor).where(Monitor.id == monitor_id).values(display_order=position, updated_at=Monitor.updated_at))
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return list(monitor_ids)
 
 
 def get_monitor(db: Session, monitor_id: int) -> Monitor:
@@ -166,7 +205,9 @@ def get_monitor(db: Session, monitor_id: int) -> Monitor:
 def create_monitor(db: Session, req):
     if db.scalar(select(Monitor).where(Monitor.name == req.name)):
         raise ValueError("モニター名は既に使用されています")
-    monitor = Monitor(name=req.name, display_name=req.display_name, location=req.location)
+    # 新規Monitorは表示順の末尾(現在の最大display_order + 1)へ追加する。欠番は詰め直さない。
+    next_order = (db.scalar(select(func.max(Monitor.display_order))) or -1) + 1
+    monitor = Monitor(name=req.name, display_name=req.display_name, location=req.location, display_order=next_order)
     monitor.inference = InferenceSettings()
     monitor.latest_result = LatestResult()
     db.add(monitor)
