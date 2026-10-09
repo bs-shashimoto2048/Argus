@@ -27,14 +27,14 @@ export function RecordDrawer({ record, onClose }: { record: ReadingRecord; onClo
     ["正式確定値", formatValue(record.value)],
     ["前回値", formatValue(record.previous_value)],
     ["使用量", formatValue(record.usage)],
-    ["Raw値", formatValue(record.raw_value)],
+    ["最新推論値（Raw）", formatValue(record.raw_value)],
     ["信頼度", formatConfidence(record.confidence)],
-    ["validation_status", formatValue(record.validation_status)],
-    ["value_source", valueSourceLabels[record.value_source] ?? record.value_source],
-    ["display_status", `${displayStatusLabels[record.display_status] ?? record.display_status}(${record.display_status})`],
-    ["baseline_conflict", record.baseline_conflict ? "あり" : "なし"],
-    ["engine", formatValue(record.engine)],
-    ["model_id", formatValue(record.model_id)],
+    ["読取判定", formatValue(record.validation_status)],
+    ["値の由来", valueSourceLabels[record.value_source] ?? record.value_source],
+    ["表示状態", `${displayStatusLabels[record.display_status] ?? record.display_status}(${record.display_status})`],
+    ["基準値競合", record.baseline_conflict ? "あり" : "なし"],
+    ["推論エンジン", formatValue(record.engine)],
+    ["モデル", formatValue(record.model_id)],
   ];
   return <>
     <div className="drawer-backdrop" onClick={onClose} aria-hidden="true" />

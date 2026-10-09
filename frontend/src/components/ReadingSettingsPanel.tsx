@@ -9,7 +9,7 @@ export function ReadingSettingsPanel({ value, onChange, open, onToggleOpen }: { 
     <section className="panel collapsible-panel">
       <button type="button" className="collapsible-header" onClick={onToggleOpen} aria-expanded={open}>
         <span className="chevron" aria-hidden="true">{open ? "▾" : "▸"}</span>
-        <h3>読取安定化</h3>
+        <h3>読取安定化設定</h3>
       </button>
       <div className="collapsible-body" style={open ? undefined : { display: "none" }}>
         <label>

@@ -35,7 +35,7 @@ export function SourceSettings({ source, onChange, onCheck, open, onToggleOpen }
   return <section className="panel collapsible-panel">
     <button type="button" className="collapsible-header" onClick={onToggleOpen} aria-expanded={open}>
       <span className="chevron" aria-hidden="true">{open ? "▾" : "▸"}</span>
-      <h3>カメラ / 映像URL</h3>
+      <h3>映像ソース</h3>
     </button>
     <div className="collapsible-body" style={open ? undefined : { display: "none" }}>
       <label>入力方式<select value={current.source_type} onChange={(e) => update({ source_type: e.target.value as Source["source_type"] })}><option value="camera">接続カメラ</option><option value="url">URL</option></select></label>
