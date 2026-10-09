@@ -5,67 +5,17 @@ import type { Inference, Monitor, ReadingDiagnostics, RuntimeDiagnostics, Source
 import { formatDateTimeJst } from "../utils/datetime";
 import { InferenceSettings } from "../components/InferenceSettings";
 import { ReadingSettingsPanel } from "../components/ReadingSettingsPanel";
-import { ReadingBaselinePanel } from "../components/ReadingBaselinePanel";
 import { conflictMessage, stripLeadingZeros } from "../utils/readingFormat";
 import { SourceSettings } from "../components/SourceSettings";
 import { VideoPreview } from "../components/VideoPreview";
 import { RecordsSection } from "../components/RecordsSection";
+import { MonitoringTab } from "../components/MonitoringTab";
+import type { Lightbox } from "../components/MonitoringTab";
+import { DiagnosticsTab } from "../components/DiagnosticsTab";
 import { RoiEditor } from "../components/RoiEditor";
 import { PreprocessEditor } from "../components/PreprocessEditor";
 import { combinedMonitorStatus, monitorStatusLabels } from "../utils/monitorStatus";
-
-// 推論エラーコード -> ユーザー向け日本語メッセージ。Pythonの例外や内部詳細は表示しない。
-// Issue #28調査: MODEL_NOT_CONFIGUREDはBackend(app/inference/engines.py)では
-// 「model_id未設定」ではなく「ultralyticsライブラリをimportできない」場合にのみ
-// 発生するコードであり、かつLatestResult.last_errorは値が変わる(=新たにConfirmed
-// できる)まで更新されず残り続ける("粘着性")。そのため、モデルを後から正しく設定
-// しても、ROI内で検出が続かない限りこの文言が残り「設定済みなのに未設定と表示
-// される」という誤解を招いていた。実際に「model_idが空」であることは以下の
-// modelMissing(現在のinference設定を直接参照)で別途判定して表示するため、この
-// メッセージ自体はコードの実際の意味に合わせて表現を改める。
-// Issue #32: last_inference_error自体の粘着性(上記)は、MODEL_NOT_CONFIGURED以外の
-// 一時的なエラー(NO_DETECTION等)でも同様に発生し、実際には解消済みでも赤い警告として
-// 表示され続けていた。現在は「現在の状態」専用のcurrent_inference_error(直近のRaw
-// Readingが成功していればnull)を赤警告の判定に使い、last_inference_errorは解消済みの
-// 履歴注記としてのみ表示する(下のJSX参照)。
-const inferenceErrorMessages: Record<string, string> = {
-  MODEL_NOT_CONFIGURED: "ultralyticsライブラリを利用できません（Backend環境エラー。モデル自体の設定とは別の問題です）",
-  CPP_WORKER_ERROR: "C++ ONNX workerでエラーが発生しました（worker未ビルド/異常終了の可能性があります）",
-  MODEL_NOT_FOUND: "指定されたモデルファイルが見つかりません",
-  DEVICE_UNAVAILABLE: "指定されたDevice（GPU/CPU）が利用できません",
-  OCR_ENGINE_UNAVAILABLE: "OCRエンジンがインストールされていません",
-  TESSERACT_NOT_INSTALLED: "Tesseractがインストールされていません",
-  NO_DETECTION: "検出結果がありません",
-  INFERENCE_FAILED: "推論処理でエラーが発生しました",
-};
-
-function inferenceErrorText(code: string, engine: string): string {
-  // Issue #38: cpp_onnxのMODEL_NOT_CONFIGUREDは「ultralytics」とは無関係。モデル未配置・
-  // registry未登録・SHA256不一致のいずれか(Backendは原因を区別せずこのコードで返す)。
-  if (engine === "cpp_onnx") {
-    if (code === "MODEL_NOT_CONFIGURED") return "C++ ONNXモデルを利用できません（モデルファイル未配置、registry.json未登録、またはSHA256不一致）";
-    if (code === "MODEL_NOT_FOUND") return "C++ ONNXモデルファイルが見つかりません";
-  }
-  if (code === "OCR_ENGINE_UNAVAILABLE") {
-    return engine === "tesseract" ? "pytesseractがインストールされていません" : "EasyOCRがインストールされていません";
-  }
-  return inferenceErrorMessages[code] ?? `推論エラー: ${code}`;
-}
-
-function currentValueText(monitor: Monitor): string {
-  // pending(まだConsensusが取れていない)はcurrent_valueが必ずnullのため専用文言を出す。
-  if (monitor.inference_status === "pending") return "判定中...";
-  return monitor.current_value ?? "--";
-}
-
-function formatDiff(current: string | null, previous: string | null): string {
-  if (current == null || previous == null) return "--";
-  const a = Number(current);
-  const b = Number(previous);
-  if (Number.isNaN(a) || Number.isNaN(b)) return "--";
-  const diff = a - b;
-  return `${diff >= 0 ? "+" : ""}${diff}`;
-}
+import { currentValueText, formatDiff, inferenceErrorText } from "../utils/monitorDetail";
 
 // 右ペインの各設定セクションを独立して開閉するための共通ラッパー。
 // 閉じてもDOMからは外さず(display:noneのみ)、フォーム値・API呼び出しに一切影響しない。
@@ -83,10 +33,10 @@ function CollapsibleSection({ title, open, onToggle, className, children }: { ti
 
 export type DetailTab = "monitoring" | "history" | "settings" | "diagnostics";
 const detailTabs: { key: DetailTab; label: string }[] = [
-  { key: "monitoring", label: "Monitoring" },
-  { key: "history", label: "History" },
-  { key: "settings", label: "Settings" },
-  { key: "diagnostics", label: "Diagnostics" },
+  { key: "monitoring", label: "監視" },
+  { key: "history", label: "履歴" },
+  { key: "settings", label: "設定" },
+  { key: "diagnostics", label: "診断" },
 ];
 
 export function MonitorDetailPage() {
@@ -108,7 +58,7 @@ export function MonitorDetailPage() {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   // 表示レイアウトのみの状態(取得データ・API呼び出し頻度には影響しない)。
-  const [lightbox, setLightbox] = useState<"video" | "overlay" | "inferenceInput" | null>(null);
+  const [lightbox, setLightbox] = useState<Lightbox>(null);
   // Issue #28: 「モニター映像」「推論オーバーレイ」を縦に2枚並べず、タブで1枚だけ
   // 表示する(ページの縦スクロールを削減するため)。非表示側はunmountされるので、
   // 見えていない方のpolling(VideoPreviewのsetInterval)も自動的に止まる。
@@ -250,12 +200,10 @@ export function MonitorDetailPage() {
   };
 
   return <main className="page monitor-detail-page">
-    <header className="topbar">
+    <header className="topbar detail-header">
       <div>
-        <div className="breadcrumbs">モニター管理 / メーター詳細</div>
+        <div className="breadcrumbs">モニター管理 / メーター詳細<span className="monitor-id-badge"> ・ Monitor ID: {monitor.id}</span></div>
         <h1>{monitor.display_name}</h1>
-        {/* 設定変更・デバッグ時に対象Monitorを取り違えないよう、display_nameとIDを常時明示する(Issue #16)。 */}
-        <div className="monitor-id-badge">Monitor ID: {monitor.id}</div>
       </div>
       <div className="topbar-actions">
         <button className="secondary" onClick={() => navigate("/monitors")}>＜ モニター管理へ</button>
@@ -269,101 +217,8 @@ export function MonitorDetailPage() {
     {(error || message) && <div className={`alert ${error ? "error" : "success"}`}>{error || message}</div>}
 
     <div className="detail-tab-body" role="tabpanel" aria-labelledby={`tab-${tab}`}>
-      {tab === "monitoring" && <section className="monitor-column">
-        {/* Issue #28: 現在値/前回値を左右2グループに分けたサマリー(1画面に収める
-            ためのレイアウト方針の一部)。取得元は既存の5秒ポーリングのみで、
-            APIコール自体は追加していない(previous_confidence/previous_confirmed_atは
-            MonitorResponseの新規フィールドとして同じレスポンスに含まれる)。 */}
-        <div className="panel reading-summary" aria-live="polite">
-          <div className="reading-summary-group current">
-            <div className="reading-summary-label">現在値</div>
-            <div className="status-item primary"><small>現在値（確定）</small><strong>{currentValueText(monitor)}</strong></div>
-            <div className="status-item"><small>信頼度</small><strong>{monitor.confidence == null ? "--" : `${(monitor.confidence * 100).toFixed(1)}%`}</strong></div>
-            {/* Issue #29: monitor.status(映像Runtime接続状態)とmonitor.inference_status(読取・
-                推論状態)を合成した表示にする(Dashboardのバッジと同じルール)。詳細な内訳は
-                下部「推論デバッグ」の映像Runtime診断行で個別に確認できる。 */}
-            <div className="status-item"><small>状態</small><span className={`status-text ${combinedMonitorStatus(monitor)}`}>● {monitorStatusLabels[combinedMonitorStatus(monitor)]}</span></div>
-            {rawDiffersFromConfirmed && <div className="status-item raw-pending"><small>最新推論値（未確定）</small><strong>{rawInferenceValue}</strong></div>}
-          </div>
-          <div className="reading-summary-divider" aria-hidden="true" />
-          <div className="reading-summary-group previous">
-            <div className="reading-summary-label">前回値</div>
-            <div className="status-item"><small>前回値</small><strong>{monitor.previous_value ?? "--"}</strong></div>
-            <div className="status-item"><small>信頼度</small><strong>{monitor.previous_confidence == null ? "--" : `${(monitor.previous_confidence * 100).toFixed(1)}%`}</strong></div>
-            <div className="status-item"><small>確定日時</small><strong>{monitor.previous_confirmed_at ? formatDateTimeJst(monitor.previous_confirmed_at) : "--"}</strong></div>
-            <div className="status-item"><small>差分</small><strong>{formatDiff(monitor.current_value, monitor.previous_value)}</strong></div>
-          </div>
-        </div>
-        <p className="muted status-note">
-          「現在値（確定）」は読取安定化により確定した値です（直近{monitor.inference.reading.window_size}回中{monitor.inference.reading.required_matches}回以上一致で更新）。
-          一致が取れていない間は直前の確定値を保持するため、最新の推論結果と一時的に異なる場合があります。「前回値」は直前に確定していた値（Raw推論の途中経過ではありません）。
-        </p>
-        {modelMissing && <div className="alert error">モデルが設定されていません。右側の「推論設定」でモデルを選択してください。</div>}
-        {/* Issue #32: current_inference_errorは直近のRaw Readingが既に成功していればnullになる
-            「現在の状態」専用の値なので、これが立っている間だけ赤の警告として表示する。 */}
-        {/* Issue #40: 合意候補がbaselineと矛盾して一定時間続いている(=固着の疑い)場合の警告。 */}
-        {monitor.reading_baseline?.conflict && (
-          <div className="alert warning">⚠ {conflictMessage(monitor.reading_baseline.conflict_status, monitor.reading_baseline.value, monitor.reading_baseline.conflict_candidate, monitor.reading_baseline.conflict_seconds)}。実メーターを確認し、必要なら「読取基準値」から再設定してください。</div>
-        )}
-        {monitor.current_inference_error && !modelMissing && <div className="alert error">{inferenceErrorText(monitor.current_inference_error, monitor.inference.engine)}</div>}
-        {/* last_inference_errorは値が変わるまで残り続ける履歴値(粘着性)なので、現在は
-            エラーではない(current_inference_errorがnull)場合は、誤って現在のエラーと
-            混同されないよう、控えめな「過去のエラー」注記としてのみ表示する。 */}
-        {!monitor.current_inference_error && monitor.last_inference_error && !modelMissing && (
-          <p className="muted status-note">直近のエラー履歴（現在は解消済み）: {inferenceErrorText(monitor.last_inference_error, monitor.inference.engine)}</p>
-        )}
-
-        <div className="monitoring-summary" aria-label="読取の詳細">
-          <div><small>Raw（最新・未確定）</small><strong>{rawInferenceValue ?? readingDiagnostics?.confirmed.raw_value ?? "--"}</strong></div>
-          <div><small>engine</small><strong>{monitor.inference.engine}</strong></div>
-          <div><small>model</small><strong title={monitor.inference.model_id ?? undefined}>{monitor.inference.model_id ?? "--"}</strong></div>
-          <div><small>最終更新</small><strong>{monitor.last_updated ? formatDateTimeJst(monitor.last_updated) : "--"}</strong></div>
-          <div><small>baseline</small><strong>{monitor.reading_baseline ? `${monitor.reading_baseline.value ?? "--"}（${monitor.reading_baseline.state === "pending_reset" ? "リセット済み" : "有効"}）` : "--"}</strong></div>
-          <div><small>conflict</small><strong className={monitor.reading_baseline?.conflict ? "conflict-yes" : undefined}>{monitor.reading_baseline?.conflict ? `あり（${monitor.reading_baseline.conflict_candidate ?? "--"}）` : "なし"}</strong></div>
-        </div>
-
-        {/* Issue #28: 「モニター映像」「推論オーバーレイ」を縦2枚並べる構造を廃止し、
-            同じ映像領域をタブで1枚だけ表示する。非アクティブ側はunmountされるため、
-            表示していない方のpolling(VideoPreview内のsetInterval)も自動的に止まる。 */}
-        <div className="panel video-panel primary-video">
-          <div className="video-tabs" role="tablist">
-            <button type="button" role="tab" aria-selected={videoTab === "video"} className={`video-tab${videoTab === "video" ? " active" : ""}`} onClick={() => setVideoTab("video")}>モニター映像</button>
-            <button type="button" role="tab" aria-selected={videoTab === "overlay"} className={`video-tab${videoTab === "overlay" ? " active" : ""}`} onClick={() => setVideoTab("overlay")} disabled={!monitor.source}>推論オーバーレイ</button>
-          </div>
-          <div className="primary-video-body">
-            {!monitor.source ? (
-              <div className="no-video large">映像ソースを設定してください</div>
-            ) : lightbox === videoTab ? (
-              <div className="no-video large">拡大表示中（×で閉じると再表示されます）</div>
-            ) : videoTab === "video" ? (
-              <VideoPreview monitorId={monitor.id} large onImageClick={() => setLightbox("video")} />
-            ) : (
-              <VideoPreview monitorId={monitor.id} overlay onImageClick={() => setLightbox("overlay")} />
-            )}
-          </div>
-          {videoTab === "overlay" && monitor.source && <>
-            <div className="overlay-legend">
-              {/* ROIの破線は、推論cropがROIより広い場合(roi_modeあり)だけ描画される */}
-              {runtimeDiagnostics?.pipeline?.roi_mode && <span><i className="legend-swatch legend-roi" />ユーザー指定ROI</span>}
-              <span><i className="legend-swatch legend-detection" />検出bbox（ラベル: 推論値/確信度）</span>
-              <span>前処理後の推論入力画像に描画</span>
-            </div>
-            {runtimeDiagnostics?.pipeline && (
-              (runtimeDiagnostics.pipeline.engine === "ultralytics" || runtimeDiagnostics.pipeline.engine === "cpp_onnx") ? (
-                <p className="muted overlay-caption">
-                  検出 {runtimeDiagnostics.pipeline.roi_filtered_detection_count}/{runtimeDiagnostics.pipeline.raw_detection_count} 件（ROI内/全体）
-                  {runtimeDiagnostics.pipeline.raw_detection_count === 0 && "（全体でも検出0件のため、bboxは表示されません）"}
-                </p>
-              ) : (
-                <p className="muted overlay-caption">
-                  このエンジン（{runtimeDiagnostics.pipeline.engine}）は文字ごとの位置を検出しないため、bboxは表示されません（検出bbox=0は仕様どおりです）。
-                </p>
-              )
-            )}
-          </>}
-        </div>
-
-      </section>}
+      {tab === "monitoring" && <MonitoringTab monitor={monitor} rawInferenceValue={rawInferenceValue} rawDiffersFromConfirmed={rawDiffersFromConfirmed} modelMissing={modelMissing}
+        readingDiagnostics={readingDiagnostics} runtimeDiagnostics={runtimeDiagnostics} videoTab={videoTab} onVideoTab={setVideoTab} lightbox={lightbox} onLightbox={setLightbox} />}
 
       {tab === "history" && <RecordsSection monitors={[{ id: monitor.id, display_name: monitor.display_name }]} fixedMonitorId={monitor.id} pageSize={50} title="この Monitor の計測履歴" description="1時間ごとの正式な記録（reading_records）。" size="tall" />}
 
@@ -402,7 +257,7 @@ export function MonitorDetailPage() {
         </div>
         <div className="settings-actions"><button className="save-button" onClick={save} disabled={cppModelMissing} title={cppModelMissing ? "C++ ONNXではモデルを選択してください" : undefined}>設定を保存</button></div>
 
-        <CollapsibleSection title="Danger Zone" open={openSections.danger} onToggle={() => toggleSection("danger")} className="danger-zone">
+        <CollapsibleSection title="危険な操作" open={openSections.danger} onToggle={() => toggleSection("danger")} className="danger-zone">
           {!confirmingDelete ? (
             <button className="danger" onClick={() => setConfirmingDelete(true)}>このモニターを削除</button>
           ) : (
@@ -417,84 +272,7 @@ export function MonitorDetailPage() {
         </CollapsibleSection>
       </section>}
 
-      {tab === "diagnostics" && <section className="monitor-column diagnostics-tab">
-        <div className="diagnostics-grid">
-          <div className="panel" aria-label="engine / model">
-            <h3>Engine / Model</h3>
-            <table className="diagnostics-table"><tbody>
-              <tr><td>method</td><td>{monitor.inference.method}</td></tr>
-              <tr><td>engine</td><td>{monitor.inference.engine}</td></tr>
-              <tr><td>model_id</td><td>{monitor.inference.model_id ?? "--"}</td></tr>
-              <tr><td>映像Runtime</td><td>{runtimeDiagnostics ? runtimeDiagnostics.state : "--（停止中または取得不可）"}</td></tr>
-              {runtimeDiagnostics && <tr><td>映像取得</td><td>{runtimeDiagnostics.source_fps != null ? `${runtimeDiagnostics.source_fps.toFixed(1)} fps` : "--"}{runtimeDiagnostics.frame_age != null && ` / 最新フレーム ${runtimeDiagnostics.frame_age.toFixed(1)}秒前`}{runtimeDiagnostics.stale && " / 停滞中"}</td></tr>}
-              <tr><td>現在の推論エラー</td><td>{monitor.current_inference_error ? inferenceErrorText(monitor.current_inference_error, monitor.inference.engine) : "なし"}</td></tr>
-              <tr><td>過去のエラー履歴</td><td>{monitor.last_inference_error ? inferenceErrorText(monitor.last_inference_error, monitor.inference.engine) : "なし"}</td></tr>
-            </tbody></table>
-          </div>
-          {monitor.source && <div className="panel video-panel" aria-label="推論オーバーレイ">
-            <h3>推論オーバーレイ</h3>
-            {lightbox === "overlay" ? <div className="no-video large">拡大表示中</div> : <VideoPreview monitorId={monitor.id} overlay onImageClick={() => setLightbox("overlay")} />}
-          </div>}
-        </div>
-        {monitor.source && <div className="panel debug-details">
-          <h3>推論デバッグ（推論入力 / Pipeline診断）</h3>
-          <div className="debug-body">
-            <div className="video-panel nested">
-              <div className="section-title"><span>推論入力（実際にモデルへ渡した画像）</span></div>
-              <p className="muted" style={{ fontSize: "0.78rem", margin: "0 0 8px" }}>
-                {runtimeDiagnostics?.pipeline?.roi_mode === "crop_context"
-                  ? "Full Frame → ROI周辺をcontext margin分広げてcrop → 前処理 → この画像、の順で生成されます。"
-                  : "Full Frame → 前処理 → この画像、の順で生成されます（filter_only: ROIでcropせずFull Frameのまま推論します）。"}
-                表示用に別途生成した画像ではなく、実際にInferenceEngineへ渡した画像そのものです。
-              </p>
-              <VideoPreview monitorId={monitor.id} inferenceInput paused={lightbox === "inferenceInput"} onImageClick={() => setLightbox("inferenceInput")} />
-            </div>
-            {readingDiagnostics && <div className="debug-line">
-              Raw値: {readingDiagnostics.confirmed.raw_value ?? "--"}
-              {readingDiagnostics.confirmed.raw_confidence != null && ` (${(readingDiagnostics.confirmed.raw_confidence * 100).toFixed(0)}%)`}
-              {" / 一致 "}{readingDiagnostics.confirmed.agreement_count}/{readingDiagnostics.confirmed.raw_count}
-              {readingDiagnostics.consecutive_failures > 0 && ` / 連続失敗 ${readingDiagnostics.consecutive_failures}`}
-            </div>}
-            {readingDiagnostics && <div className="debug-line">
-              検証: {readingDiagnostics.confirmed.validation_status ?? "--"}
-              {" / 基準値 "}{readingDiagnostics.baseline?.value ?? "--"}
-              {" / 合意候補 "}{readingDiagnostics.candidate?.value ?? "--"}
-              {readingDiagnostics.conflict && ` / 矛盾 ${readingDiagnostics.conflict.status} ${readingDiagnostics.conflict.count}回`}
-            </div>}
-            {runtimeDiagnostics && <div className="debug-line">
-              映像Runtime: {runtimeDiagnostics.state}
-              {runtimeDiagnostics.frame_width != null && ` / ${runtimeDiagnostics.frame_width}x${runtimeDiagnostics.frame_height}`}
-              {runtimeDiagnostics.reconnect_count > 0 && ` / 再接続 ${runtimeDiagnostics.reconnect_count}回`}
-              {runtimeDiagnostics.last_error && ` / エラー: ${runtimeDiagnostics.last_error}`}
-              {runtimeDiagnostics.stale && ` / 映像停滞中`}
-            </div>}
-            {runtimeDiagnostics?.pipeline && <div className="pipeline-diagnostics">
-              <div className="section-title"><span>推論Pipeline診断</span></div>
-              <table className="diagnostics-table">
-                <tbody>
-                  <tr><td>frame</td><td>{runtimeDiagnostics.pipeline.frame_width}×{runtimeDiagnostics.pipeline.frame_height}</td></tr>
-                  <tr><td>roi_mode</td><td>{runtimeDiagnostics.pipeline.roi_mode ?? "--（OCR等はROIそのものをcrop）"}</td></tr>
-                  {runtimeDiagnostics.pipeline.roi_mode === "crop_context" && <tr><td>context_margin</td><td>{runtimeDiagnostics.pipeline.context_margin}</td></tr>}
-                  <tr><td>ROI(正規化)</td><td>x={runtimeDiagnostics.pipeline.roi_normalized.x.toFixed(3)} y={runtimeDiagnostics.pipeline.roi_normalized.y.toFixed(3)} w={runtimeDiagnostics.pipeline.roi_normalized.width.toFixed(3)} h={runtimeDiagnostics.pipeline.roi_normalized.height.toFixed(3)}</td></tr>
-                  <tr><td>ROI(pixel)</td><td>{runtimeDiagnostics.pipeline.roi_pixel.join(", ")}</td></tr>
-                  <tr><td>推論crop(pixel)</td><td>{runtimeDiagnostics.pipeline.inference_crop_pixel.join(", ")}</td></tr>
-                  <tr><td>crop shape</td><td>{runtimeDiagnostics.pipeline.crop_shape.join(" × ")}</td></tr>
-                  <tr><td>前処理後 shape</td><td>{runtimeDiagnostics.pipeline.preprocess_output_shape.join(" × ")}</td></tr>
-                  <tr><td>モデル入力 shape</td><td>{runtimeDiagnostics.pipeline.model_input_shape.join(" × ")}</td></tr>
-                  <tr><td>検出数(ROI filter前)</td><td>{runtimeDiagnostics.pipeline.raw_detection_count}</td></tr>
-                  <tr><td>検出数(ROI filter後)</td><td>{runtimeDiagnostics.pipeline.roi_filtered_detection_count}</td></tr>
-                  <tr><td>engine / model_id</td><td>{runtimeDiagnostics.pipeline.engine} / {runtimeDiagnostics.pipeline.model_id ?? "--"}</td></tr>
-                </tbody>
-              </table>
-            </div>}
-          </div>
-        </div>}
-        <section className="admin-operations" aria-label="管理操作">
-          <h2>管理操作</h2>
-          <p className="muted">通常の設定とは別の、監査履歴が残る操作です（読取基準値の再設定・リセット）。</p>
-        <ReadingBaselinePanel monitorId={monitor.id} currentValue={monitor.current_value} open onToggleOpen={() => undefined} />
-        </section>
-      </section>}
+      {tab === "diagnostics" && <DiagnosticsTab monitor={monitor} readingDiagnostics={readingDiagnostics} runtimeDiagnostics={runtimeDiagnostics} lightbox={lightbox} onLightbox={setLightbox} />}
     </div>
     {editor === "roi" && <RoiEditor
       monitorId={monitorId}

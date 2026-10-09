@@ -608,3 +608,98 @@ body { overflow-x: hidden; }
 .order-status.saving { color: var(--color-text-secondary); }
 .order-status.saved { color: var(--color-success); }
 .order-hint { margin: 0 0 8px; font-size: 12.5px; }
+
+/* ===== Monitor Detail: 画面密度の見直し(監視 / 診断のコンパクト化) ===== */
+/* 旧レイアウト(Issue #28)の「ページを100vhに固定して内部スクロールさせる」ルールは、タブ化後は
+   設定・診断タブの下部を隠してしまうため無効にし、通常の縦スクロールへ戻す。 */
+@media (min-width: 1200px) {
+  .monitor-detail-page { height: auto; overflow: visible; }
+}
+.monitor-detail-page { display: block; }
+.detail-header.topbar { min-height: 0; padding: 8px clamp(16px, 2vw, 24px); }
+.detail-header .breadcrumbs { font-size: 12.5px; line-height: 1.3; }
+.detail-header .monitor-id-badge { margin: 0; font-size: 12px; }
+.detail-header h1 { margin: 1px 0 0; font-size: 20px; line-height: 1.25; }
+.detail-tabs { margin: 4px 0 8px; }
+.detail-tab { height: 32px; padding: 0 18px; font-size: 13.5px; }
+.detail-tab-body { min-height: 0; }
+
+/* 監視タブ: 左=映像(高さに上限)、右=現在値と読取の要点 */
+.mon-layout { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(300px, 1fr); gap: 12px; align-items: start; }
+.mon-layout > * { min-width: 0; }
+.video-panel.compact { padding: 8px 10px 6px; margin-bottom: 0; }
+.video-tabs.compact { gap: 4px; margin-bottom: 6px; }
+.video-tabs.compact .video-tab { padding: 3px 12px; font-size: 12.5px; line-height: 1.4; }
+/* 映像の枠: 16:9固定・高さの上限つき(1366x768でも画面内に収まる)。画像はcontainで枠の中に収める。 */
+.video-frame { --video-max-h: clamp(300px, 46vh, 520px); aspect-ratio: 16 / 9; max-height: var(--video-max-h); width: min(100%, calc(var(--video-max-h) * 16 / 9)); margin: 0 auto; overflow: hidden; border-radius: 6px; background: #0f172a; }
+.primary-video .video-frame .video-image, .primary-video .video-frame .no-video { display: block; width: 100%; height: 100%; max-height: none; aspect-ratio: auto; object-fit: contain; background: #0f172a; }
+.primary-video .video-frame .no-video { display: grid; place-items: center; color: #cbd5e1; font-size: 13px; }
+.overlay-legend-slot { min-height: 22px; margin-top: 4px; }
+.overlay-legend.compact { margin-top: 0; gap: 4px 12px; font-size: 11.5px; line-height: 1.4; }
+
+.mon-info { display: flex; flex-direction: column; gap: 8px; }
+.mon-info .panel { margin-bottom: 0; }
+.mon-current { padding: 8px 12px; }
+.mon-current-main { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr); gap: 4px 12px; align-items: end; }
+.mon-current small, .mon-item small, .mon-current-value small { display: block; color: var(--color-text-secondary); font-size: 11px; line-height: 1.3; }
+.mon-current-value strong { display: block; color: var(--color-primary); font-size: 28px; font-weight: 800; line-height: 1.15; }
+.mon-item strong, .mon-item .status-text { display: block; font-size: 14.5px; line-height: 1.3; }
+.mon-previous { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px 10px; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--color-border); }
+.mon-previous .mon-item strong { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.monitoring-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.monitoring-summary > div { padding: 5px 10px; }
+.monitoring-summary small { font-size: 11px; line-height: 1.3; }
+.monitoring-summary strong { font-size: 13.5px; line-height: 1.35; }
+.monitoring-summary .raw-pending strong { color: var(--color-warning); }
+.monitoring-summary .conflict-yes { color: var(--color-danger); }
+.mon-note { font-size: 12px; }
+.mon-note summary { cursor: pointer; color: var(--color-text-secondary); font-size: 12px; }
+.mon-note p { margin: 4px 0 0; font-size: 11.5px; line-height: 1.5; }
+.alert.compact { margin: 0; padding: 6px 10px; font-size: 12.5px; line-height: 1.45; }
+.mon-info .status-note { margin: 0; }
+@media (max-width: 1100px) { .mon-layout { grid-template-columns: minmax(0, 1fr); } }
+
+/* 診断タブ: 2〜3列のコンパクトなカード + アコーディオン */
+.diag-layout { display: flex; flex-direction: column; gap: 8px; }
+.diag-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; align-items: stretch; }
+@media (max-width: 1100px) { .diag-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 720px) { .diag-grid { grid-template-columns: minmax(0, 1fr); } }
+.diag-card { min-width: 0; padding: 8px 12px 10px; border: 1px solid var(--color-border); border-radius: 9px; background: var(--color-surface); box-shadow: var(--shadow-sm); }
+.diag-card h3 { margin: 0 0 6px; padding-left: 8px; border-left: 3px solid var(--color-primary); font-size: 13.5px; line-height: 1.3; }
+.diag-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.diag-table th, .diag-table td { padding: 3px 4px; border-bottom: 1px solid var(--color-border); text-align: left; vertical-align: top; }
+.diag-table tr:last-child th, .diag-table tr:last-child td { border-bottom: 0; }
+.diag-table th { width: 42%; color: var(--color-text-secondary); font-weight: 500; white-space: nowrap; }
+.diag-table td { font-variant-numeric: tabular-nums; word-break: break-all; }
+.diag-table.wide th { width: 200px; }
+.diag-table code { font-size: 12px; }
+.diag-image { display: flex; flex-direction: column; }
+/* 画像の枠: 固定の縦横比(16:9)と高さの上限。読込の前後でも大きさが変わらない。 */
+.diag-frame { aspect-ratio: 16 / 9; max-height: clamp(150px, 24vh, 240px); width: 100%; overflow: hidden; border-radius: 6px; background: #0f172a; }
+.diag-frame .video-image, .diag-frame .no-video { display: block; width: 100%; height: 100%; max-height: none; aspect-ratio: auto; object-fit: contain; background: #0f172a; }
+.diag-frame .no-video { display: grid; place-items: center; color: #cbd5e1; font-size: 12.5px; }
+.tiny { margin: 4px 0 0; font-size: 11px; line-height: 1.4; }
+.diag-accordion { padding: 6px 12px; border: 1px solid var(--color-border); border-radius: 9px; background: var(--color-surface); box-shadow: var(--shadow-sm); }
+.diag-accordion > summary { cursor: pointer; padding: 2px 0; font-size: 13.5px; font-weight: 700; }
+.diag-accordion[open] > summary { margin-bottom: 6px; }
+.diag-accordion.admin-operations { margin-top: 0; border-left: 5px solid #e8c46a; background: #fffdf6; }
+.diag-accordion .panel { margin-bottom: 0; }
+.settings-tab-grid .panel, .settings-tab .settings-actions { margin-bottom: 0; }
+
+/* 上部ナビゲーション: ロゴ(左)とメニュー(右)を左右に分離する。幅が狭くなっても重ならない(折り返し) */
+.app-nav { justify-content: space-between; flex-wrap: wrap; column-gap: 20px; }
+.app-nav-brand { flex: 0 0 auto; }
+.app-nav-links { flex: 0 1 auto; flex-wrap: wrap; justify-content: flex-end; margin-left: auto; gap: 4px; }
+.app-nav-link { white-space: nowrap; }
+.app-nav-link:focus-visible { outline: 2px solid #93c5fd; outline-offset: -3px; border-radius: 4px; }
+@media (max-width: 900px) { .app-nav { column-gap: 8px; } .app-nav-links { gap: 0; } .app-nav-link { padding: 0 9px; } }
+
+/* 診断: 詳細アコーディオンは横に並べ、画像枠は画面の高さに応じて控えめにする */
+.diag-accordions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; align-items: start; }
+.diag-accordions > .diag-accordion:only-child { grid-column: 1 / -1; }
+@media (max-width: 900px) { .diag-accordions { grid-template-columns: minmax(0, 1fr); } }
+.diag-frame { max-height: clamp(130px, 20vh, 220px); }
+.diag-table th, .diag-table td { padding: 2px 4px; }
+
+/* Monitor Detailの履歴タブ: ヘッダー+タブ分だけ表の高さを控えめにして、ページが縦にはみ出さないようにする */
+.detail-tab-body .records-area.tall { height: clamp(300px, calc(100vh - 425px), 900px); }
