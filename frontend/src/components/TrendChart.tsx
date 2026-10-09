@@ -105,7 +105,7 @@ export function TrendChart({ monitors, filter, refreshMs, renderEvent = defaultE
   if (tMax - tMin < 3600_000) { tMin -= 1800_000; tMax += 1800_000; }
   let yMin = ys.length ? Math.min(...ys) : 0;
   let yMax = ys.length ? Math.max(...ys) : 1;
-  if (metric === "usage") yMin = Math.min(0, yMin);
+  if (metric !== "value") yMin = Math.min(0, yMin); // 使用量・累積増加量は0を基準線に含める
   if (yMax === yMin) yMax = yMin + 1;
   const ticks = niceTicks(yMin, yMax, 4);
   yMin = Math.min(yMin, ticks[0]); yMax = Math.max(yMax, ticks[ticks.length - 1]);
@@ -128,7 +128,8 @@ export function TrendChart({ monitors, filter, refreshMs, renderEvent = defaultE
   };
   const hoverRows = hover == null ? [] : series.map((s, i) => ({ s, i, p: s.points.find((p) => p.time === hover) })).filter((r) => r.p);
 
-  const metricLabel = metric === "usage" ? "使用量" : "累積値";
+  const metricLabel = metric === "usage" ? "使用量" : metric === "delta" ? "累積増加量" : "実値";
+  const fmtDelta = (v: number) => (v > 0 ? `+${fmtNumber(v)}` : fmtNumber(v));
   const conditionText = `${filter.monitorIds.length === 0 ? "すべてのモニター" : filter.monitorIds.length === 1 ? (monitors.find((m) => m.id === filter.monitorIds[0])?.display_name.trim() ?? "選択中のモニター") : `${filter.monitorIds.length}台`}・${filter.period.mode === "today" ? "今日" : filter.period.mode === "last7" ? "過去7日" : `${filter.period.startDate} 〜 ${filter.period.endDate}`}`;
   const eventKinds = [...new Set(events.map((e) => e.kind))];
   const summary = series.map((s) => { const last = [...s.points].reverse().find((p) => p.y != null); return `${s.name}: ${last ? fmtNumber(last.y!) : "データなし"}`; }).join("、");
@@ -137,7 +138,7 @@ export function TrendChart({ monitors, filter, refreshMs, renderEvent = defaultE
     <div className="trend-head">
       <h2>使用量推移</h2>
       <span className="segmented" role="group" aria-label="グラフの指標">
-        {([["usage", "使用量"], ["value", "累積値"]] as const).map(([key, label]) => <button type="button" key={key} className={`segment${metric === key ? " active" : ""}`} aria-pressed={metric === key} onClick={() => setMetric(key)}>{label}</button>)}
+        {([["usage", "使用量"], ["delta", "累積増加量"], ["value", "実値"]] as const).map(([key, label]) => <button type="button" key={key} className={`segment${metric === key ? " active" : ""}`} aria-pressed={metric === key} onClick={() => setMetric(key)}>{label}</button>)}
       </span>
       <span className="trend-condition muted" title="Monitor・期間は計測履歴と共通です">{conditionText}</span>
       {series.length > 0 && <ul className="trend-legend" aria-label="凡例">
@@ -171,7 +172,9 @@ export function TrendChart({ monitors, filter, refreshMs, renderEvent = defaultE
         </svg>
         {hover != null && <div className="trend-tooltip" style={{ left: Math.min(Math.max(px(hover) + 10, 0), Math.max(0, width - 190)) }} role="status">
           <strong>{fullTime.format(new Date(hover))}</strong>
-          {hoverRows.map(({ s, i, p }) => <div key={s.monitor_id}><i style={{ background: seriesColor(i) }} aria-hidden="true" />{s.name}: {p!.y == null ? "なし" : fmtNumber(p!.y)}</div>)}
+          {hoverRows.map(({ s, i, p }) => metric === "delta"
+            ? <div key={s.monitor_id} className="tooltip-delta"><div><i style={{ background: seriesColor(i) }} aria-hidden="true" /><strong>{s.name}</strong></div><div>累積増加量: {p!.y == null ? "なし" : fmtDelta(p!.y)}</div><div>実値: {p!.actualText ?? "なし"}</div></div>
+            : <div key={s.monitor_id}><i style={{ background: seriesColor(i) }} aria-hidden="true" />{s.name}: {p!.y == null ? "なし" : fmtNumber(p!.y)}</div>)}
         </div>}
         {truncated && <div className="trend-note muted">期間内の記録が多いため、新しい側の{(TREND_PAGE * TREND_MAX_PAGES).toLocaleString("ja-JP")}件までを表示しています。</div>}
       </>}

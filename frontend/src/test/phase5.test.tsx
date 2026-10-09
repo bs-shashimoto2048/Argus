@@ -163,7 +163,8 @@ describe("履歴表: ヘッダー固定・スクロール", () => {
     expect(value(".records-table-wrap", "overflow")).toBe("auto");
     expect(value(".records-table-wrap", "scrollbar-gutter")).toBe("stable"); // scrollbar表示でも列幅が変わらない
     expect(value(".records-table", "table-layout")).toBe("auto"); // 各列は内容の最小幅(列幅の固定はしない)
-    expect(value(".records-table", "width")).toBe("max-content"); // 余った幅を特定の列(モニター名等)へ配らない。狭い画面では表の内部だけが横スクロール
+    expect(value(".records-table", "width")).toBe("100%"); // コンテナ幅を使い、余った幅は「モニター」列へ。狭い画面では表の内部だけが横スクロール
+    expect(value(".records-table", "min-width")).toBe("0");
     expect(value(".records-area.compact", "height")).toMatch(/^clamp\(/); // viewport基準の高さ
     expect(value(".records-area.tall", "height")).toMatch(/clamp\(/);
     expect(value("body", "overflow-x")).toBe("hidden"); // ページ全体には横スクロールを出さない
@@ -178,8 +179,8 @@ describe("画面揺れ防止(CSS)", () => {
     for (const selector of [".records-table td", ".card-values strong", ".status-item strong", ".drawer-fields dd"]) expect(declared(selector, "font-variant-numeric")).toBe(true);
     expect(value(".records-table td", "font-variant-numeric")).toBe("tabular-nums");
   });
-  it("Monitorカードは通知欄の高さを確保し、バッジの有無・値の桁数で高さが動かない", async () => {
-    expect(value(".monitor-card .card-notices", "min-height")).toMatch(/px$/);
+  it("Monitorカードは行内で高さが揃い(stretch)、正常時に通知欄の余白を作らない", async () => {
+    expect(value(".monitor-card .card-notices", "min-height")).toBe("0");
     expect(declared(".monitor-card .card-values", "min-height")).toBe(true);
     expect(value(".monitor-card", "align-self")).toBe("stretch");
     expect(declared(".preview-wrap", "height")).toBe(true); // ライブ画像は固定高さ

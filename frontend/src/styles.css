@@ -925,9 +925,12 @@ body { overflow-x: hidden; }
 /* 計測履歴(Dashboard): グラフの下の残り高さを使う。最低でも数行(ヘッダー + 約7行)が見える高さを確保する */
 .dashboard-page .records-section { min-height: 330px; }
 
-/* 計測履歴テーブル: 各列は折り返さない最小幅。表は内容幅(max-content)で、余った幅をモニター名の列などへ配らない。 */
-.records-table { width: max-content; min-width: 0; table-layout: auto; }
-.records-table th, .records-table td { white-space: nowrap; overflow: visible; text-overflow: clip; }
+/* 計測履歴テーブル: 表はコンテナ幅いっぱい(width:100%)に使い、各セルは折り返さない。
+   モニター名以外の列は内容幅(width:1% + nowrap)に詰め、余った幅は「モニター」列へ配る。狭い画面では表の内部だけ横スクロールする。 */
+.records-table { width: 100%; min-width: 0; table-layout: auto; }
+.records-table th, .records-table td { width: 1%; white-space: nowrap; overflow: visible; text-overflow: clip; }
+.records-table th:nth-child(2), .records-table td.cell-monitor { width: auto; }
+.records-table th:first-child, .records-table td:first-child { min-width: 9em; }
 .records-table .cell-monitor, .records-table .cell-model { max-width: none; overflow: visible; text-overflow: clip; }
 
 /* Export (XL): 期間コントロールの右隣 */
@@ -938,3 +941,23 @@ body { overflow-x: hidden; }
 /* 計測履歴テーブルの行を詰める(1366x768でも数行が見えるように)。ボタン・バッジの高さに合わせた最小の余白。 */
 .history-table td { padding-top: 3px; padding-bottom: 3px; }
 .history-table .small-button { padding: 3px 10px; font-size: 12.5px; }
+
+.trend-tooltip .tooltip-delta { margin-top: 4px; }
+.trend-tooltip .tooltip-delta > div:not(:first-child) { padding-left: 14px; }
+
+/* ===== Monitorカード: 中央=画像(約70%) | 現在値・信頼度・更新(縦並び、約30%)。取得状態・警告は下段 ===== */
+.monitor-card .card-body { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 3fr); gap: 6px; align-items: stretch; padding: 0 8px; }
+.monitor-card .card-body .preview-wrap { height: clamp(110px, 15vh, 170px); border-radius: 4px; overflow: hidden; }
+.monitor-card .card-body .video-image { object-fit: contain; }
+.monitor-card .card-body .card-values { display: flex; flex-direction: column; justify-content: center; gap: 8px; min-width: 0; padding: 4px 2px; border-top: 0; min-height: 0; background: transparent; }
+.monitor-card .card-body .card-values > div { min-width: 0; }
+.monitor-card .card-body .card-value-primary strong { font-size: clamp(24px, 1.72vw, 28px); line-height: 1.15; letter-spacing: -0.01em; overflow: visible; text-overflow: clip; }
+.monitor-card .card-body .card-value-confidence strong { font-size: clamp(15px, 1.2vw, 16px); }
+.monitor-card .card-body .card-value-updated strong { font-size: clamp(12px, 0.95vw, 13px); }
+.monitor-card .card-body .card-values small { font-size: 11px; }
+.monitor-card .card-meta { padding: 4px 12px 2px; min-height: 0; font-size: 11.5px; }
+.dashboard-page .monitor-card .card-notices, .monitor-card .card-notices { min-height: 0; padding: 0 10px 8px; }
+.monitor-card .card-notices:empty { padding: 0; }
+.monitor-card .card-notices .carried-badge, .monitor-card .card-notices .baseline-conflict-badge { width: 100%; box-sizing: border-box; }
+.dashboard-page .preview-wrap { height: clamp(110px, 15vh, 170px); }
+.dashboard-page .monitor-card .card-body .preview-wrap { height: clamp(110px, 15vh, 170px); }

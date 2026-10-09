@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import stylesheet from "../styles.css?raw";
 import { TrendChart } from "../components/TrendChart";
@@ -99,7 +99,9 @@ describe("使用量推移グラフ", () => {
     renderApp("/");
     await waitFor(() => expect(document.querySelector(".trend-svg")).not.toBeNull());
     expect(screen.getByRole("button", { name: "使用量" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("button", { name: "累積値" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "累積増加量" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "実値" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByRole("button", { name: "累積値" })).toBeNull();
     expect(document.querySelectorAll(".trend-series")).toHaveLength(3); // モニター2・3・4
     const legend = within(screen.getByRole("list", { name: "凡例" }));
     expect(legend.getByText("エネセン内ガスメータ用２")).toBeInTheDocument();
@@ -114,16 +116,16 @@ describe("使用量推移グラフ", () => {
     expect(height).toBeLessThanOrEqual(220);
   });
 
-  it("[使用量][累積値]の切替で系列の値(y座標)が変わる", async () => {
+  it("[使用量][累積増加量][実値]の切替で系列の値(y座標)が変わる", async () => {
     standardMocks([recordsFor(sampleRecords)]);
     const user = userEvent.setup();
     renderApp("/");
     await waitFor(() => expect(polylines().length).toBeGreaterThan(0));
     const before = polylines().map((p) => p.getAttribute("points"));
-    await user.click(screen.getByRole("button", { name: "累積値" }));
-    expect(screen.getByRole("button", { name: "累積値" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("img", { name: /累積値の推移/ })).toBeInTheDocument();
-    // 累積値は正式値(value)の系列: 欠損(usage=null)の行も値があるので、折れ線は途切れずつながる
+    await user.click(screen.getByRole("button", { name: "実値" }));
+    expect(screen.getByRole("button", { name: "実値" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("img", { name: /実値の推移/ })).toBeInTheDocument();
+    // 実値は正式値(value)の系列(従来の「累積値」): 欠損(usage=null)の行も値があるので、折れ線は途切れずつながる
     const after = polylines().map((p) => p.getAttribute("points"));
     expect(after).not.toEqual(before);
     expect(polylines().filter((p) => p.closest(".trend-series")?.getAttribute("data-monitor-id") === "2")).toHaveLength(1);
@@ -215,7 +217,8 @@ describe("グラフ用の純関数", () => {
     expect(buildSeries([rec(1, 2, 8, "1", { value: "123.5" })], threeMonitors, "value")[0].points[0].y).toBe(123.5);
   });
   it("splitSegments: nullで区間が分かれ、孤立点は長さ1の区間", () => {
-    expect(splitSegments([{ time: 1, y: 1 }, { time: 2, y: null }, { time: 3, y: 3 }, { time: 4, y: 4 }, { time: 5, y: null }, { time: 6, y: 6 }]).map((s) => s.length)).toEqual([1, 2, 1]);
+    const pt = (time: number, y: number | null) => ({ time, y, actual: y, actualText: y == null ? null : String(y) });
+    expect(splitSegments([pt(1, 1), pt(2, null), pt(3, 3), pt(4, 4), pt(5, null), pt(6, 6)]).map((s) => s.length)).toEqual([1, 2, 1]);
   });
   it("niceTicks", () => {
     expect(niceTicks(0, 10, 4)).toEqual([0, 2.5, 5, 7.5, 10]);
@@ -224,13 +227,18 @@ describe("グラフ用の純関数", () => {
 });
 
 describe("計測履歴テーブル: 各列は折り返さない最小幅", () => {
-  it("CSS: 表は内容幅(max-content)・table-layout:auto・全セルnowrap。モニター名の列が余りを吸収しない", () => {
-    expect(value(".records-table", "width")).toBe("max-content");
+  it("CSS: 表は幅100%・table-layout:auto・全セルnowrap。余った幅はモニター名の列が吸収する", () => {
+    expect(value(".records-table", "width")).toBe("100%"); // コンテナ幅いっぱい(右に大きな空白を残さない)
+    expect(value(".records-table", "min-width")).toBe("0"); // nowrapなので内容幅より狭くならず、狭い画面では表の内部だけ横スクロール
     expect(value(".records-table", "table-layout")).toBe("auto");
     expect(value(".records-table th", "white-space")).toBe("nowrap");
     expect(value(".records-table td", "white-space")).toBe("nowrap");
     expect(value(".records-table .cell-monitor", "max-width")).toBe("none");
-    expect(value(".records-table .cell-monitor", "width") ?? "auto").toBe("auto"); // モニター名の列に幅(余り)を割り当てない
+    // 余った幅は「モニター」列へ。他の列は内容幅(width:1% + nowrap)に詰める
+    expect(value(".records-table td", "width")).toBe("1%");
+    expect(value(".records-table td.cell-monitor", "width")).toBe("auto");
+    expect(value(".records-table th:nth-child(2)", "width")).toBe("auto");
+    expect(parseInt(value(".records-table td:first-child", "min-width")!)).toBeGreaterThanOrEqual(8); // 取得日時は窮屈にしない
   });
   it("維持: 縦罫線・数値列の色・時刻グループ・stickyヘッダー・内部スクロール", () => {
     expect(value(".history-table td", "border-left")).toBe("1px solid #d7dde7");
@@ -317,5 +325,112 @@ describe("Export (XL)", () => {
 
   it("提案ファイル名: argus_records_開始日_終了日.xlsx(toは排他的なので前日まで)", () => {
     expect(suggestedExportName({ from: "2026-10-03T00:00:00+09:00", to: "2026-10-10T00:00:00+09:00" })).toBe("argus_records_20261003_20261009.xlsx");
+  });
+});
+
+describe("累積増加量(表示期間内の最初の有効な確定値を0とした差分)", () => {
+  const v = (id: number, monitorId: number, h: number, value: string | null, over: Partial<ReadingRecord> = {}) => rec(id, monitorId, h, null, { value, ...over });
+  const delta = (rows: ReadingRecord[]) => buildSeries(rows, threeMonitors, "delta");
+
+  it("最初の有効値が0、2点目以降は差分(215852→215857→215862 = 0→5→10)", () => {
+    const [s] = delta([v(1, 3, 8, "215852"), v(2, 3, 9, "215857"), v(3, 3, 10, "215862")]);
+    expect(s.points.map((p) => p.y)).toEqual([0, 5, 10]);
+    expect(s.points.map((p) => p.actualText)).toEqual(["215852", "215857", "215862"]); // 実値も保持
+  });
+
+  it("Monitorごとに別々の基準値(桁が違っても増加量で比較できる)。小数は誤差なく丸める", () => {
+    const series = delta([v(1, 3, 8, "215852"), v(2, 3, 9, "215862"), v(3, 2, 8, "265821"), v(4, 2, 9, "265847"), v(5, 4, 8, "372425.0"), v(6, 4, 9, "372433.4")]);
+    expect(Object.fromEntries(series.map((s) => [s.monitor_id, s.points.map((p) => p.y)]))).toEqual({ 2: [0, 26], 3: [0, 10], 4: [0, 8.4] });
+  });
+
+  it("有効な確定値が無い点はnull(補間しない)。先頭がnullなら、最初の有効値が基準0", () => {
+    const [s] = delta([v(1, 3, 8, null), v(2, 3, 9, "100"), v(3, 3, 10, null), v(4, 3, 11, "103")]);
+    expect(s.points.map((p) => p.y)).toEqual([null, 0, null, 3]);
+    expect(splitSegments(s.points).map((seg) => seg.length)).toEqual([1, 1]); // nullでgap
+  });
+
+  it("carried_forward等の記録も、確定値をそのまま使う(勝手に補正しない)", () => {
+    const [s] = delta([v(1, 3, 8, "100"), v(2, 3, 9, "100", { value_source: "carried_forward" }), v(3, 3, 10, "104")]);
+    expect(s.points.map((p) => p.y)).toEqual([0, 0, 4]);
+  });
+
+  it("実値は従来の累積値と同じ(正式値そのもの)、使用量は従来どおり", () => {
+    const rows = [v(1, 3, 8, "215852", { usage: "5" }), v(2, 3, 9, "215857", { usage: "5" })];
+    expect(buildSeries(rows, threeMonitors, "value")[0].points.map((p) => p.y)).toEqual([215852, 215857]);
+    expect(buildSeries(rows, threeMonitors, "usage")[0].points.map((p) => p.y)).toEqual([5, 5]);
+  });
+
+  it("画面: 累積増加量の切替で0起点の系列になり、Tooltipに Monitor名・時刻・累積増加量・実値 を出す", async () => {
+    const rows = [v(1, 3, 8, "215852"), v(2, 3, 9, "215857"), v(3, 3, 10, "215862")];
+    standardMocks([recordsFor(rows)]);
+    const user = userEvent.setup();
+    renderApp("/");
+    await waitFor(() => expect(document.querySelector(".trend-svg")).not.toBeNull());
+    await user.click(screen.getByRole("button", { name: "累積増加量" }));
+    expect(screen.getByRole("button", { name: "累積増加量" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("img", { name: /累積増加量の推移/ })).toBeInTheDocument();
+    expect(polylines()).toHaveLength(1); // 使用量はnullだが、累積増加量は0→5→10の1本の折れ線
+    const svg = screen.getByTestId("trend-svg");
+    svg.getBoundingClientRect = () => ({ left: 0, top: 0, width: 900, height: 180, right: 900, bottom: 180, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+    fireEvent.mouseMove(svg, { clientX: 880, clientY: 50 }); // 右端付近=最後の点(10:00)
+    await waitFor(() => expect(document.querySelector(".trend-tooltip")).not.toBeNull());
+    const tooltip = document.querySelector(".trend-tooltip") as HTMLElement;
+    expect(tooltip).toHaveTextContent("エネセン内ガスメータ用１");
+    expect(tooltip).toHaveTextContent("10/09 10:00");
+    expect(tooltip).toHaveTextContent("累積増加量: +10");
+    expect(tooltip).toHaveTextContent("実値: 215862");
+  });
+
+  it("期間を変えると、その期間で取り直す(基準値=その期間の最初の有効値)。指標の選択は維持する", async () => {
+    const mocks = standardMocks([recordsFor([v(1, 3, 8, "100"), v(2, 3, 9, "110")])]);
+    const user = userEvent.setup();
+    renderApp("/");
+    await waitFor(() => expect(graphCalls(mocks.calls).length).toBeGreaterThan(0));
+    await user.click(screen.getByRole("button", { name: "累積増加量" }));
+    const before = graphCalls(mocks.calls).length;
+    await user.click(screen.getByRole("button", { name: "過去7日" }));
+    await waitFor(() => expect(graphCalls(mocks.calls).length).toBeGreaterThan(before));
+    expect(graphCalls(mocks.calls).pop()!.get("from")).toBe("2026-10-03T00:00:00+09:00");
+    expect(screen.getByRole("button", { name: "累積増加量" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("イベントマーカーは使用量・累積増加量・実値のすべてで描く", async () => {
+    standardMocks([recordsFor([v(1, 3, 8, "100"), v(2, 3, 9, "101", { value_source: "carried_forward" }), v(3, 3, 10, "103", { is_corrected: true, correction_count: 1 })])]);
+    const user = userEvent.setup();
+    renderApp("/");
+    for (const name of ["使用量", "累積増加量", "実値"]) {
+      await user.click(await screen.findByRole("button", { name }));
+      await waitFor(() => expect(document.querySelectorAll(".trend-event.event-carried_forward")).toHaveLength(1));
+      expect(document.querySelectorAll(".trend-event.event-manual_corrected")).toHaveLength(1);
+    }
+  });
+});
+
+describe("Monitorカード: 画像(約70%)と 現在値・信頼度・更新(縦並び、約30%)", () => {
+  it("DOM: 上=名前+状態badge / 中央=画像 と 縦並びの値 / 下=取得状態 と 警告(右の情報欄には入れない)", async () => {
+    standardMocks([recordsFor([rec(1, 3, 8, "4", { value_source: "carried_forward", raw_value: "021582", validation_status: "decrease_detected" })])]);
+    renderApp("/");
+    await waitFor(() => expect(document.querySelectorAll(".monitor-card")).toHaveLength(3));
+    const card = document.querySelector(".monitor-card") as HTMLElement;
+    expect([...card.children].map((e) => e.className.split(" ")[0])).toEqual(["card-head", "card-body", "card-meta", "card-notices"]);
+    const body = card.querySelector(".card-body") as HTMLElement;
+    expect([...body.children].map((e) => e.className.split(" ")[0])).toEqual(["preview-wrap", "card-values"]);
+    const values = body.querySelector(".card-values") as HTMLElement;
+    expect([...values.children].map((e) => e.className.split(" ")[0])).toEqual(["card-value-primary", "card-value-confidence", "card-value-updated"]); // 現在値 → 信頼度 → 更新
+    expect(values).not.toHaveTextContent("取得状態"); // 取得状態は下段
+    expect(card.querySelector(".card-meta")).toHaveTextContent("取得状態：取得中");
+    await waitFor(() => expect(document.querySelectorAll(".card-notices .carried-badge").length).toBeGreaterThan(0));
+    expect(values.querySelector(".carried-badge, .baseline-conflict-badge")).toBeNull(); // 警告は右カラムに入れない
+  });
+  it("CSS: 画像:情報=約7:3、情報は縦並び、文字サイズは 現在値 > 信頼度 > 更新", () => {
+    expect(value(".monitor-card .card-body", "grid-template-columns")).toBe("minmax(0, 7fr) minmax(0, 3fr)");
+    expect(value(".monitor-card .card-body .card-values", "flex-direction")).toBe("column");
+    expect(value(".monitor-card .card-body .video-image", "object-fit")).toBe("contain");
+    const px = (selector: string, which: 0 | 1) => parseInt(/clamp\((\d+)px, [^,]+, (\d+)px\)/.exec(value(selector, "font-size")!)![which + 1]);
+    expect([px(".monitor-card .card-body .card-value-primary strong", 0), px(".monitor-card .card-body .card-value-primary strong", 1)]).toEqual([24, 28]);
+    expect([px(".monitor-card .card-body .card-value-confidence strong", 0), px(".monitor-card .card-body .card-value-confidence strong", 1)]).toEqual([15, 16]);
+    expect([px(".monitor-card .card-body .card-value-updated strong", 0), px(".monitor-card .card-body .card-value-updated strong", 1)]).toEqual([12, 13]);
+    expect(value(".monitor-card .card-notices .carried-badge", "width")).toBe("100%"); // 警告は横幅いっぱい
+    expect(value(".monitor-card", "align-self")).toBe("stretch");
   });
 });

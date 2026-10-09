@@ -312,10 +312,10 @@ describe("Dashboard全体をviewport内に収め、計測履歴の表が残り�
       expect(card.querySelector(".status-badge")).not.toBeNull(); // 状態
       expect(card.querySelector(".card-notices")).not.toBeNull(); // 通知欄
     }
-    expect(value(".monitor-card .card-notices", "min-height")).toBe("56px");
+    expect(value(".monitor-card .card-notices", "min-height")).toBe("0"); // 警告が無い正常時は余白を作らない(カード高さは同じ行のカードに揃う)
     expect(value(".monitor-grid", "align-items")).toBe("stretch"); // 3枚の高さを揃える
     expect(value(".monitor-card", "align-self")).toBe("stretch");
-    expect(value(".preview-wrap", "height")).toMatch(/^clamp\(104px, 17vh, 220px\)$/);
+    expect(value(".monitor-card .card-body .preview-wrap", "height")).toBe("clamp(110px, 15vh, 170px)");
     expect(value(".video-image", "object-fit")).toBe("contain"); // 画像はaspect-ratioを維持
   });
 

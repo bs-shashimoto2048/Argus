@@ -1,7 +1,7 @@
 import type { ReadingRecord } from "../types";
 
-/** グラフの指標。usage=使用量(既定) / value=累積値(正式値の系列)。 */
-export type TrendMetric = "usage" | "value";
+/** グラフの指標。usage=使用量(既定) / delta=累積増加量(表示期間内の最初の有効な確定値を0とした差分) / value=実値(メーターの絶対積算値=正式値)。 */
+export type TrendMetric = "usage" | "delta" | "value";
 
 // --- イベント(グラフ上の印)---------------------------------------------------
 // 将来、基準値競合などの印をグラフへ重ねられるよう、型付きの構造とrenderer hook(TrendChartのrenderEvent)を用意する。
@@ -38,7 +38,8 @@ export function extractChartEvents(records: ReadingRecord[]): ChartEvent[] {
 }
 
 // --- 系列 ---------------------------------------------------------------------
-export type TrendPoint = { time: number; y: number | null };
+/** y=現在の指標での値。actual/actualText=その時刻の確定値(実値。どの指標でもTooltipで見られるよう常に持つ)。 */
+export type TrendPoint = { time: number; y: number | null; actual: number | null; actualText: string | null };
 export type TrendSeries = { monitor_id: number; name: string; points: TrendPoint[] };
 
 function toNumber(text: string | null | undefined): number | null {
@@ -65,7 +66,12 @@ export function buildSeries(records: ReadingRecord[], monitors: { id: number; di
     const rows = byMonitor.get(id);
     if (!rows || rows.length === 0) continue;
     const name = (monitors.find((m) => m.id === id)?.display_name ?? rows[0].monitor_name).trim();
-    const points = rows.map((r) => ({ time: recordTime(r), y: toNumber(metric === "usage" ? r.usage : r.value) })).sort((a, b) => a.time - b.time);
+    const points: TrendPoint[] = rows.map((r) => ({ time: recordTime(r), y: toNumber(metric === "usage" ? r.usage : r.value), actual: toNumber(r.value), actualText: r.value ?? null })).sort((a, b) => a.time - b.time);
+    if (metric === "delta") {
+      // 累積増加量: このMonitorの、表示期間内の最初の有効な確定値を0とした差分。Monitorごとに独立した基準値。有効値が無い点はnull(補間しない)。
+      const base = points.find((p) => p.actual != null)?.actual ?? null;
+      for (const p of points) p.y = base == null || p.actual == null ? null : Number((p.actual - base).toFixed(6));
+    }
     series.push({ monitor_id: id, name, points });
   }
   return series;
