@@ -94,7 +94,7 @@ describe("Dashboard: レイアウト", () => {
     expect(children[1]).toHaveClass("monitoring-control");
     expect(children[0].nextElementSibling).toBe(children[1]); // 右隣
     expect(within(children[1]).getByText("Monitoring")).toBeInTheDocument();
-    expect(children[1]).toHaveTextContent("1 FPS");
+    expect(children[1]).toHaveTextContent("5 FPS");
     expect(within(children[1]).getByRole("button", { name: "Dashboard設定" })).toBeInTheDocument();
     await waitFor(() => expect(children[1].querySelector(".monitoring-status")).toHaveClass("live")); // 稼働中のMonitorがあれば緑のindicator
   });

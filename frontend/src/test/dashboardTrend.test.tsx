@@ -503,3 +503,58 @@ describe("値無し(null)の表示: 赤い×と、左下の警告文(値無し�
     expect(polylines().length).toBeGreaterThan(0); // 折れ線が1本につながる
   });
 });
+
+describe("Dashboard表示FPS", () => {
+  it("選択肢は 1/2/5/10/15/20/30 FPS、既定は5(推奨)。推論FPS・video_fpsとは独立(localStorageのFrontend設定のみ)", async () => {
+    const { DASHBOARD_DISPLAY_FPS_OPTIONS, DASHBOARD_DISPLAY_FPS_DEFAULT, loadDashboardSettings } = await import("../hooks/useDashboardSettings");
+    expect(DASHBOARD_DISPLAY_FPS_OPTIONS).toEqual([1, 2, 5, 10, 15, 20, 30]);
+    expect(DASHBOARD_DISPLAY_FPS_DEFAULT).toBe(5);
+    window.localStorage.removeItem("argus.dashboardSettings");
+    expect(loadDashboardSettings().displayFps).toBe(5);
+    window.localStorage.setItem("argus.dashboardSettings", JSON.stringify({ displayFps: 0.2 })); // 旧い選択肢は既定へ
+    expect(loadDashboardSettings().displayFps).toBe(5);
+    window.localStorage.setItem("argus.dashboardSettings", JSON.stringify({ displayFps: 30 }));
+    expect(loadDashboardSettings().displayFps).toBe(30);
+    window.localStorage.removeItem("argus.dashboardSettings");
+  });
+
+  it("設定画面: 5 FPSに「（推奨）」、20/30 FPSでだけ負荷の注意を表示。BackendへPUTしない", async () => {
+    window.localStorage.removeItem("argus.dashboardSettings");
+    const mocks = standardMocks();
+    const user = userEvent.setup();
+    renderApp("/");
+    await user.click(await screen.findByRole("button", { name: /設定/ }));
+    const select = await screen.findByRole("combobox", { name: /Dashboard表示FPS/ });
+    expect([...(select as HTMLSelectElement).options].map((o) => o.textContent)).toEqual(["1 FPS", "2 FPS", "5 FPS（推奨）", "10 FPS", "15 FPS", "20 FPS", "30 FPS"]);
+    expect(select).toHaveValue("5");
+    expect(document.querySelector(".fps-warning")).toBeNull();
+    await user.selectOptions(select, "15");
+    expect(document.querySelector(".fps-warning")).toBeNull();
+    await user.selectOptions(select, "20");
+    expect(document.querySelector(".fps-warning")).toHaveTextContent("高いFPSでは、Monitor台数やネットワーク環境によりブラウザ・通信負荷が増加します。");
+    await user.selectOptions(select, "30");
+    expect(document.querySelector(".fps-warning")).not.toBeNull();
+    await user.selectOptions(select, "2");
+    expect(document.querySelector(".fps-warning")).toBeNull();
+    expect(mocks.calls.filter((c) => c.method !== "GET" && !c.url.includes("csv"))).toHaveLength(0); // 推論FPS/video_fpsなどBackend設定は変えない
+    window.localStorage.removeItem("argus.dashboardSettings");
+  });
+
+  it("カードの更新間隔は 1000/FPS ms。前の画像が未完了の間は次のリクエストを出さない(高FPSで積み上げない)", async () => {
+    vi.useRealTimers();
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+    const { VideoPreview } = await import("../components/VideoPreview");
+    const view = render(<VideoPreview monitorId={7} intervalMs={1000 / 30} />);
+    const src = () => (view.container.querySelector("img") as HTMLImageElement).getAttribute("src");
+    expect(src()).toContain("t=0");
+    await vi.advanceTimersByTimeAsync(34);
+    expect(src()).toContain("t=1");
+    await vi.advanceTimersByTimeAsync(500); // onLoadが来ていない(取得中)ので進まない
+    expect(src()).toContain("t=1");
+    fireEvent.load(view.container.querySelector("img")!);
+    await vi.advanceTimersByTimeAsync(34);
+    expect(src()).toContain("t=2");
+    view.unmount();
+    vi.useRealTimers();
+  });
+});

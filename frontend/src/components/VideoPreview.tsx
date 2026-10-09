@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 
 // intervalMs/pausedはDashboard表示専用の負荷制御に使う(Detail画面のPreview FPS・
@@ -11,11 +11,19 @@ type Props = { monitorId: number; large?: boolean; overlay?: boolean; inferenceI
 export function VideoPreview({ monitorId, large = false, overlay = false, inferenceInput = false, intervalMs = 1000, paused = false, onImageClick }: Props) {
   const [tick, setTick] = useState(0);
   const [failed, setFailed] = useState(false);
+  // 前の画像の取得が終わっていない間は、次のリクエストを出さない(高いFPSでも未完了のリクエストを積み上げず、
+  // src差し替えによる取得の取り消し(画像が更新されない)も起こさない)。
+  const loadingSince = useRef(0); // 取得開始時刻(0=待ちなし)。応答が無いまま5秒たったら次を出す
 
   useEffect(() => {
     if (large && !overlay && !inferenceInput) return undefined;
     if (paused) return undefined;
-    const timer = window.setInterval(() => setTick((value) => value + 1), intervalMs);
+    loadingSince.current = 0;
+    const timer = window.setInterval(() => {
+      if (loadingSince.current && Date.now() - loadingSince.current < 5000) return;
+      loadingSince.current = Date.now();
+      setTick((value) => value + 1);
+    }, intervalMs);
     return () => window.clearInterval(timer);
   }, [large, overlay, inferenceInput, intervalMs, paused]);
 
@@ -29,7 +37,8 @@ export function VideoPreview({ monitorId, large = false, overlay = false, infere
       className={`video-image${onImageClick ? " video-image-clickable" : ""}`}
       src={source}
       alt="ライブ映像"
-      onError={() => setFailed(true)}
+      onLoad={() => { loadingSince.current = 0; }}
+      onError={() => { loadingSince.current = 0; setFailed(true); }}
       onClick={onImageClick}
     />
   );
