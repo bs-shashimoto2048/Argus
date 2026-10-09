@@ -616,30 +616,53 @@ describe("読取値の修正 → Backendで再計算されたusageがグラフ�
   });
 });
 
-describe("アクセントボタン: [＋ モニター追加](赤紫寄りの赤) と [Export (XL)](深緑)", () => {
-  it("CSS: 2つとも縦グラデーション(ベタ塗りでない)・薄いborder・控えめなshadow・白文字。高さ・角丸・太さ・transitionは共通", () => {
-    for (const selector of [".action-button", ".records-controls .export-xl-button"]) {
-      expect(value(selector, "background")).toMatch(/^linear-gradient\(180deg/);
+describe("アクセントボタン: [＋ モニター追加](Rose #F43F5E) と [Export (XL)](Emerald #10B981)", () => {
+  const BTN = [".action-button", ".records-controls .export-xl-button"];
+  it("CSS: 2つとも135degのグラデーション(ベタ塗りでない)・薄いborder・控えめなshadow・白文字。高さ・角丸・太さ・transitionは共通", () => {
+    for (const selector of BTN) {
+      expect(value(selector, "background")).toBe("linear-gradient(135deg, var(--btn-light), var(--btn-dark))");
       expect(value(selector, "height")).toBe("40px");
       expect(value(selector, "border-radius")).toBe("8px");
       expect(value(selector, "font-weight")).toBe("700");
       expect(value(selector, "color")).toBe("#fff");
-      expect(value(selector, "border")).toBe("1px solid var(--accent-border)"); // 薄い(白22%)border
-      expect(value(selector, "--accent-border")).toBe("rgb(255 255 255 / 22%)");
-      expect(value(selector, "transition")).toMatch(/background/);
+      expect(value(selector, "border")).toBe("1px solid var(--btn-border)");
+      expect(value(selector, "transition")).toBe("background 150ms ease, box-shadow 150ms ease, transform 100ms ease, filter 150ms ease");
     }
-    expect(value(".action-button", "--accent-top")).toBe("#b3304f"); // 赤紫寄りの深い赤
-    expect(value(".records-controls .export-xl-button", "--accent-top")).toBe("#1f8a5b"); // 深緑
-    expect(value("button.danger", "background")).toBe("var(--color-danger)"); // 削除の警告の赤(平塗り)とは別
   });
-  it("CSS: hover(明るく)・active(1px沈む)・focus-visible(リング)・disabled(配色を保つ)", () => {
-    expect(value(".action-button:hover:not(:disabled)", "background")).toMatch(/--accent-hover-top/);
-    expect(value(".action-button:active:not(:disabled)", "transform")).toBe("translateY(1px)");
-    expect(value(".action-button:focus-visible", "box-shadow")).toMatch(/--accent-ring/);
-    expect(value(".action-button:disabled", "cursor")).toBe("not-allowed");
+  it("CSS: ＋ モニター追加は鮮やかなローズ(#F43F5E→#E11D48)。暗いワインレッドは使わず、削除の警告の赤(平塗り)とも別", () => {
+    const v = (name: string) => value(".action-button", name);
+    expect([v("--btn-light"), v("--btn-dark")]).toEqual(["#f43f5e", "#e11d48"]);
+    expect([v("--btn-hover-light"), v("--btn-hover-dark")]).toEqual(["#fb7185", "#f43f5e"]);
+    expect([v("--btn-active-light"), v("--btn-active-dark")]).toEqual(["#e11d48", "#be123c"]);
+    expect(v("--btn-border")).toBe("rgb(190 18 60 / 35%)");
+    expect(v("--btn-shadow")).toBe("0 3px 10px rgb(225 29 72 / 22%)");
+    expect(v("--btn-hover-shadow")).toBe("0 5px 14px rgb(244 63 94 / 30%)");
+    expect(v("--btn-ring")).toBe("rgb(244 63 94 / 30%)");
+    expect(value("button.danger", "background")).toBe("var(--color-danger)");
+  });
+  it("CSS: Export (XL)は鮮やかなエメラルド(#10B981→#059669)。深緑は使わない", () => {
+    const v = (name: string) => value(".records-controls .export-xl-button", name);
+    expect([v("--btn-light"), v("--btn-dark")]).toEqual(["#10b981", "#059669"]);
+    expect([v("--btn-hover-light"), v("--btn-hover-dark")]).toEqual(["#34d399", "#10b981"]);
+    expect([v("--btn-active-light"), v("--btn-active-dark")]).toEqual(["#059669", "#047857"]);
+    expect(v("--btn-border")).toBe("rgb(5 150 105 / 35%)");
+    expect(v("--btn-shadow")).toBe("0 3px 10px rgb(16 185 129 / 22%)");
+    expect(v("--btn-hover-shadow")).toBe("0 5px 14px rgb(16 185 129 / 30%)");
+    expect(v("--btn-ring")).toBe("rgb(16 185 129 / 30%)");
+    const dark = /#(7f1d1d|881337|9f1239|14532d|166534|065f46)/i; // 暗い赤・暗い緑は使わない
+    expect(css.slice(css.indexOf("アクセントボタン:"))).not.toMatch(dark);
+  });
+  it("CSS: hover(明るく・shadow強め・1px浮く)・active(沈めて元の位置・shadow弱め)・focus-visible(リング)・disabled(配色を保つ)", () => {
+    for (const selector of BTN) {
+      expect(value(`${selector}:hover:not(:disabled)`, "background")).toBe("linear-gradient(135deg, var(--btn-hover-light), var(--btn-hover-dark))");
+      expect(value(`${selector}:hover:not(:disabled)`, "transform")).toBe("translateY(-1px)");
+      expect(value(`${selector}:hover:not(:disabled)`, "box-shadow")).toBe("var(--btn-hover-shadow)");
+      expect(value(`${selector}:active:not(:disabled)`, "background")).toBe("linear-gradient(135deg, var(--btn-active-light), var(--btn-active-dark))");
+      expect(value(`${selector}:active:not(:disabled)`, "transform")).toBe("translateY(0)");
+      expect(value(`${selector}:focus-visible`, "box-shadow")).toMatch(/var\(--btn-ring\)/);
+      expect(value(`${selector}:disabled`, "cursor")).toBe("not-allowed");
+    }
     expect(value(".records-controls .export-xl-button:disabled", "background")).toMatch(/^linear-gradient/);
-    expect(value(".records-controls .export-xl-button", "--accent-ring")).toMatch(/31 138 91/); // 緑系のring
-    expect(value(".action-button", "--accent-ring")).toMatch(/179 48 79/); // 赤系のring
   });
   it("[＋ モニター追加]は＋を少し大きく、文言と機能はそのまま。Export (XL)は実行中にdisabled + aria-busy", async () => {
     standardMocks([recordsFor(sampleRecords)]);

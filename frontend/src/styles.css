@@ -966,22 +966,27 @@ body { overflow-x: hidden; }
 .trend-body .trend-missing-note { position: absolute; left: 64px; bottom: 26px; z-index: 2; max-width: calc(100% - 80px); padding: 2px 8px; border-radius: 4px; background: rgb(254 242 242 / 94%); border: 1px solid #fecaca; color: #b91c1c; font-size: 11.5px; line-height: 1.4; pointer-events: none; }
 .trend-legend .marker-cross { display: inline-block; width: auto; height: auto; margin-right: 4px; background: none; color: #dc2626; font-style: normal; font-weight: 800; font-size: 13px; line-height: 1; }
 
-/* ===== アクセントボタン: [＋ モニター追加](赤紫寄りの赤。主要操作) と [Export (XL)](深緑)。ベタ塗りにせず、薄いborder・控えめなshadow・縦のグラデーション。
-   「削除」の警告の赤(--color-danger の平塗り)とは別の、深い赤紫のグラデーションにして区別する。高さ・角丸・padding・太さ・transition・focus-visibleは2つで共通。 */
+/* ===== アクセントボタン: [＋ モニター追加](Rose #F43F5E 基準) と [Export (XL)](Emerald #10B981 基準)。鮮やかで軽快な色のグラデーション(ベタ塗りにしない)、薄いborder、控えめなshadow。
+   「削除」の警告の赤(--color-danger の平塗り)とは別の、明るいローズ。高さ・角丸・padding・太さ・transition・focus-visibleは2つで共通。 */
 .action-button, .records-controls .export-xl-button {
-  --accent-top: #b3304f; --accent-bottom: #8a2252; --accent-hover-top: #c63f5f; --accent-hover-bottom: #9d2b62; --accent-border: rgb(255 255 255 / 22%); --accent-ring: rgb(179 48 79 / 38%); --accent-shadow: rgb(138 34 82 / 28%);
-  display: inline-flex; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box; height: 40px; padding: 0 16px; border-radius: 8px; border: 1px solid var(--accent-border);
-  background: linear-gradient(180deg, var(--accent-top) 0%, var(--accent-bottom) 100%); color: #fff; font-size: 14px; font-weight: 700; letter-spacing: .01em; line-height: 1; white-space: nowrap;
-  box-shadow: 0 1px 2px var(--accent-shadow), inset 0 1px 0 rgb(255 255 255 / 14%); text-shadow: 0 1px 0 rgb(0 0 0 / 18%); transition: background .15s, box-shadow .15s, transform .08s, filter .15s;
+  --btn-light: #f43f5e; --btn-dark: #e11d48; --btn-hover-light: #fb7185; --btn-hover-dark: #f43f5e; --btn-active-light: #e11d48; --btn-active-dark: #be123c;
+  --btn-border: rgb(190 18 60 / 35%); --btn-shadow: 0 3px 10px rgb(225 29 72 / 22%); --btn-hover-shadow: 0 5px 14px rgb(244 63 94 / 30%); --btn-ring: rgb(244 63 94 / 30%);
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box; height: 40px; padding: 0 16px; border-radius: 8px; border: 1px solid var(--btn-border);
+  background: linear-gradient(135deg, var(--btn-light), var(--btn-dark)); color: #fff; font-size: 14px; font-weight: 700; letter-spacing: .01em; line-height: 1; white-space: nowrap;
+  box-shadow: var(--btn-shadow); text-shadow: 0 1px 1px rgb(0 0 0 / 16%);
+  transition: background 150ms ease, box-shadow 150ms ease, transform 100ms ease, filter 150ms ease;
 }
-.records-controls .export-xl-button { --accent-top: #1f8a5b; --accent-bottom: #136a45; --accent-hover-top: #29a06b; --accent-hover-bottom: #178350; --accent-ring: rgb(31 138 91 / 38%); --accent-shadow: rgb(19 106 69 / 28%); }
-.action-button:hover:not(:disabled), .records-controls .export-xl-button:hover:not(:disabled) { background: linear-gradient(180deg, var(--accent-hover-top) 0%, var(--accent-hover-bottom) 100%); box-shadow: 0 2px 5px var(--accent-shadow), inset 0 1px 0 rgb(255 255 255 / 18%); }
-.action-button:active:not(:disabled), .records-controls .export-xl-button:active:not(:disabled) { transform: translateY(1px); box-shadow: 0 0 1px var(--accent-shadow), inset 0 1px 2px rgb(0 0 0 / 22%); filter: brightness(.97); }
-.action-button:focus-visible, .records-controls .export-xl-button:focus-visible { outline: 2px solid transparent; box-shadow: 0 0 0 3px var(--accent-ring), 0 1px 2px var(--accent-shadow); }
-/* 無効・実行中: 配色は同じ系統のまま少し彩度を落とし、白文字の読みやすさ(コントラスト)は保つ */
-.action-button:disabled, .records-controls .export-xl-button:disabled { cursor: not-allowed; box-shadow: none; text-shadow: none; filter: none; transform: none; }
-.action-button:disabled { background: linear-gradient(180deg, #8f5a70 0%, #7a4660 100%); }
-.records-controls .export-xl-button:disabled { background: linear-gradient(180deg, #4f8a6f 0%, #3f7459 100%); }
+.records-controls .export-xl-button {
+  --btn-light: #10b981; --btn-dark: #059669; --btn-hover-light: #34d399; --btn-hover-dark: #10b981; --btn-active-light: #059669; --btn-active-dark: #047857;
+  --btn-border: rgb(5 150 105 / 35%); --btn-shadow: 0 3px 10px rgb(16 185 129 / 22%); --btn-hover-shadow: 0 5px 14px rgb(16 185 129 / 30%); --btn-ring: rgb(16 185 129 / 30%);
+}
+.action-button:hover:not(:disabled), .records-controls .export-xl-button:hover:not(:disabled) { background: linear-gradient(135deg, var(--btn-hover-light), var(--btn-hover-dark)); box-shadow: var(--btn-hover-shadow); transform: translateY(-1px); }
+.action-button:active:not(:disabled), .records-controls .export-xl-button:active:not(:disabled) { background: linear-gradient(135deg, var(--btn-active-light), var(--btn-active-dark)); transform: translateY(0); box-shadow: 0 1px 3px rgb(0 0 0 / 14%); }
+.action-button:focus-visible, .records-controls .export-xl-button:focus-visible { outline: 2px solid transparent; box-shadow: 0 0 0 3px var(--btn-ring), var(--btn-shadow); }
+/* 無効・実行中: 同じ系統の色のまま彩度と明るさを少し落とし、白文字の読みやすさは保つ */
+.action-button:disabled, .records-controls .export-xl-button:disabled { cursor: not-allowed; box-shadow: none; text-shadow: none; transform: none; filter: none; }
+.action-button:disabled { background: linear-gradient(135deg, #e0788c, #cf5a74); border-color: rgb(190 18 60 / 25%); }
+.records-controls .export-xl-button:disabled { background: linear-gradient(135deg, #4cb892, #33a07b); border-color: rgb(5 150 105 / 25%); }
 .records-controls .export-xl-button[aria-busy="true"]::before { content: ""; width: 12px; height: 12px; border: 2px solid rgb(255 255 255 / 45%); border-top-color: #fff; border-radius: 50%; animation: accent-spin .8s linear infinite; }
 @keyframes accent-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .records-controls .export-xl-button[aria-busy="true"]::before { animation-duration: 2.4s; } }
