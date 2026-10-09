@@ -3,6 +3,7 @@ import { api } from "../api/client";
 import type { CorrectionResult, ReadingRecord } from "../types";
 import { compareRecordOrder, periodError, periodToRange, todayJst } from "../utils/records";
 import { ExcelExportPanel } from "./ExcelExportPanel";
+import { ExportXlButton } from "./ExportXlButton";
 import { RecordDrawer } from "./RecordDrawer";
 import { RecordFilters } from "./RecordFilters";
 import type { RecordFilterValue } from "./RecordFilters";
@@ -21,12 +22,19 @@ type Props = {
   fixedMonitorId?: number;
   // 履歴表(スクロール領域)の高さの用途別クラス。
   size?: "compact" | "tall";
+  // 指定すると、Monitor・期間の条件を親が持つ(グラフと共有する)。省略時はこのセクション内で保持する。
+  filter?: RecordFilterValue;
+  onFilterChange?: (next: RecordFilterValue) => void;
+  // 期間コントロールの右に [Export (XL)](現在の条件の全件を.xlsxで出力)を出す。
+  showExportXl?: boolean;
 };
 
 // 計測履歴(フィルタ + 固定ヘッダーのスクロール表 + 詳細Drawer)。Dashboard下部・履歴・データ画面・Monitor Detailの履歴タブで共用する。
 // ページ送りは無く、現在の条件の全件を縦スクロールだけで確認できる。内部ではchunk単位で段階的に読み込む。
-export function RecordsSection({ monitors, title, description, showExport = false, refreshMs, fixedMonitorId, size = "compact" }: Props) {
-  const [filter, setFilter] = useState<RecordFilterValue>({ monitorIds: fixedMonitorId != null ? [fixedMonitorId] : [], period: { mode: "today", startDate: todayJst(), endDate: todayJst() } });
+export function RecordsSection({ monitors, title, description, showExport = false, refreshMs, fixedMonitorId, size = "compact", filter: controlledFilter, onFilterChange, showExportXl = false }: Props) {
+  const [ownFilter, setOwnFilter] = useState<RecordFilterValue>({ monitorIds: fixedMonitorId != null ? [fixedMonitorId] : [], period: { mode: "today", startDate: todayJst(), endDate: todayJst() } });
+  const filter = controlledFilter ?? ownFilter;
+  const setFilter = onFilterChange ?? setOwnFilter;
   const [items, setItems] = useState<ReadingRecord[] | null>(null);
   const [total, setTotal] = useState(0);
   const [error, setError] = useState("");
@@ -122,6 +130,7 @@ export function RecordsSection({ monitors, title, description, showExport = fals
       <div className="records-title"><h2>{title}</h2>{description && <p className="muted">{description}</p>}</div>
       <div className="records-controls">
         <RecordFilters monitors={monitors} value={filter} onChange={changeFilter} hideMonitor={fixedMonitorId != null} />
+        {showExportXl && <ExportXlButton filter={filter} />}
         {showExport && <ExcelExportPanel filter={filter} />}
       </div>
     </div>

@@ -26,11 +26,10 @@ export function RecordsTable({ items, onOpen, selectedId, hasMore = false, loadi
     const el = wrapRef.current;
     if (hasMore && !loadingMore && el && el.clientHeight > 0 && el.scrollHeight <= el.clientHeight + 4) onNearEnd?.();
   }, [items.length, hasMore, loadingMore, onNearEnd]);
-  // 表は固定幅(table-layout: fixed + colgroup)で、ヘッダーはスクロール領域内でstickyに固定する(列位置がずれない)。
+  // 各列は折り返さない最小幅(table-layout:auto + nowrap、表は内容幅=max-content)。余った幅はどの列にも配らない。ヘッダーはスクロール領域内でstickyに固定する。
   let groupIndex = 0;
   return <div className="records-table-wrap" ref={wrapRef} onScroll={() => { if (hasMore && !loadingMore && nearEnd()) onNearEnd?.(); }} data-testid="records-scroll">
     <table className={`records-table history-table${groupByTime ? " grouped" : ""}`}>
-      <colgroup><col style={{ width: 104 }} /><col /><col style={{ width: 120 }} /><col style={{ width: 100 }} /><col style={{ width: 80 }} /><col style={{ width: 80 }} /><col style={{ width: 150 }} /><col style={{ width: 70 }} /><col style={{ width: 70 }} /></colgroup>
       <thead>
         <tr><th>取得日時</th><th>モニター</th><th className="num">確定値</th><th className="num">前回値</th><th className="num">使用量</th><th className="num">信頼度</th><th>状態</th><th>画像</th><th>詳細</th></tr>
       </thead>

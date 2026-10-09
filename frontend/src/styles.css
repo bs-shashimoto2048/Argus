@@ -890,3 +890,51 @@ body { overflow-x: hidden; }
 .toggle-switch .toggle-knob { width: 18px; height: 18px; border-radius: 50%; background: currentColor; }
 .toggle-switch.on { background: #16a34a; border-color: #16a34a; color: #fff; flex-direction: row-reverse; padding: 3px 3px 3px 10px; }
 .toggle-switch.on .toggle-knob { background: #fff; }
+
+/* ===== Dashboard: カード → 使用量推移グラフ → 計測履歴 の縦並び ===== */
+/* ページ全体: viewport高さを下限に、カード領域・グラフ・履歴の順に並べる。カード領域は最大高さを持ち、Monitor台数でページは伸びない。 */
+.dashboard-page { height: auto; min-height: calc(100vh - var(--nav-h)); min-height: calc(100dvh - var(--nav-h)); }
+/* Monitorカード: 1行に最大3枚。1〜3台は1行、4台以上は3列のまま、この領域の中だけが縦スクロールする。 */
+.dashboard-page .monitor-region { max-height: clamp(240px, 36vh, 420px); overflow-x: hidden; overflow-y: auto; scrollbar-gutter: stable; }
+.dashboard-page .monitor-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.dashboard-page .preview-wrap { height: clamp(80px, 11vh, 160px); }
+.dashboard-page .monitor-card .card-notices { min-height: 44px; }
+.card-count-hint { align-self: center; margin-left: auto; padding: 4px 10px; border: 1px solid var(--color-border-strong); border-radius: 999px; background: var(--color-surface); color: var(--color-text); font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.card-count-hint small { margin-left: 6px; color: var(--color-text-secondary); font-weight: 500; font-size: 11.5px; }
+@media (max-width: 900px) { .dashboard-page .monitor-grid { grid-template-columns: 1fr; } }
+
+/* 使用量推移グラフ(SVG手描き。幅は親に追従、高さは180px固定) */
+.dashboard-page .trend-panel { margin: 0; padding: 8px 14px 6px; }
+.trend-head { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 14px; margin-bottom: 2px; }
+.trend-head h2 { margin: 0; font-size: 15px; line-height: 1.3; }
+.trend-head .segment { height: 28px; padding: 0 12px; font-size: 12.5px; }
+.trend-condition { font-size: 12px; }
+.trend-legend { display: flex; flex-wrap: wrap; gap: 2px 14px; margin: 0 0 0 auto; padding: 0; list-style: none; font-size: 12px; color: var(--color-text); }
+.trend-legend li { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.trend-legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; }
+.trend-legend i.marker-diamond { width: 8px; height: 8px; border: 1.5px solid #475569; border-radius: 0; background: #fff; transform: rotate(45deg); }
+.trend-legend i.marker-ring { width: 9px; height: 9px; border: 1.5px solid #475569; border-radius: 50%; background: transparent; }
+.trend-body { position: relative; min-height: 180px; }
+.trend-svg { display: block; width: 100%; height: 180px; }
+.trend-empty { display: grid; place-items: center; height: 180px; color: var(--color-text-secondary); font-size: 13px; border: 1px dashed var(--color-border-strong); border-radius: 8px; }
+.trend-tooltip { position: absolute; top: 8px; z-index: 3; min-width: 150px; padding: 6px 9px; border: 1px solid var(--color-border-strong); border-radius: 7px; background: rgb(255 255 255 / 96%); box-shadow: var(--shadow-sm); font-size: 12px; line-height: 1.5; pointer-events: none; white-space: nowrap; }
+.trend-tooltip strong { display: block; font-variant-numeric: tabular-nums; }
+.trend-tooltip i { display: inline-block; width: 9px; height: 9px; margin-right: 6px; border-radius: 2px; }
+.trend-note { margin-top: 2px; font-size: 11.5px; }
+
+/* 計測履歴(Dashboard): グラフの下の残り高さを使う。最低でも数行(ヘッダー + 約7行)が見える高さを確保する */
+.dashboard-page .records-section { min-height: 330px; }
+
+/* 計測履歴テーブル: 各列は折り返さない最小幅。表は内容幅(max-content)で、余った幅をモニター名の列などへ配らない。 */
+.records-table { width: max-content; min-width: 0; table-layout: auto; }
+.records-table th, .records-table td { white-space: nowrap; overflow: visible; text-overflow: clip; }
+.records-table .cell-monitor, .records-table .cell-model { max-width: none; overflow: visible; text-overflow: clip; }
+
+/* Export (XL): 期間コントロールの右隣 */
+.records-controls .export-xl-button { white-space: nowrap; }
+.export-xl-message { max-width: 360px; font-size: 12px; line-height: 1.3; }
+.export-xl-message.error-text { color: var(--color-danger); }
+
+/* 計測履歴テーブルの行を詰める(1366x768でも数行が見えるように)。ボタン・バッジの高さに合わせた最小の余白。 */
+.history-table td { padding-top: 3px; padding-bottom: 3px; }
+.history-table .small-button { padding: 3px 10px; font-size: 12.5px; }
