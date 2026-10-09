@@ -16,6 +16,8 @@ data/dataset_candidates/
 # 1時間記録の画像(証跡。既定の保存先)。リポジトリへはcommitしない
 data/images/
 data/exports/
+# 本番DBのバックアップ(usageバックフィル等の実行前に自動作成。実運用データを含むためcommitしない)
+data/backups/
 data/reports/*.json
 data/reports/*.md
 .env
