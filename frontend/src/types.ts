@@ -120,7 +120,20 @@ export type ReadingRecord = {
   value:string|null;value_source:ValueSource;numeric_value:string|null;raw_value:string|null;previous_value:string|null;usage:string|null;
   confidence:number|null;validation_status:string|null;display_status:string;baseline_conflict:boolean;
   engine:string|null;model_id:string|null;original_image_path:string|null;overlay_image_path:string|null;image_status:ImageStatus;image_error:string|null;
+  // 証跡: raw_confidenceは最新Raw側のconfidence(confidenceは正式値側)。inference_atはその証跡snapshotの推論時刻。snapshot_consistent=falseは同一tick保証が無かった既存の記録
+  raw_confidence:number|null;inference_at:string|null;snapshot_consistent:boolean;
+  // 手動修正(元証跡は変わらない。監査の正本はcorrections)
+  is_corrected:boolean;correction_count:number;original_value:string|null;corrected_at:string|null;corrected_by:string|null;
+  correctable:boolean;correctable_reason:"carried_forward"|"baseline_conflict"|null;
 };
+export type RecordCorrection = {
+  id:number;record_id:number;monitor_id:number;corrected_at:string;operator:string;reason:string;
+  old_value:string|null;new_value:string;old_numeric_value:string|null;new_numeric_value:string|null;old_usage:string|null;new_usage:string|null;
+  raw_value:string|null;raw_confidence:number|null;validation_status:string|null;value_source:string|null;baseline_value:string|null;baseline_conflict:boolean;
+  original_image_path:string|null;overlay_image_path:string|null;client_host:string;context:Record<string,unknown>|null;
+};
+export type CorrectionRequest = {value:string;reason:string;operator:string;rebase_current_baseline:boolean};
+export type CorrectionResult = {record_id:number;correction:RecordCorrection;next_record:{record_id:number;hour_bucket:string;value:string|null;value_source:string;old_usage:string|null;new_usage:string|null}|null;rebase:{requested:boolean;performed:boolean;old_baseline?:string|null;new_baseline?:string|null};record:ReadingRecord};
 export type RecordsPage = {items:ReadingRecord[];total:number;limit:number;offset:number};
 export type RecordsQuery = {monitorIds:number[];from?:string;to?:string;limit:number;offset:number};
 export type ExcelExportRequest = {monitor_ids:number[];from?:string;to?:string;save_to_server:boolean};

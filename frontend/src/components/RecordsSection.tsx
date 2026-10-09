@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
-import type { ReadingRecord } from "../types";
+import type { CorrectionResult, ReadingRecord } from "../types";
 import { compareRecordOrder, periodError, periodToRange, todayJst } from "../utils/records";
 import { ExcelExportPanel } from "./ExcelExportPanel";
 import { RecordDrawer } from "./RecordDrawer";
@@ -98,6 +98,19 @@ export function RecordsSection({ monitors, title, description, showExport = fals
     return () => window.clearInterval(timer);
   }, [refreshMs, fetchChunk, from, to, monitorKeyOrder]);
 
+  // 読取値を修正したら、一覧の該当行(正式値・使用量・修正済み)と、使用量が再計算された次の1時間の行を、その場で更新する(行の位置は動かさない)。
+  const handleCorrected = (result: CorrectionResult) => {
+    const next = result.next_record;
+    const merged = itemsRef.current.map((r) => {
+      if (r.id === result.record.id) return result.record;
+      if (next && r.id === next.record_id) return { ...r, previous_value: result.record.value, usage: next.new_usage };
+      return r;
+    });
+    itemsRef.current = merged;
+    setItems(merged);
+    setSelected(result.record);
+  };
+
   const changeFilter = (next: RecordFilterValue) => setFilter(fixedMonitorId != null ? { ...next, monitorIds: [fixedMonitorId] } : next);
   const loaded = items?.length ?? 0;
   const fmt = (n: number) => n.toLocaleString("ja-JP");
@@ -121,6 +134,6 @@ export function RecordsSection({ monitors, title, description, showExport = fals
       {invalid && <div className="records-empty">期間を指定してください。</div>}
     </div>
     <div className="records-count" aria-live="polite">{countText}</div>
-    {selected && <RecordDrawer record={selected} onClose={() => setSelected(null)} />}
+    {selected && <RecordDrawer record={selected} onClose={() => setSelected(null)} onCorrected={handleCorrected} />}
   </section>;
 }

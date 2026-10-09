@@ -40,8 +40,10 @@ HEADERS = [
     "計測日時", "Monitor ID", "Monitor名", "確定値", "前回値", "使用量", "Raw値", "信頼度",
     "validation_status", "value_source", "display_status", "baseline_conflict", "engine", "model_id",
     "元画像パス", "推論画像パス",
+    # 証跡と修正(末尾に追加): Raw信頼度=最新Raw側のconfidence(「信頼度」は正式値側)。修正済みでも、確定値は修正後の正式値で、元の正式値は「修正前値」に残る。
+    "Raw信頼度", "推論時刻", "修正済み", "修正回数", "最終修正日時", "修正前値",
 ]
-COLUMN_WIDTHS = [20, 11, 22, 14, 14, 12, 16, 10, 20, 15, 15, 17, 12, 30, 70, 70]
+COLUMN_WIDTHS = [20, 11, 22, 14, 14, 12, 16, 10, 20, 15, 15, 17, 12, 30, 70, 70, 11, 20, 10, 10, 20, 14]
 _COL_VALUE, _COL_PREVIOUS, _COL_USAGE, _COL_RAW, _COL_CONFIDENCE, _COL_ORIGINAL, _COL_OVERLAY = 3, 4, 5, 6, 7, 14, 15
 
 _SHEET_FORBIDDEN = re.compile(r"[:\\/?*\[\]\x00-\x1f]")
@@ -305,6 +307,20 @@ def _write_row(ws, row: int, record: ReadingRecord, fmt: dict, linker: ImageLink
         if text is not None:
             ws.write_string(row, col, text)
     ws.write_boolean(row, 11, bool(record.baseline_conflict))
+    # 証跡と修正の列(元証跡のraw_confidence/inference_atは修正しても変わらない)
+    if record.raw_confidence is not None:
+        ws.write_number(row, 16, record.raw_confidence, fmt["confidence"])
+    if record.inference_at is not None:
+        ws.write_datetime(row, 17, _to_excel_datetime(record.inference_at), fmt["date"])
+    ws.write_boolean(row, 18, (record.correction_count or 0) > 0)
+    ws.write_number(row, 19, record.correction_count or 0)
+    if record.corrected_at is not None:
+        ws.write_datetime(row, 20, _to_excel_datetime(record.corrected_at), fmt["date"])
+    original = _decimal_number(record.original_value)
+    if original is not None:
+        ws.write_number(row, 21, original)
+    elif record.original_value:
+        ws.write_string(row, 21, record.original_value)
     added = 0
     for col, relative in ((_COL_ORIGINAL, record.original_image_path), (_COL_OVERLAY, record.overlay_image_path)):
         text, linkable = linker.resolve(relative)

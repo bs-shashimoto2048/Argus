@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 
@@ -15,11 +15,14 @@ logger = logging.getLogger("argus.result_store")
 _ACCEPTED_STATUSES = (CandidateStatus.CONFIRMED, CandidateStatus.LOW_CONFIDENCE)
 
 
-def save_result(monitor_id: int, confirmed: ConfirmedReading) -> None:
+def save_result(monitor_id: int, confirmed: ConfirmedReading) -> dict | None:
     """ReadingStabilizerが確定したConfirmed Readingを永続化する。
 
     ここではTemporal Stabilization/Validationのロジックを一切持たない
     (ReadingStabilizer/ReadingValidatorの責務であり、ResultStoreは保存のみ)。
+
+    戻り値: このtickの処理が終わった時点の運用値の状態(value/confidence/confirmed_at(tz-aware UTC)/status)。
+    InferenceSchedulerが、そのtickのsnapshot(定時計測recordの証跡)へ「同じtickの正式値」として含める。
     """
     db = SessionLocal()
     try:
@@ -101,6 +104,13 @@ def save_result(monitor_id: int, confirmed: ConfirmedReading) -> None:
             record_confirmed(db, monitor_id, confirmed)
         except Exception:
             logger.exception("monitor %s: baselineの記録に失敗しました", monitor_id)
+        formal = {
+            "value": latest.value,
+            "confidence": latest.confidence,
+            "confirmed_at": latest.confirmed_at.replace(tzinfo=timezone.utc) if latest.confirmed_at is not None and latest.confirmed_at.tzinfo is None else latest.confirmed_at,
+            "status": latest.status,
+        }
         db.commit()
+        return formal
     finally:
         db.close()
