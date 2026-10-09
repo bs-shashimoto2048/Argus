@@ -15,7 +15,7 @@ function move<T>(items: T[], from: number, to: number): T[] {
 }
 
 // モニター管理: 登録済みMonitorの一覧と、表示順の変更(Dashboardの並びと同じ)・詳細(既存のMonitor Detail)・新規追加への導線。
-// 表示順は、ドラッグ&ドロップまたは↑↓ボタンで変更でき、操作の完了時に自動保存する(PUT /api/monitors/order)。
+// 表示順は、各行の右端の三本線(☰)をドラッグ&ドロップして変更し、drop完了時に自動保存する(PUT /api/monitors/order)。
 // 保存中は楽観的に新しい順を表示し、失敗したときは元の順へ戻してエラーを表示する。
 export function MonitorsPage() {
   const [monitors, setMonitors] = useState<Monitor[]>([]);
@@ -81,31 +81,38 @@ export function MonitorsPage() {
     <section className="panel">
       {loaded && monitors.length === 0 && <div className="records-empty">モニターがありません。「新規モニター」から追加してください。</div>}
       {monitors.length > 0 && <>
-        <p className="muted order-hint">表示順（Dashboardのカードの並び）は、行をドラッグするか、↑↓ボタンで変更できます。変更は自動で保存されます。</p>
+        <p className="muted order-hint">表示順（Dashboardのカードの並び）は、各行の右端の ☰ をドラッグして変更できます。変更は自動で保存されます。</p>
         <div className="records-table-wrap"><table className="records-table monitors-table">
-          <thead><tr><th className="order-col" aria-label="並べ替え" /><th>モニター</th><th>状態</th><th>engine</th><th>model</th><th className="num">現在値</th><th>最終更新</th><th>順序</th><th>詳細</th></tr></thead>
+          <thead><tr><th>モニター</th><th>状態</th><th>engine</th><th>model</th><th className="num">現在値</th><th>最終更新</th><th>詳細</th><th className="order-col" aria-label="並べ替え" /></tr></thead>
           <tbody>
             {monitors.map((monitor, index) => {
               const status = combinedMonitorStatus(monitor);
               const name = monitor.display_name.trim();
-              return <tr key={monitor.id} data-monitor-id={monitor.id} draggable={!busy}
+              return <tr key={monitor.id} data-monitor-id={monitor.id}
                 className={`${dragId === monitor.id ? "row-dragging" : ""}${overId === monitor.id && dragId !== monitor.id ? " row-drop-target" : ""}`}
-                onDragStart={(event) => { setDragId(monitor.id); event.dataTransfer?.setData("text/plain", String(monitor.id)); if (event.dataTransfer) event.dataTransfer.effectAllowed = "move"; }}
                 onDragOver={(event) => { if (dragId !== null) { event.preventDefault(); setOverId(monitor.id); } }}
-                onDrop={(event) => { event.preventDefault(); const from = monitors.findIndex((item) => item.id === dragId); endDrag(); if (from >= 0) void reorder(from, index); }}
-                onDragEnd={endDrag}>
-                <td className="order-col"><span className="drag-handle" aria-hidden="true" title="ドラッグして並べ替え">≡</span></td>
+                onDrop={(event) => { event.preventDefault(); const from = monitors.findIndex((item) => item.id === dragId); endDrag(); if (from >= 0) void reorder(from, index); }}>
                 <td><strong>{name}</strong><small className="record-raw">ID {monitor.id}{monitor.location ? ` / ${monitor.location}` : ""}{monitor.enabled ? "" : " / 無効"}</small></td>
                 <td><span className={`status-badge ${status}`}>{monitorStatusLabels[status]}</span></td>
                 <td>{monitor.inference.engine}</td>
                 <td className="cell-model" title={monitor.inference.model_id ?? undefined}>{monitor.inference.model_id ?? "--"}</td>
                 <td className="num"><strong className="record-value">{monitor.current_value ?? "--"}</strong></td>
                 <td className="nowrap">{formatDateTimeJst(monitor.last_updated)}</td>
-                <td className="order-buttons">
-                  <button type="button" className="secondary small-button" onClick={() => void reorder(index, index - 1)} disabled={busy || index === 0} aria-label={`${name} を上へ`}>↑</button>
-                  <button type="button" className="secondary small-button" onClick={() => void reorder(index, index + 1)} disabled={busy || index === monitors.length - 1} aria-label={`${name} を下へ`}>↓</button>
-                </td>
                 <td><button type="button" className="secondary small-button" onClick={() => navigate(`/monitors/${monitor.id}`)} aria-label={`${name} の詳細`}>詳細へ</button></td>
+                {/* 並べ替えは右端の三本線(ハンドル)をドラッグしたときだけ。行全体はdragさせない(「詳細へ」等のクリックと競合させない)。 */}
+                <td className="order-col">
+                  <span className={`drag-handle${dragId === monitor.id ? " dragging" : ""}`} role="img" aria-label={`${name} を並べ替え（ドラッグ）`} title="ドラッグして並べ替え" draggable={!busy}
+                    onDragStart={(event) => {
+                      setDragId(monitor.id);
+                      if (event.dataTransfer) {
+                        event.dataTransfer.setData("text/plain", String(monitor.id));
+                        event.dataTransfer.effectAllowed = "move";
+                        const row = (event.currentTarget as HTMLElement).closest("tr");
+                        if (row && event.dataTransfer.setDragImage) event.dataTransfer.setDragImage(row, 20, 20); // 行全体をdrag中の見た目にする
+                      }
+                    }}
+                    onDragEnd={endDrag}>☰</span>
+                </td>
               </tr>;
             })}
           </tbody>

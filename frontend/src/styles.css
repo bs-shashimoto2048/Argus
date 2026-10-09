@@ -595,14 +595,14 @@ body { overflow-x: hidden; }
 
 /* モニター管理: 表示順の並べ替え(ドラッグ&ドロップ / ↑↓) */
 .monitors-table { table-layout: auto; min-width: 900px; }
-.monitors-table .order-col { width: 36px; text-align: center; padding-left: 4px; padding-right: 4px; }
-.drag-handle { display: inline-block; color: var(--color-text-muted); font-size: 18px; line-height: 1; cursor: grab; user-select: none; }
-.monitors-table tbody tr[draggable="true"]:hover .drag-handle { color: var(--color-primary); }
+/* 並べ替えハンドル(三本線)は各行の右端に固定幅の列で置き、行ごとに右端位置を揃える */
+.monitors-table .order-col { width: 48px; text-align: center; padding-left: 6px; padding-right: 10px; }
+.drag-handle { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 6px; color: var(--color-text-muted); font-size: 17px; line-height: 1; cursor: grab; user-select: none; transition: color .15s, background .15s; }
+.monitors-table tbody tr:hover .drag-handle { color: var(--color-text-secondary); }
+.drag-handle:hover { color: var(--color-primary); background: var(--color-primary-soft); }
+.drag-handle:active, .drag-handle.dragging { cursor: grabbing; color: var(--color-primary); background: var(--color-primary-soft); }
 .monitors-table tr.row-dragging td { opacity: .45; }
 .monitors-table tr.row-drop-target td { box-shadow: inset 0 3px 0 var(--color-primary); }
-.order-buttons { white-space: nowrap; }
-.order-buttons .small-button { min-width: 30px; margin-right: 4px; }
-.order-buttons .small-button:disabled { opacity: .35; cursor: default; }
 .order-status-slot { margin-left: auto; min-width: 96px; text-align: right; }
 .order-status { font-size: 13px; font-weight: 700; }
 .order-status.saving { color: var(--color-text-secondary); }
