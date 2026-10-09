@@ -111,3 +111,32 @@ export type ReadingDiagnostics = {
     raw_confidence:number|null;
   };
 };
+
+// --- 1時間ごとの計測記録 (reading_records、UI再設計 Phase 1〜3のAPI) ---
+export type ValueSource = "confirmed"|"carried_forward"|"none";
+export type ImageStatus = "not_saved"|"pending"|"ok"|"failed"|"dropped"|"disabled";
+export type ReadingRecord = {
+  id:number;monitor_id:number;monitor_name:string;hour_bucket:string;recorded_at:string;
+  value:string|null;value_source:ValueSource;numeric_value:string|null;raw_value:string|null;previous_value:string|null;usage:string|null;
+  confidence:number|null;validation_status:string|null;display_status:string;baseline_conflict:boolean;
+  engine:string|null;model_id:string|null;original_image_path:string|null;overlay_image_path:string|null;image_status:ImageStatus;image_error:string|null;
+};
+export type RecordsPage = {items:ReadingRecord[];total:number;limit:number;offset:number};
+export type RecordsQuery = {monitorIds:number[];from?:string;to?:string;limit:number;offset:number};
+export type ExcelExportRequest = {monitor_ids:number[];from?:string;to?:string;save_to_server:boolean};
+export type ExcelExportSaved = {saved:true;path:string;filename:string;folder:string;size_bytes:number;total_rows:number;sheets:{monitor_id:number;sheet_name:string;rows:number}[];image_links:number;image_links_skipped:boolean};
+
+// --- データ保存設定 (system_settings、Phase 2/3のAPI) ---
+export type DataStorageSettings = {
+  image_root_folder:string|null;effective_image_root:string;excel_output_folder:string|null;effective_excel_output_folder:string;
+  save_original_image:boolean;save_overlay_image:boolean;storage_warn_free_gb:number;storage_stop_free_gb:number;
+};
+export type DataStorageInput = Partial<{image_root_folder:string;excel_output_folder:string;save_original_image:boolean;save_overlay_image:boolean;storage_warn_free_gb:number;storage_stop_free_gb:number}>;
+export type DataStorageState = "ok"|"warning"|"stopped"|"failing"|"disabled";
+export type DataStorageStatus = {
+  state:DataStorageState;image_root:string;image_root_is_default:boolean;save_original_image:boolean;save_overlay_image:boolean;
+  free_gb:number|null;warn_free_gb:number;stop_free_gb:number;space:string;
+  worker_running:boolean;queue_length:number;writing_seconds:number|null;circuit_open:boolean;counts:{ok:number;failed:number;dropped:number};
+  last_success_at:string|null;last_error:string|null;last_error_at:string|null;last_free_bytes:number|null;
+};
+export type StorageTestResult = {ok:boolean;path:string|null;message:string;free_gb:number|null};

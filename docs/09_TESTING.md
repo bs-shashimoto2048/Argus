@@ -21,5 +21,5 @@
 
 ## Frontendテスト
 
-Frontend用のテストファイルとtest scriptは確認できません。`npm run build`はTypeScript buildとVite buildを実行しますが、テストではありません。
+Frontendのテストは`frontend/src/test/`にあり、`cd frontend; npm test`（vitest + jsdom + Testing Library、fetchをモックするため実Backend・実DBは使わない）で実行します（UI再設計 Phase 4で追加。CIのfrontend jobでも実行）。`npm run build`はTypeScript buildとVite buildを実行しますが、テストではありません。
 
