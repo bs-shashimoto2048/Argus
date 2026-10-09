@@ -49,20 +49,24 @@ export function DashboardPage() {
     };
   }, [monitors]);
 
+  const running = monitors.filter((monitor) => monitor.status === "running").length;
   return <main className="page dashboard-page">
-    <div className="page-head">
-      <h1>ダッシュボード</h1>
-      <div className="topbar-actions">
-        <span className="live-badge">● Monitoring</span>
-        <span className="fps-badge" title="Dashboardのプレビュー表示FPS(video_fps/inference_fpsとは無関係)">表示 {settings.displayFps} FPS</span>
-        <button className="icon-button" aria-label="Dashboard設定" title="Dashboard設定" onClick={() => setShowSettings(true)}>⚙</button>
+    {/* ページタイトルは置かない(上部ナビゲーションに「ダッシュボード」があるため)。 */}
+    <div className="dashboard-toolbar">
+      <div className="summary-cards" aria-label="状態サマリー">
+        <div className="summary-card tone-ok"><small>正常</small><strong data-testid="count-normal">{counts.normal}</strong></div>
+        <div className="summary-card tone-caution"><small>要確認</small><strong data-testid="count-warning">{counts.warning}</strong></div>
+        <div className="summary-card tone-danger"><small>通信異常</small><strong data-testid="count-error">{counts.error}</strong></div>
       </div>
-    </div>
-    <div className="summary-cards" aria-label="状態サマリー">
-      <div className="summary-card tone-ok"><small>正常</small><strong data-testid="count-normal">{counts.normal}</strong></div>
-      <div className="summary-card tone-caution"><small>要確認</small><strong data-testid="count-warning">{counts.warning}</strong></div>
-      <div className="summary-card tone-danger"><small>通信異常</small><strong data-testid="count-error">{counts.error}</strong></div>
-      <button className="summary-add" onClick={() => navigate("/monitors/new")}>＋ モニター追加</button>
+      {/* [モニター追加] と Monitoring表示は同じ操作グループ(同じ高さ・角丸・枠線のトーン)として横並びにする。 */}
+      <div className="action-group" role="group" aria-label="ダッシュボード操作">
+        <button className="action-button" onClick={() => navigate("/monitors/new")}>＋ モニター追加</button>
+        <div className="monitoring-control" aria-label="Monitoring">
+          <span className={`monitoring-status${running > 0 ? " live" : ""}`} title={`稼働中 ${running} / ${monitors.length}`}><i aria-hidden="true">●</i>Monitoring</span>
+          <span className="monitoring-fps" title="Dashboardのプレビュー表示FPS(video_fps/inference_fpsとは無関係)">{settings.displayFps} FPS</span>
+          <button className="monitoring-gear" aria-label="Dashboard設定" title="Dashboard設定" onClick={() => setShowSettings(true)}>⚙</button>
+        </div>
+      </div>
     </div>
     {error && <div className="alert error">{error}</div>}
     <div className="monitor-grid">

@@ -14,7 +14,9 @@ describe("ルーティングと共通レイアウト", () => {
     const nav = screen.getByRole("navigation", { name: "メインナビゲーション" });
     expect(screen.getByRole("link", { name: "ARGUS 遠方監視システム" })).toBeInTheDocument();
     for (const label of ["ダッシュボード", "モニター管理", "履歴・データ", "システム設定"]) expect(within(nav).getByRole("link", { name: label })).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "ダッシュボード" })).toBeInTheDocument();
+    // Phase 5: ページタイトル「ダッシュボード」は置かない(ナビゲーションに同名のリンクがあるため)。
+    await waitFor(() => expect(document.querySelectorAll(".monitor-card")).toHaveLength(3));
+    expect(screen.queryByRole("heading", { name: "ダッシュボード" })).not.toBeInTheDocument();
     await user.click(within(nav).getByRole("link", { name: "履歴・データ" }));
     expect(screen.getByTestId("location")).toHaveTextContent("/history");
     expect(await screen.findByRole("heading", { name: "履歴・データ" })).toBeInTheDocument();

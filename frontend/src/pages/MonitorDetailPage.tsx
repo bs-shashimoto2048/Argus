@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { Inference, Monitor, ReadingDiagnostics, RuntimeDiagnostics, Source } from "../types";
 import { formatDateTimeJst } from "../utils/datetime";
@@ -9,6 +9,7 @@ import { ReadingBaselinePanel } from "../components/ReadingBaselinePanel";
 import { conflictMessage, stripLeadingZeros } from "../utils/readingFormat";
 import { SourceSettings } from "../components/SourceSettings";
 import { VideoPreview } from "../components/VideoPreview";
+import { RecordsSection } from "../components/RecordsSection";
 import { RoiEditor } from "../components/RoiEditor";
 import { PreprocessEditor } from "../components/PreprocessEditor";
 import { combinedMonitorStatus, monitorStatusLabels } from "../utils/monitorStatus";
@@ -80,8 +81,20 @@ function CollapsibleSection({ title, open, onToggle, className, children }: { ti
   </section>;
 }
 
+export type DetailTab = "monitoring" | "history" | "settings" | "diagnostics";
+const detailTabs: { key: DetailTab; label: string }[] = [
+  { key: "monitoring", label: "Monitoring" },
+  { key: "history", label: "History" },
+  { key: "settings", label: "Settings" },
+  { key: "diagnostics", label: "Diagnostics" },
+];
+
 export function MonitorDetailPage() {
   const { id } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTab = searchParams.get("tab");
+  const tab: DetailTab = detailTabs.some((item) => item.key === requestedTab) ? (requestedTab as DetailTab) : "monitoring";
+  const selectTab = (key: DetailTab) => setSearchParams(key === "monitoring" ? {} : { tab: key }, { replace: true });
   const monitorId = Number(id);
   const navigate = useNavigate();
   const [monitor, setMonitor] = useState<Monitor | null>(null);
@@ -95,7 +108,6 @@ export function MonitorDetailPage() {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   // 表示レイアウトのみの状態(取得データ・API呼び出し頻度には影響しない)。
-  const [settingsOpen, setSettingsOpen] = useState(true);
   const [lightbox, setLightbox] = useState<"video" | "overlay" | "inferenceInput" | null>(null);
   // Issue #28: 「モニター映像」「推論オーバーレイ」を縦に2枚並べず、タブで1枚だけ
   // 表示する(ページの縦スクロールを削減するため)。非表示側はunmountされるので、
@@ -104,7 +116,7 @@ export function MonitorDetailPage() {
   // 右ペイン各セクションの開閉状態(Frontend表示のみ・永続化なし)。
   // 日常監視では設定編集の頻度が低いため、初期状態は全セクション折りたたみ(画面を短く保つ)。
   const [openSections, setOpenSections] = useState<Record<SectionKey, boolean>>({
-    basic: false, source: false, preprocess: false, roi: false, reading: false, baseline: false, inference: false, danger: false,
+    basic: true, source: true, preprocess: true, roi: true, reading: true, baseline: true, inference: true, danger: false,
   });
   const toggleSection = (key: SectionKey) => setOpenSections((current) => ({ ...current, [key]: !current[key] }));
   // Issue #20/#25: 基本情報(name/display_name/location)専用のフォーム状態。
@@ -246,17 +258,18 @@ export function MonitorDetailPage() {
         <div className="monitor-id-badge">Monitor ID: {monitor.id}</div>
       </div>
       <div className="topbar-actions">
-        <button className="secondary settings-toggle" onClick={() => setSettingsOpen((v) => !v)}>
-          {settingsOpen ? "設定を閉じる ▸" : "◂ 設定を表示"}
-        </button>
         <button className="secondary" onClick={() => navigate("/monitors")}>＜ モニター管理へ</button>
       </div>
     </header>
 
+    <div className="detail-tabs" role="tablist" aria-label="モニター詳細">
+      {detailTabs.map((item) => <button key={item.key} type="button" role="tab" id={`tab-${item.key}`} aria-selected={tab === item.key} className={`detail-tab${tab === item.key ? " active" : ""}`} onClick={() => selectTab(item.key)}>{item.label}</button>)}
+    </div>
+
     {(error || message) && <div className={`alert ${error ? "error" : "success"}`}>{error || message}</div>}
 
-    <div className={`detail-layout${settingsOpen ? "" : " settings-collapsed"}`}>
-      <section className="monitor-column">
+    <div className="detail-tab-body" role="tabpanel" aria-labelledby={`tab-${tab}`}>
+      {tab === "monitoring" && <section className="monitor-column">
         {/* Issue #28: 現在値/前回値を左右2グループに分けたサマリー(1画面に収める
             ためのレイアウト方針の一部)。取得元は既存の5秒ポーリングのみで、
             APIコール自体は追加していない(previous_confidence/previous_confirmed_atは
@@ -300,6 +313,15 @@ export function MonitorDetailPage() {
           <p className="muted status-note">直近のエラー履歴（現在は解消済み）: {inferenceErrorText(monitor.last_inference_error, monitor.inference.engine)}</p>
         )}
 
+        <div className="monitoring-summary" aria-label="読取の詳細">
+          <div><small>Raw（最新・未確定）</small><strong>{rawInferenceValue ?? readingDiagnostics?.confirmed.raw_value ?? "--"}</strong></div>
+          <div><small>engine</small><strong>{monitor.inference.engine}</strong></div>
+          <div><small>model</small><strong title={monitor.inference.model_id ?? undefined}>{monitor.inference.model_id ?? "--"}</strong></div>
+          <div><small>最終更新</small><strong>{monitor.last_updated ? formatDateTimeJst(monitor.last_updated) : "--"}</strong></div>
+          <div><small>baseline</small><strong>{monitor.reading_baseline ? `${monitor.reading_baseline.value ?? "--"}（${monitor.reading_baseline.state === "pending_reset" ? "リセット済み" : "有効"}）` : "--"}</strong></div>
+          <div><small>conflict</small><strong className={monitor.reading_baseline?.conflict ? "conflict-yes" : undefined}>{monitor.reading_baseline?.conflict ? `あり（${monitor.reading_baseline.conflict_candidate ?? "--"}）` : "なし"}</strong></div>
+        </div>
+
         {/* Issue #28: 「モニター映像」「推論オーバーレイ」を縦2枚並べる構造を廃止し、
             同じ映像領域をタブで1枚だけ表示する。非アクティブ側はunmountされるため、
             表示していない方のpolling(VideoPreview内のsetInterval)も自動的に止まる。 */}
@@ -341,8 +363,81 @@ export function MonitorDetailPage() {
           </>}
         </div>
 
-        {monitor.source && <details className="panel debug-details">
-          <summary>推論デバッグ（推論入力 / Pipeline診断）</summary>
+      </section>}
+
+      {tab === "history" && <RecordsSection monitors={[{ id: monitor.id, display_name: monitor.display_name }]} fixedMonitorId={monitor.id} pageSize={50} title="この Monitor の計測履歴" description="1時間ごとの正式な記録（reading_records）。" size="tall" />}
+
+      {tab === "settings" && <section className="settings-tab">
+        <div className="settings-tab-grid">
+        <CollapsibleSection title="基本情報" open={openSections.basic} onToggle={() => toggleSection("basic")}>
+          <div className="readonly-field"><small>Monitor ID</small><strong>{monitor.id}</strong></div>
+          <label>
+            内部名（name）
+            <input required pattern="[A-Za-z0-9_-]+" value={basicInfo.name} onChange={(e) => setBasicInfo({ ...basicInfo, name: e.target.value })} placeholder="gas_meter_01" />
+          </label>
+          <p className="muted" style={{ fontSize: "0.74rem", margin: "-4px 0 10px" }}>
+            半角英数字・アンダースコア・ハイフンのみ（例: <code>gas_meter_01</code>）。他のMonitorと重複できません。
+            実行時の識別には常にMonitor IDが使われるため、変更してもRuntime・映像・CSVの過去行には影響しません
+            （CSVの新しい追記行から新しい内部名が反映されます）。
+          </p>
+          <label>表示名<input required value={basicInfo.display_name} onChange={(e) => setBasicInfo({ ...basicInfo, display_name: e.target.value })} /></label>
+          <label>設置場所<input value={basicInfo.location} onChange={(e) => setBasicInfo({ ...basicInfo, location: e.target.value })} /></label>
+          <div className="settings-actions"><button className="save-button" onClick={saveBasicInfo} disabled={savingBasicInfo || !basicInfo.display_name.trim() || !/^[A-Za-z0-9_-]+$/.test(basicInfo.name)}>{savingBasicInfo ? "保存中..." : "基本情報を保存"}</button></div>
+        </CollapsibleSection>
+        <SourceSettings source={source} onChange={setSource} onCheck={check} open={openSections.source} onToggleOpen={() => toggleSection("source")} />
+        <InferenceSettings value={inference} onChange={setInference} open={openSections.inference} onToggleOpen={() => toggleSection("inference")} />
+        <CollapsibleSection title="前処理" open={openSections.preprocess} onToggle={() => toggleSection("preprocess")}>
+          <button className="secondary" onClick={() => setEditor("preprocess")}>前処理を編集</button>
+        </CollapsibleSection>
+        <CollapsibleSection title="ROI（関心領域）" open={openSections.roi} onToggle={() => toggleSection("roi")}>
+          {inference.method === "object_detection" && inference.engine === "cpp_onnx" && <p className="muted" style={{ fontSize: "0.76rem", margin: "0 0 8px" }}>
+            C++ ONNXではROIそのものを切り出して推論します（ROIモードは適用されません）。
+          </p>}
+          {inference.method === "object_detection" && inference.engine !== "cpp_onnx" && <p className="muted" style={{ fontSize: "0.76rem", margin: "0 0 8px" }}>
+            モード: {inference.roi_mode === "crop_context" ? "ROI周辺を切り出して推論（詳細設定）" : "検出結果をROI内に限定（推奨）"}
+          </p>}
+          <button className="secondary" onClick={() => setEditor("roi")}>ROIを編集</button>
+        </CollapsibleSection>
+        <ReadingSettingsPanel value={inference.reading} onChange={(reading) => setInference({ ...inference, reading })} open={openSections.reading} onToggleOpen={() => toggleSection("reading")} />
+        </div>
+        <div className="settings-actions"><button className="save-button" onClick={save} disabled={cppModelMissing} title={cppModelMissing ? "C++ ONNXではモデルを選択してください" : undefined}>設定を保存</button></div>
+
+        <CollapsibleSection title="Danger Zone" open={openSections.danger} onToggle={() => toggleSection("danger")} className="danger-zone">
+          {!confirmingDelete ? (
+            <button className="danger" onClick={() => setConfirmingDelete(true)}>このモニターを削除</button>
+          ) : (
+            <div className="danger-confirm">
+              <p>「{monitor.display_name}」（{monitor.name}）を削除します。この操作は取り消せません。よろしいですか？</p>
+              <div className="danger-confirm-actions">
+                <button className="danger" onClick={deleteMonitor} disabled={deleting}>{deleting ? "削除中..." : "削除する"}</button>
+                <button className="secondary" onClick={() => setConfirmingDelete(false)} disabled={deleting}>キャンセル</button>
+              </div>
+            </div>
+          )}
+        </CollapsibleSection>
+      </section>}
+
+      {tab === "diagnostics" && <section className="monitor-column diagnostics-tab">
+        <div className="diagnostics-grid">
+          <div className="panel" aria-label="engine / model">
+            <h3>Engine / Model</h3>
+            <table className="diagnostics-table"><tbody>
+              <tr><td>method</td><td>{monitor.inference.method}</td></tr>
+              <tr><td>engine</td><td>{monitor.inference.engine}</td></tr>
+              <tr><td>model_id</td><td>{monitor.inference.model_id ?? "--"}</td></tr>
+              <tr><td>映像Runtime</td><td>{runtimeDiagnostics ? runtimeDiagnostics.state : "--（停止中または取得不可）"}</td></tr>
+              {runtimeDiagnostics && <tr><td>映像取得</td><td>{runtimeDiagnostics.source_fps != null ? `${runtimeDiagnostics.source_fps.toFixed(1)} fps` : "--"}{runtimeDiagnostics.frame_age != null && ` / 最新フレーム ${runtimeDiagnostics.frame_age.toFixed(1)}秒前`}{runtimeDiagnostics.stale && " / 停滞中"}</td></tr>}
+              <tr><td>現在の推論エラー</td><td>{monitor.current_inference_error ? inferenceErrorText(monitor.current_inference_error, monitor.inference.engine) : "なし"}</td></tr>
+              <tr><td>過去のエラー履歴</td><td>{monitor.last_inference_error ? inferenceErrorText(monitor.last_inference_error, monitor.inference.engine) : "なし"}</td></tr>
+            </tbody></table>
+          </div>
+          {monitor.source && <div className="panel video-panel" aria-label="推論オーバーレイ">
+            <h3>推論オーバーレイ</h3>
+            {lightbox === "overlay" ? <div className="no-video large">拡大表示中</div> : <VideoPreview monitorId={monitor.id} overlay onImageClick={() => setLightbox("overlay")} />}
+          </div>}
+        </div>
+        {monitor.source && <div className="panel debug-details">
+          <h3>推論デバッグ（推論入力 / Pipeline診断）</h3>
           <div className="debug-body">
             <div className="video-panel nested">
               <div className="section-title"><span>推論入力（実際にモデルへ渡した画像）</span></div>
@@ -393,57 +488,13 @@ export function MonitorDetailPage() {
               </table>
             </div>}
           </div>
-        </details>}
-      </section>
-
-      <aside className="settings-column">
-        <CollapsibleSection title="基本情報" open={openSections.basic} onToggle={() => toggleSection("basic")}>
-          <div className="readonly-field"><small>Monitor ID</small><strong>{monitor.id}</strong></div>
-          <label>
-            内部名（name）
-            <input required pattern="[A-Za-z0-9_-]+" value={basicInfo.name} onChange={(e) => setBasicInfo({ ...basicInfo, name: e.target.value })} placeholder="gas_meter_01" />
-          </label>
-          <p className="muted" style={{ fontSize: "0.74rem", margin: "-4px 0 10px" }}>
-            半角英数字・アンダースコア・ハイフンのみ（例: <code>gas_meter_01</code>）。他のMonitorと重複できません。
-            実行時の識別には常にMonitor IDが使われるため、変更してもRuntime・映像・CSVの過去行には影響しません
-            （CSVの新しい追記行から新しい内部名が反映されます）。
-          </p>
-          <label>表示名<input required value={basicInfo.display_name} onChange={(e) => setBasicInfo({ ...basicInfo, display_name: e.target.value })} /></label>
-          <label>設置場所<input value={basicInfo.location} onChange={(e) => setBasicInfo({ ...basicInfo, location: e.target.value })} /></label>
-          <div className="settings-actions"><button className="save-button" onClick={saveBasicInfo} disabled={savingBasicInfo || !basicInfo.display_name.trim() || !/^[A-Za-z0-9_-]+$/.test(basicInfo.name)}>{savingBasicInfo ? "保存中..." : "基本情報を保存"}</button></div>
-        </CollapsibleSection>
-        <SourceSettings source={source} onChange={setSource} onCheck={check} open={openSections.source} onToggleOpen={() => toggleSection("source")} />
-        <CollapsibleSection title="前処理" open={openSections.preprocess} onToggle={() => toggleSection("preprocess")}>
-          <button className="secondary" onClick={() => setEditor("preprocess")}>前処理を編集</button>
-        </CollapsibleSection>
-        <CollapsibleSection title="ROI（関心領域）" open={openSections.roi} onToggle={() => toggleSection("roi")}>
-          {inference.method === "object_detection" && inference.engine === "cpp_onnx" && <p className="muted" style={{ fontSize: "0.76rem", margin: "0 0 8px" }}>
-            C++ ONNXではROIそのものを切り出して推論します（ROIモードは適用されません）。
-          </p>}
-          {inference.method === "object_detection" && inference.engine !== "cpp_onnx" && <p className="muted" style={{ fontSize: "0.76rem", margin: "0 0 8px" }}>
-            モード: {inference.roi_mode === "crop_context" ? "ROI周辺を切り出して推論（詳細設定）" : "検出結果をROI内に限定（推奨）"}
-          </p>}
-          <button className="secondary" onClick={() => setEditor("roi")}>ROIを編集</button>
-        </CollapsibleSection>
-        <ReadingSettingsPanel value={inference.reading} onChange={(reading) => setInference({ ...inference, reading })} open={openSections.reading} onToggleOpen={() => toggleSection("reading")} />
-        <ReadingBaselinePanel monitorId={monitor.id} currentValue={monitor.current_value} open={openSections.baseline} onToggleOpen={() => toggleSection("baseline")} />
-        <InferenceSettings value={inference} onChange={setInference} open={openSections.inference} onToggleOpen={() => toggleSection("inference")} />
-        <div className="settings-actions"><button className="save-button" onClick={save} disabled={cppModelMissing} title={cppModelMissing ? "C++ ONNXではモデルを選択してください" : undefined}>設定を保存</button></div>
-
-        <CollapsibleSection title="Danger Zone" open={openSections.danger} onToggle={() => toggleSection("danger")} className="danger-zone">
-          {!confirmingDelete ? (
-            <button className="danger" onClick={() => setConfirmingDelete(true)}>このモニターを削除</button>
-          ) : (
-            <div className="danger-confirm">
-              <p>「{monitor.display_name}」（{monitor.name}）を削除します。この操作は取り消せません。よろしいですか？</p>
-              <div className="danger-confirm-actions">
-                <button className="danger" onClick={deleteMonitor} disabled={deleting}>{deleting ? "削除中..." : "削除する"}</button>
-                <button className="secondary" onClick={() => setConfirmingDelete(false)} disabled={deleting}>キャンセル</button>
-              </div>
-            </div>
-          )}
-        </CollapsibleSection>
-      </aside>
+        </div>}
+        <section className="admin-operations" aria-label="管理操作">
+          <h2>管理操作</h2>
+          <p className="muted">通常の設定とは別の、監査履歴が残る操作です（読取基準値の再設定・リセット）。</p>
+        <ReadingBaselinePanel monitorId={monitor.id} currentValue={monitor.current_value} open onToggleOpen={() => undefined} />
+        </section>
+      </section>}
     </div>
     {editor === "roi" && <RoiEditor
       monitorId={monitorId}

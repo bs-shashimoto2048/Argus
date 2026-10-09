@@ -6,7 +6,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   return {
     plugins: [react()],
-    test: { environment: "jsdom", setupFiles: ["./src/test/setup.ts"], globals: false, css: false },
+    test: { environment: "jsdom", setupFiles: ["./src/test/setup.ts"], globals: false, css: true },
     server: {
       // Issue #26: the port is pinned (not Vite's auto-increment-from-5173
       // default) and strictPort makes a conflict a loud startup failure
