@@ -1,15 +1,19 @@
 import { useRef } from "react";
-import type { Monitor } from "../types";
+import type { Monitor, ReadingRecord } from "../types";
 import { VideoPreview } from "./VideoPreview";
 import { useInView, usePageVisible } from "../hooks/useVisibility";
 import type { DashboardDisplayFps } from "../hooks/useDashboardSettings";
 import { formatTimeJst } from "../utils/datetime";
 import { combinedMonitorStatus, monitorStatusLabels } from "../utils/monitorStatus";
 import { formatDuration } from "../utils/readingFormat";
+import { formatRecordTime } from "../utils/records";
 
-type Props = { monitor: Monitor; onClick: () => void; displayFps: DashboardDisplayFps };
+const fetchStateLabels: Record<string, string> = { running: "取得中", connecting: "接続中", reconnecting: "再接続中", stopped: "停止中", error: "取得エラー" };
 
-export function MonitorCard({ monitor, onClick, displayFps }: Props) {
+// latestRecord: このMonitorの最新の1時間記録(carried_forwardの補助表示用)。無ければ補助表示なし。
+type Props = { monitor: Monitor; onClick: () => void; displayFps: DashboardDisplayFps; latestRecord?: ReadingRecord | null };
+
+export function MonitorCard({ monitor, onClick, displayFps, latestRecord }: Props) {
   const cardRef = useRef<HTMLButtonElement>(null);
   const pageVisible = usePageVisible();
   const inView = useInView(cardRef);
@@ -26,7 +30,7 @@ export function MonitorCard({ monitor, onClick, displayFps }: Props) {
     <button className="monitor-card" onClick={onClick} ref={cardRef}>
       <div className="card-head">
         <span className={`status-dot ${displayStatus}`} aria-hidden="true">●</span>
-        <span>{monitor.display_name}</span>
+        <span className="card-title">{monitor.display_name.trim()}</span>
         <small className={`status-badge ${displayStatus}`}>
           {monitorStatusLabels[displayStatus]}
         </small>
@@ -43,6 +47,11 @@ export function MonitorCard({ monitor, onClick, displayFps }: Props) {
         <div className={`card-value-confidence status-${displayStatus}`}><small>信頼度</small><strong>{monitor.confidence == null ? "--" : `${(monitor.confidence * 100).toFixed(1)}%`}</strong></div>
         <div className="card-value-updated"><small>更新</small><strong>{formatTimeJst(monitor.last_updated)}</strong></div>
       </div>
+      <div className="card-meta"><span>取得状態：{fetchStateLabels[monitor.status] ?? monitor.status}</span></div>
+      {/* 直近の1時間記録が前回確定値の保持(Raw棄却中)だった場合の補助表示。大きな現在値は常に正式値(先頭0除去後)。 */}
+      {latestRecord?.value_source === "carried_forward" && (
+        <div className="carried-badge" role="status">前回確定値を保持<small>{formatRecordTime(latestRecord.recorded_at)}の記録 / Raw {latestRecord.raw_value ?? "--"} / {latestRecord.validation_status ?? "--"}</small></div>
+      )}
       {/* Issue #40: 合意候補がbaselineと矛盾して一定時間続いている(固着の疑い)場合の警告バッジ。 */}
       {monitor.reading_baseline?.conflict && (
         <div className="baseline-conflict-badge" role="status">⚠ 基準値 {monitor.reading_baseline.value ?? "--"} と矛盾する読取 {monitor.reading_baseline.conflict_candidate ?? "--"}（{formatDuration(monitor.reading_baseline.conflict_seconds)}）</div>

@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { Inference, Monitor, ReadingDiagnostics, RuntimeDiagnostics, Source } from "../types";
-import { Brand } from "../components/Brand";
 import { formatDateTimeJst } from "../utils/datetime";
 import { InferenceSettings } from "../components/InferenceSettings";
 import { ReadingSettingsPanel } from "../components/ReadingSettingsPanel";
@@ -180,7 +179,7 @@ export function MonitorDetailPage() {
     setDeleting(true);
     try {
       await api.remove(monitorId);
-      navigate("/");
+      navigate("/monitors");
     } catch (reason) {
       setError(String(reason));
       setConfirmingDelete(false);
@@ -241,11 +240,7 @@ export function MonitorDetailPage() {
   return <main className="page monitor-detail-page">
     <header className="topbar">
       <div>
-        {/* Issue #28: Dashboardと同様、Monitor Detailのヘッダーからもキャラクターアイコンを
-            非表示にする(showIcon=false)。文字ロゴ(ARGUS)自体はBrand内で維持され、
-            アセットファイルも削除しない(Brand.tsxのpropで画面ごとに表示を切り替えるだけ)。 */}
-        <Brand showIcon={false} />
-        <div className="breadcrumbs">Argus / メーター詳細</div>
+        <div className="breadcrumbs">モニター管理 / メーター詳細</div>
         <h1>{monitor.display_name}</h1>
         {/* 設定変更・デバッグ時に対象Monitorを取り違えないよう、display_nameとIDを常時明示する(Issue #16)。 */}
         <div className="monitor-id-badge">Monitor ID: {monitor.id}</div>
@@ -254,7 +249,7 @@ export function MonitorDetailPage() {
         <button className="secondary settings-toggle" onClick={() => setSettingsOpen((v) => !v)}>
           {settingsOpen ? "設定を閉じる ▸" : "◂ 設定を表示"}
         </button>
-        <button className="secondary" onClick={() => navigate("/")}>＜ 戻る</button>
+        <button className="secondary" onClick={() => navigate("/monitors")}>＜ モニター管理へ</button>
       </div>
     </header>
 
