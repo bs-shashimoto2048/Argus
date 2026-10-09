@@ -11,6 +11,18 @@ const toForm = (s: DataStorageSettings): Form => ({
   warn: String(s.storage_warn_free_gb), stop: String(s.storage_stop_free_gb),
 });
 
+type ImageKind = "saveOriginal" | "saveOverlay";
+const IMAGE_OFF_WARNINGS: Record<ImageKind, { title: string; body: string }> = {
+  saveOverlay: {
+    title: "推論結果画像の保存をOFFにしますか？",
+    body: "推論結果画像の保存をOFFにすると、今後の計測履歴には推論結果画像が保存されません。元画像のみでは、後からAIがどの値を検出したか確認できない場合があります。",
+  },
+  saveOriginal: {
+    title: "元画像の保存をOFFにしますか？",
+    body: "元画像の保存をOFFにすると、今後の計測履歴には元画像が保存されません。後から記録時の映像を確認できなくなります。",
+  },
+};
+
 export const IMAGE_ROOT_CHANGE_WARNING = "画像保存先を変更すると、以前の保存先にある過去画像を履歴画面から参照できなくなる場合があります。";
 
 // システム設定「データ保存」: 画像保存先 / Excel保存先 / 保存ON/OFF / 空き容量しきい値と、保存状態の表示。
@@ -22,6 +34,7 @@ export function DataStorageSection() {
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [confirmOff, setConfirmOff] = useState<ImageKind | null>(null);
   const [tests, setTests] = useState<{ image?: StorageTestResult | "running"; excel?: StorageTestResult | "running" }>({});
 
   const loadStatus = useCallback(() => api.dataStorageStatus().then(setStatus).catch(() => setStatus(null)), []);
@@ -35,6 +48,8 @@ export function DataStorageSection() {
   if (!settings || !form) return <section className="panel"><h2>データ保存</h2>{error ? <div className="alert error" role="alert">{error}</div> : <p className="muted">読み込み中…</p>}</section>;
 
   const set = (patch: Partial<Form>) => { setForm({ ...form, ...patch }); setMessage(""); };
+  // ON→OFFだけ確認する。OFF→ONは確認なしで切り替える(反映は「保存」)。過去に保存済みの画像は削除しない。
+  const toggleImage = (kind: ImageKind) => { if (form[kind]) setConfirmOff(kind); else set({ [kind]: true }); };
   const imageRootChanged = form.imageRoot.trim() !== (settings.image_root_folder ?? "");
   const warn = Number(form.warn), stop = Number(form.stop);
   const thresholdError = form.warn.trim() === "" || form.stop.trim() === "" || !Number.isFinite(warn) || !Number.isFinite(stop) || warn < 0 || stop < 0
@@ -112,8 +127,12 @@ export function DataStorageSection() {
       </label>
       <div className="storage-test"><button type="button" className="secondary" onClick={() => void runTest("excel")} aria-label="Excel保存先の書込みテスト">書込みテスト</button>{renderTest("excel")}</div>
 
-      <label className="check"><input type="checkbox" checked={form.saveOriginal} onChange={(e) => set({ saveOriginal: e.target.checked })} /> 元画像を保存</label>
-      <label className="check"><input type="checkbox" checked={form.saveOverlay} onChange={(e) => set({ saveOverlay: e.target.checked })} /> 推論画像を保存</label>
+      <div className="toggle-row">
+        <div className="toggle-line"><span id="toggle-original">元画像を保存</span><ToggleSwitch labelledBy="toggle-original" on={form.saveOriginal} onClick={() => toggleImage("saveOriginal")} /></div>
+        {!form.saveOriginal && <div className="muted small" role="note">OFFの場合、今後の計測記録では元画像を保存しません（保存済みの画像は削除しません）</div>}
+        <div className="toggle-line"><span id="toggle-overlay">推論結果画像を保存</span><ToggleSwitch labelledBy="toggle-overlay" on={form.saveOverlay} onClick={() => toggleImage("saveOverlay")} /></div>
+        {!form.saveOverlay && <div className="alert warning" role="note">OFFの場合、今後の計測記録では推論結果画像を保存しません（保存済みの画像は削除しません）</div>}
+      </div>
       <div className="threshold-row">
         <label>容量警告しきい値 (GB)<input type="number" min="0" step="1" value={form.warn} onChange={(e) => set({ warn: e.target.value })} /></label>
         <label>容量停止しきい値 (GB)<input type="number" min="0" step="1" value={form.stop} onChange={(e) => set({ stop: e.target.value })} /></label>
@@ -123,6 +142,18 @@ export function DataStorageSection() {
       {message && <div className="alert success" role="status">{message}</div>}
       <button type="button" onClick={save} disabled={saving || !!thresholdError}>{saving ? "保存中…" : "保存"}</button>
     </div>
+
+    {confirmOff && <div className="modal-backdrop" role="alertdialog" aria-modal="true" aria-label="画像保存のOFFの確認">
+      <div className="modal export-modal">
+        <div className="modal-head"><h2>{IMAGE_OFF_WARNINGS[confirmOff].title}</h2></div>
+        <div className="alert warning">{IMAGE_OFF_WARNINGS[confirmOff].body}</div>
+        <p className="muted">過去に保存済みの画像は削除されません。変更するのは今後の記録で保存するかどうかだけです。本当にOFFにしますか？</p>
+        <div className="modal-actions">
+          <button type="button" className="secondary" autoFocus onClick={() => setConfirmOff(null)}>キャンセル</button>
+          <button type="button" className="danger" onClick={() => { set({ [confirmOff]: false }); setConfirmOff(null); }}>OFFにする</button>
+        </div>
+      </div>
+    </div>}
 
     {confirming && <div className="modal-backdrop" role="alertdialog" aria-modal="true" aria-label="画像保存先の変更の確認">
       <div className="modal export-modal">
@@ -134,4 +165,10 @@ export function DataStorageSection() {
       </div>
     </div>}
   </section>;
+}
+
+function ToggleSwitch({ on, onClick, labelledBy }: { on: boolean; onClick: () => void; labelledBy: string }) {
+  return <button type="button" role="switch" aria-checked={on} aria-labelledby={labelledBy} className={`toggle-switch ${on ? "on" : "off"}`} onClick={onClick}>
+    <span className="toggle-knob" aria-hidden="true" />{on ? "ON" : "OFF"}
+  </button>;
 }
