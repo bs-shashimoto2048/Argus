@@ -6,7 +6,8 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   return {
     plugins: [react()],
-    test: { environment: "jsdom", setupFiles: ["./src/test/setup.ts"], globals: false, css: true },
+    // Dashboardは1画面でカード・グラフ・履歴(1000行規模)を描画するため、jsdomでは重いテストがある。CIの遅い実行環境でも既定の5秒を超えないよう、上限を明示する(リトライではなく、実行時間の余裕)。
+    test: { environment: "jsdom", setupFiles: ["./src/test/setup.ts"], globals: false, css: true, testTimeout: 20000 },
     server: {
       // Issue #26: the port is pinned (not Vite's auto-increment-from-5173
       // default) and strictPort makes a conflict a loud startup failure
