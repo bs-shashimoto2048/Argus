@@ -80,7 +80,8 @@ def _recompute_usage(db: Session, record: ReadingRecord, monitor_created_at: dat
     previous = _neighbor(db, record, -1)
     record.previous_value = previous.value if previous is not None else None
     recorded_utc = record.recorded_at.replace(tzinfo=timezone.utc)
-    return compute_usage(db, record.monitor_id, monitor_created_at, previous, _decimal(record.numeric_value), record.display_status, record.baseline_conflict, recorded_utc)
+    return compute_usage(db, record.monitor_id, monitor_created_at, previous, _decimal(record.numeric_value), record.display_status, bool(record.baseline_conflict), recorded_utc,
+                         record.value_source, (record.correction_count or 0) > 0)
 
 
 def correct_record(db: Session, record_id: int, value: str, reason: str, operator: str, client_host: str = "", rebase_current_baseline: bool = False) -> dict:
@@ -129,13 +130,22 @@ def correct_record(db: Session, record_id: int, value: str, reason: str, operato
         record.corrected_at = _naive_utc(now)
         record.corrected_by = operator
         record.usage = _recompute_usage(db, record, created_at)  # 修正した記録のusage
-        nxt = _neighbor(db, record, 1)
-        next_info: dict | None = None
-        if nxt is not None:
-            # 次の1時間の記録は、前回値(=今回の修正後の値)が変わるので、previous_valueとusageだけを整合させる(値は書き換えない)。
-            before_usage = nxt.usage
+        # 未来側の記録を時系列順に再評価する。更新するのは previous_value / usage だけ(値・証跡は書き換えない)。
+        # usageは「直前1時間との差」なので、修正した記録の値・信頼状態が影響するのは直後の記録だけ。直後の記録の
+        # previous_value/usageが変わらなければ、それ以降も変わらないのでそこで止める(以降を無用に書き換えない)。
+        affected: list[dict] = []
+        cursor = record
+        while True:
+            nxt = _neighbor(db, cursor, 1)
+            if nxt is None:
+                break
+            before_usage, before_previous = nxt.usage, nxt.previous_value
             nxt.usage = _recompute_usage(db, nxt, created_at)
-            next_info = {"record_id": nxt.id, "hour_bucket": nxt.hour_bucket, "value": nxt.value, "value_source": nxt.value_source, "old_usage": before_usage, "new_usage": nxt.usage}
+            affected.append({"record_id": nxt.id, "hour_bucket": nxt.hour_bucket, "value": nxt.value, "value_source": nxt.value_source, "old_usage": before_usage, "new_usage": nxt.usage})
+            if nxt.usage == before_usage and nxt.previous_value == before_previous and len(affected) > 0:
+                break
+            cursor = nxt
+        next_info = affected[0] if affected else None
         row = ReadingRecordCorrection(
             record_id=record.id, monitor_id=record.monitor_id, corrected_at=_naive_utc(now), operator=operator, reason=reason,
             old_value=old_value, new_value=new_value, old_numeric_value=old_numeric, new_numeric_value=record.numeric_value, old_usage=old_usage, new_usage=record.usage,
@@ -143,7 +153,7 @@ def correct_record(db: Session, record_id: int, value: str, reason: str, operato
             baseline_value=_baseline_value(db, record), baseline_conflict=bool(record.baseline_conflict),
             original_image_path=record.original_image_path, overlay_image_path=record.overlay_image_path, client_host=(client_host or "")[:64],
             context={"reason_type": why, "hour_bucket": record.hour_bucket, "recorded_at": _iso(record.recorded_at), "inference_at": _iso(record.inference_at),
-                     "display_status": record.display_status, "engine": record.engine, "model_id": record.model_id, "next_record": next_info, "rebase": rebase_info,
+                     "display_status": record.display_status, "engine": record.engine, "model_id": record.model_id, "next_record": next_info, "recomputed_records": affected, "rebase": rebase_info,
                      "correction_count": record.correction_count},
         )
         db.add(row)
@@ -152,7 +162,7 @@ def correct_record(db: Session, record_id: int, value: str, reason: str, operato
         db.rollback()
         raise
     logger.warning("record %s (monitor %s): 正式値を修正しました %s -> %s (operator=%s, reason=%s)", record.id, record.monitor_id, old_value, new_value, operator, reason)
-    return {"record_id": record.id, "correction": _serialize_correction(row), "next_record": next_info, "rebase": rebase_info}
+    return {"record_id": record.id, "correction": _serialize_correction(row), "next_record": next_info, "recomputed_records": affected, "rebase": rebase_info}
 
 
 def _baseline_value(db: Session, record: ReadingRecord) -> str | None:

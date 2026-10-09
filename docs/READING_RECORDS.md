@@ -156,3 +156,18 @@ Raw・validation_status・正式値と、元画像・overlayが別のtickのも�
 
 `GET /api/records`は、`hour_bucket` DESC → Monitorの表示順（`display_order` ASC） → `monitor_id` → `id` の安定した順序で返し、`limit`/`offset`（段階読み込み）もこの順序で行います
 （同じ計測枠の行が取得境界をまたいでも連続し、すでに表示している行が動かないため）。
+
+## usageの「信頼できる正式値」(手動修正後の再計算)
+
+usage(使用量)は「今回の値 − 直前1時間の値」で、**今回と直前の両方が信頼できる記録**のときだけ計算します(`is_trusted_record`)。
+
+- 信頼できる: (A) 通常のConfirmed(`value_source=confirmed`・display_statusが正常系・baseline conflictなし・値あり) または (B) **手動修正済み**(`correction_count>0`)。
+- 手動修正済みは、記録時に baseline conflict / carried_forward / decrease_detected / rate_exceeded だった場合も、usage計算上は信頼できる(運用者が画像等を確認して正式値を確定したため)。
+  元の `baseline_conflict` / `value_source` / `validation_status` / Raw / 画像は監査証跡として変更しない。
+- **未修正のcarried_forward**は、正式値欄に値があっても信頼しない(実際の使用量0とは保証できない)ため、その記録のusageも、次の記録のusageもnull。
+  untrustedな区間を飛ばして複数時間分を1時間の使用量として計上しない。
+- 修正後は、修正した記録と、直後の記録の `previous_value` / `usage` だけを再計算して保存する(値・証跡は書き換えない。直後の記録が変わらなければそこで止める)。
+  欠損した記録を順番に修正すれば、usageとグラフも順番に復旧する。応答の `recomputed_records` に再計算した記録の一覧が入る。
+- baselineのrebaseが連続性を壊すのは、その新しい値が前後どちらの信頼できる記録の値とも一致しない場合(reset・自動クリアは従来どおり常に壊す)。確認済みの値への再設定は壊さない。
+- Dashboardは、修正の成功後に履歴とグラフをBackendから取り直す(usageをFrontendで仮計算しない)。usageが復旧した点の赤い×(値無し)は通常のプロットになる。
+- 既存の記録のusageは自動では書き換えない(修正した記録とその直後の記録だけが再計算される)。

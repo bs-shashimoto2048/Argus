@@ -108,18 +108,34 @@ export function RecordsSection({ monitors, title, description, showExport = fals
     return () => window.clearInterval(timer);
   }, [refreshMs, fetchChunk, from, to, monitorKeyOrder]);
 
-  // 読取値を修正したら、一覧の該当行(正式値・使用量・修正済み)と、使用量が再計算された次の1時間の行を、その場で更新する(行の位置は動かさない)。
+  // 読取値を修正したら、まず一覧の該当行(正式値・使用量・修正済み)を修正APIの応答でその場で更新し(行の位置は動かさない)、
+  // そのあと、Backendで再計算・保存された記録(以降の行のprevious_value/usageを含む)を、読み込み済みの範囲だけ取り直して置き換える。
+  // 派生値(usage等)はFrontendで仮計算しない。
   const handleCorrected = (result: CorrectionResult) => {
-    const next = result.next_record;
-    const merged = itemsRef.current.map((r) => {
-      if (r.id === result.record.id) return result.record;
-      if (next && r.id === next.record_id) return { ...r, previous_value: result.record.value, usage: next.new_usage };
-      return r;
-    });
+    const merged = itemsRef.current.map((r) => (r.id === result.record.id ? result.record : r));
     itemsRef.current = merged;
     setItems(merged);
     setSelected(result.record);
     onRecordCorrected?.();
+    const id = generation.current;
+    const count = Math.max(merged.length, 1);
+    void (async () => {
+      try {
+        const fresh: ReadingRecord[] = [];
+        let totalRows = 0;
+        for (let offset = 0; offset < count; offset += RECORDS_CHUNK) {
+          const page = await fetchChunk(offset, RECORDS_CHUNK);
+          if (id !== generation.current) return;
+          fresh.push(...page.items);
+          totalRows = page.total;
+          if (page.items.length === 0) break;
+        }
+        const tail = itemsRef.current.slice(fresh.length).filter((r) => !fresh.some((f) => f.id === r.id));
+        const next = [...fresh, ...tail];
+        itemsRef.current = next; setItems(next); setTotal(totalRows);
+        setSelected((current) => (current ? next.find((r) => r.id === current.id) ?? current : current));
+      } catch { /* 取り直せなくても、修正自体は反映済み。次の定期更新で整う */ }
+    })();
   };
 
   const changeFilter = (next: RecordFilterValue) => setFilter(fixedMonitorId != null ? { ...next, monitorIds: [fixedMonitorId] } : next);

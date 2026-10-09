@@ -558,3 +558,60 @@ describe("Dashboard表示FPS", () => {
     vi.useRealTimers();
   });
 });
+
+describe("読取値の修正 → Backendで再計算されたusageがグラフ・履歴へ反映される", () => {
+  it("修正すると、履歴とグラフをBackendから取り直し、usageが復旧した点の赤×と警告文が消える(Frontendでは仮計算しない)", async () => {
+    // Backendの状態(修正前): 15:00=carried_forward(usage null) / 16:00=confirmed(直前が未修正のためusage null)
+    const state = {
+      items: [
+        rec(1, 3, 14, "0", { value: "100", usage: null }),
+        rec(2, 3, 15, null, { value: "100", value_source: "carried_forward", validation_status: "decrease_detected", correctable: true, correctable_reason: "carried_forward" }),
+        rec(3, 3, 16, null, { value: "110" }),
+      ] as ReadingRecord[],
+    };
+    state.items[0] = { ...state.items[0], usage: "0" };
+    const corrected = () => state.items.find((r) => r.id === 2)!;
+    const handler = get("/api/records", (c: Call) => {
+      const p = new URL(c.url, "http://x").searchParams;
+      return { items: state.items, total: state.items.length, limit: Number(p.get("limit")), offset: Number(p.get("offset")) };
+    });
+    const post = route("POST", "/api/records/2/correct", () => {
+      // Backend側の再計算結果(15:00=5 / 16:00=5)を保存した状態にしてから応答する
+      state.items = state.items.map((r) => (r.id === 2 ? { ...r, value: "105", numeric_value: "105", usage: "5", is_corrected: true, correction_count: 1, original_value: "100", corrected_by: "tester", corrected_at: "2026-10-09T05:31:00" } : r.id === 3 ? { ...r, previous_value: "105", usage: "5" } : r));
+      const row = { id: 1, record_id: 2, monitor_id: 3, corrected_at: "2026-10-09T05:31:00", operator: "tester", reason: "画像確認", old_value: "100", new_value: "105", old_numeric_value: "100", new_numeric_value: "105", old_usage: null, new_usage: "5", raw_value: null, raw_confidence: null, validation_status: "decrease_detected", value_source: "carried_forward", baseline_value: null, baseline_conflict: false, original_image_path: null, overlay_image_path: null, client_host: "", context: null };
+      return new Response(JSON.stringify({ record_id: 2, correction: row, next_record: { record_id: 3, hour_bucket: hour(16), value: "110", value_source: "confirmed", old_usage: null, new_usage: "5" }, recomputed_records: [{ record_id: 3, hour_bucket: hour(16), value: "110", value_source: "confirmed", old_usage: null, new_usage: "5" }], rebase: { requested: false, performed: false }, record: corrected() }), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    standardMocks([handler, post, get("/api/records/2/corrections", { record_id: 2, corrections: [] })]);
+    const user = userEvent.setup();
+    renderApp("/");
+    await waitFor(() => expect(document.querySelectorAll(".trend-svg .trend-missing")).toHaveLength(2)); // 15:00・16:00が値無し(赤×)
+    expect(document.querySelector(".trend-missing-note")).not.toBeNull();
+
+    const row = await waitFor(() => { const r = document.querySelector('.records-table tr[data-record-id="2"]'); expect(r).not.toBeNull(); return r as HTMLElement; });
+    await user.click(within(row).getByRole("button", { name: /詳細/ }));
+    await user.click(await screen.findByRole("button", { name: "読取値を修正" }));
+    const dialog = await screen.findByRole("dialog", { name: "読取値の修正" });
+    await user.type(within(dialog).getByLabelText(/修正後の値/), "105");
+    await user.type(within(dialog).getByLabelText(/修正理由/), "画像確認");
+    await user.type(within(dialog).getByLabelText(/操作者/), "tester");
+    await user.click(within(dialog).getByRole("button", { name: "この内容で修正する" }));
+
+    // 履歴: Backendで再計算されたusage(15:00=5 / 16:00=5)で置き換わる
+    await waitFor(() => expect(document.querySelector('.records-table tr[data-record-id="3"] td.c-usage')).toHaveTextContent("5"));
+    expect(document.querySelector('.records-table tr[data-record-id="2"] td.c-usage')).toHaveTextContent("5");
+    // グラフ: 再取得され、赤×と警告文が消える(通常のプロットへ)
+    await waitFor(() => expect(document.querySelectorAll(".trend-svg .trend-missing")).toHaveLength(0));
+    expect(document.querySelector(".trend-missing-note")).toBeNull();
+    // 手動修正のマーカーは残る。グラフは現在の正式値(修正後)を使う
+    expect(document.querySelectorAll(".trend-event.event-manual_corrected")).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: "実値" }));
+    expect(screen.getByRole("img", { name: /実値の推移/ })).toBeInTheDocument();
+  });
+
+  it("未修正のcarried_forwardでusageがまだnullの点は、赤×が残る", async () => {
+    standardMocks([recordsFor([rec(1, 3, 14, "0", { value: "100" }), rec(2, 3, 15, null, { value: "105" }), rec(3, 3, 16, "5", { value: "105", value_source: "carried_forward" })])]);
+    renderApp("/");
+    await waitFor(() => expect(document.querySelectorAll(".trend-svg .trend-missing")).toHaveLength(1));
+    expect(document.querySelector(".trend-missing-note")).not.toBeNull();
+  });
+});
