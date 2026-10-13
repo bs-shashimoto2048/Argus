@@ -105,7 +105,7 @@ export function CsvExportSettingsPanel() {
         </div>
       )}
       <p className="muted" style={{ fontSize: "0.74rem", marginTop: 8 }}>
-        出力対象は安定化済みのConfirmed値です（Raw値は出力しません）。credential/URL等はCSVに含まれません。
+        出力対象は安定化済みの正式値です（AI読取値の生データは出力しません）。credential/URL等はCSVに含まれません。
         ファイルは「Monitor名_ID.csv」として出力フォルダ内へ直接作成されます（サブフォルダ等、指定フォルダ外へは出力しません）。
       </p>
     </section>

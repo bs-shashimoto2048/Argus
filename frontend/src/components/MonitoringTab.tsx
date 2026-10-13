@@ -3,6 +3,7 @@ import { VideoPreview } from "./VideoPreview";
 import { formatDateTimeJst } from "../utils/datetime";
 import { combinedMonitorStatus, monitorStatusLabels } from "../utils/monitorStatus";
 import { conflictMessage } from "../utils/readingFormat";
+import { AI_VALUE_HELP, baselineStateLabel } from "../utils/readingLabels";
 import { currentValueText, formatDiff, inferenceErrorText } from "../utils/monitorDetail";
 
 export type VideoTab = "video" | "overlay";
@@ -51,7 +52,7 @@ export function MonitoringTab({ monitor, rawInferenceValue, rawDiffersFromConfir
       <div className="overlay-legend-slot">
         {videoTab === "overlay" && monitor.source && <div className="overlay-legend compact">
           {runtimeDiagnostics?.pipeline?.roi_mode && <span><i className="legend-swatch legend-roi" />ユーザー指定ROI</span>}
-          <span><i className="legend-swatch legend-detection" />検出bbox（推論値/確信度）</span>
+          <span><i className="legend-swatch legend-detection" />検出枠（AI読取値/確信度）</span>
           {runtimeDiagnostics?.pipeline && (runtimeDiagnostics.pipeline.engine === "ultralytics" || runtimeDiagnostics.pipeline.engine === "cpp_onnx")
             ? <span>検出 {runtimeDiagnostics.pipeline.roi_filtered_detection_count}/{runtimeDiagnostics.pipeline.raw_detection_count} 件（ROI内/全体）</span>
             : runtimeDiagnostics?.pipeline && <span>このエンジンは文字ごとの位置を検出しないため、bboxは表示されません</span>}
@@ -62,7 +63,7 @@ export function MonitoringTab({ monitor, rawInferenceValue, rawDiffersFromConfir
     <div className="mon-info">
       <div className="panel mon-current" aria-live="polite">
         <div className="mon-current-main">
-          <div className="mon-current-value"><small>現在値（確定）</small><strong>{currentValueText(monitor)}</strong></div>
+          <div className="mon-current-value"><small>現在の正式値</small><strong>{currentValueText(monitor)}</strong></div>
           <div className="mon-item"><small>信頼度</small><strong>{percent(monitor.confidence)}</strong></div>
           <div className="mon-item"><small>状態</small><span className={`status-text ${status}`}>● {monitorStatusLabels[status]}</span></div>
         </div>
@@ -75,26 +76,26 @@ export function MonitoringTab({ monitor, rawInferenceValue, rawDiffersFromConfir
       </div>
 
       <div className="monitoring-summary" aria-label="読取の詳細">
-        <div className={rawDiffersFromConfirmed ? "raw-pending" : undefined}><small>最新推論値（未確定）</small><strong>{rawInferenceValue ?? readingDiagnostics?.confirmed.raw_value ?? "--"}</strong></div>
+        <div className={rawDiffersFromConfirmed ? "raw-pending" : undefined}><small title={AI_VALUE_HELP}>最新のAI読取値（未採用を含む）</small><strong>{rawInferenceValue ?? readingDiagnostics?.confirmed.raw_value ?? "--"}</strong></div>
         <div><small>推論エンジン</small><strong>{monitor.inference.engine}</strong></div>
         <div><small>モデル</small><strong title={monitor.inference.model_id ?? undefined}>{monitor.inference.model_id ?? "--"}</strong></div>
         <div><small>最終更新</small><strong>{monitor.last_updated ? formatDateTimeJst(monitor.last_updated) : "--"}</strong></div>
-        <div><small>読取基準値</small><strong>{baseline ? `${baseline.value ?? "--"}（${baseline.state === "pending_reset" ? "リセット済み" : "有効"}）` : "--"}</strong></div>
-        <div><small>基準値競合</small><strong className={baseline?.conflict ? "conflict-yes" : undefined}>{baseline?.conflict ? `あり（${baseline.conflict_candidate ?? "--"}）` : "なし"}</strong></div>
+        <div><small>読取基準値</small><strong>{baseline ? `${baseline.value ?? "--"}（${baselineStateLabel(baseline.state)}）` : "--"}</strong></div>
+        <div><small>読取基準値との不一致</small><strong className={baseline?.conflict ? "conflict-yes" : undefined}>{baseline?.conflict ? `あり（${baseline.conflict_candidate ?? "--"}）` : "なし"}</strong></div>
       </div>
 
       <details className="mon-note">
         <summary>現在値の見方</summary>
         <p className="muted">
-          「現在値（確定）」は読取安定化により確定した値です（直近{reading.window_size}回中{reading.required_matches}回以上一致で更新）。
-          一致が取れていない間は直前の確定値を保持するため、最新の推論結果と一時的に異なる場合があります。「前回値」は直前に確定していた値（推論の途中経過ではありません）。
+          「現在の正式値」は読取安定化で採用された値です（直近{reading.window_size}回のAI読取結果のうち{reading.required_matches}回以上一致で更新）。
+          一致が取れていない間は直前の正式値を継続使用するため、最新のAI読取値と一時的に異なる場合があります。「前回値」は直前に採用されていた正式値です（AI読取の途中経過ではありません）。
         </p>
       </details>
 
       {/* 警告は最下部へ(出ても上の要点の位置が動かない) */}
       {modelMissing && <div className="alert error compact">モデルが設定されていません。「設定」タブの「推論エンジン / モデル」でモデルを選択してください。</div>}
       {baseline?.conflict && (
-        <div className="alert warning compact">⚠ {conflictMessage(baseline.conflict_status, baseline.value, baseline.conflict_candidate, baseline.conflict_seconds)}。実メーターを確認し、必要なら「診断」タブの「管理操作」から読取基準値を再設定してください。</div>
+        <div className="alert warning compact">⚠ {conflictMessage(baseline.conflict_status, baseline.value, baseline.conflict_candidate, baseline.conflict_seconds)}。実メーターを確認し、必要なら「設定」タブの「読取安定化設定」で読取基準値を変更するか、未設定に戻してください。</div>
       )}
       {monitor.current_inference_error && !modelMissing && <div className="alert error compact">{inferenceErrorText(monitor.current_inference_error, monitor.inference.engine)}</div>}
       {!monitor.current_inference_error && monitor.last_inference_error && !modelMissing && (

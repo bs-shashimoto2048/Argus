@@ -209,7 +209,7 @@ describe("TrendChart: X方向のズーム・パン", () => {
     expect(view().min).toBeGreaterThan(hourTime(3));
     expect(document.querySelectorAll(".trend-missing")).toHaveLength(0);
     expect(document.querySelectorAll(".event-manual_corrected")).toHaveLength(1);
-    expect(screen.getByText(/値無しの記録があります/)).toBeInTheDocument(); // 警告は期間全体の有無で判定
+    expect(screen.getByText(/正式値のない記録があります/)).toBeInTheDocument(); // 警告は期間全体の有無で判定
     // 左端(03:00付近)へ移動: 逆になる
     fireEvent.mouseDown(svgEl(), { button: 0, clientX: 100 });
     fireEvent.mouseMove(window, { clientX: 5000 });
@@ -281,7 +281,7 @@ describe("連続計測区間の最初のrecord(前回recordなし・usage=0)", (
     const first = rec(1, 10, { previous_value: null, usage: "0", value: "372413.7" });
     await renderChart([first]);
     expect(document.querySelectorAll(".trend-missing")).toHaveLength(0);
-    expect(screen.queryByText(/値無しの記録があります/)).toBeNull();
+    expect(screen.queryByText(/正式値のない記録があります/)).toBeNull();
     const dot = svgEl().querySelector("circle.trend-dot") as SVGCircleElement; // 1点のみ=孤立点として描かれる
     expect(dot).not.toBeNull();
     const zeroLine = [...svgEl().querySelectorAll("text[text-anchor=end]")].find((t) => t.textContent === "0")!;
@@ -304,7 +304,7 @@ describe("修正済みanchorからの継続carried_forward(usage=0)", () => {
     ];
     await renderChart(all);
     expect(document.querySelectorAll(".trend-missing")).toHaveLength(0);
-    expect(screen.queryByText(/値無しの記録があります/)).toBeNull();
+    expect(screen.queryByText(/正式値のない記録があります/)).toBeNull();
     expect(document.querySelectorAll(".event-manual_corrected")).toHaveLength(1);
     expect(document.querySelectorAll(".event-carried_forward")).toHaveLength(3); // 修正済み自身・継続2件(◇は証跡としてそのまま)
     expect(svgEl().querySelectorAll("polyline.trend-line")).toHaveLength(1); // 折れ線が途切れず継続する

@@ -77,7 +77,7 @@ describe("記録Drawer / 読取値修正ダイアログの画像", () => {
     const classBefore = frame().className;
     await user.click(screen.getByRole("tab", { name: "推論結果画像" }));
     const overlay = frame().querySelector("img") as HTMLImageElement;
-    expect(overlay).toHaveAttribute("alt", "記録時の推論結果画像");
+    expect(overlay).toHaveAttribute("alt", "記録時の推論結果画像"); // Drawerの推論結果画像
     expect(overlay.getAttribute("src")).toContain("/api/records/84/image/overlay");
     expect(frame().className).toBe(classBefore); // 枠は同じ(画像の種類で別の表示規則にしない)
     expect(document.querySelectorAll(".drawer-image")).toHaveLength(1);
@@ -98,7 +98,7 @@ describe("記録Drawer / 読取値修正ダイアログの画像", () => {
     render(<CorrectionDialog record={carried} onClose={() => {}} onCorrected={() => {}} />);
     const grid = document.querySelector(".correction-grid") as HTMLElement;
     const image = grid.querySelector(".correction-image img") as HTMLImageElement;
-    expect(image).toHaveAttribute("alt", "記録時の推論結果画像");
+    expect(image).toHaveAttribute("alt", "記録時のAI読取結果画像");
     expect(image.getAttribute("src")).toContain("/api/records/84/image/overlay");
     expect(grid.querySelector(".correction-facts")).not.toBeNull();
     expect(grid.children).toHaveLength(2);

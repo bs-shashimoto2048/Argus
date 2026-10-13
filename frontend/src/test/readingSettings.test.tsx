@@ -34,7 +34,7 @@ describe("積算値チェック: 読取基準値・最新候補値・差・判�
     renderPanel({ baseline: status() });
     expect(within(card()).getByText("現在の読取基準値")).toBeInTheDocument();
     expect(within(card()).getByText("215998")).toBeInTheDocument();
-    expect(screen.getByText(/由来 通常確定 \/ epoch 6/)).toBeInTheDocument();
+    expect(screen.getByText(/決まり方 通常確定/)).toBeInTheDocument();
     expect(card().querySelector(".rs-status-detail")).toBeNull(); // 詳細は見出し行(カードの外)で、閉じている間は高さを増やさない
     expect((document.querySelector(".rs-group-head details") as HTMLDetailsElement).open).toBe(false);
   });
@@ -45,7 +45,7 @@ describe("積算値チェック: 読取基準値・最新候補値・差・判�
   });
   it("3/4. 最新候補値と、基準値との差(-5)が表示される", () => {
     renderPanel({ baseline: status() });
-    expect(within(card()).getByText("最新候補値")).toBeInTheDocument();
+    expect(within(card()).getByText("最新のAI読取値")).toBeInTheDocument();
     expect(within(card()).getByText("215993")).toBeInTheDocument();
     expect(within(card()).getByText("-5")).toBeInTheDocument();
   });
@@ -67,16 +67,17 @@ describe("積算値チェック: 読取基準値・最新候補値・差・判�
   it("7. 基準値の取得に失敗しても「取得できません」と表示し、設定自体は操作できる", () => {
     const onChange = renderPanel({ baseline: null });
     expect(within(card()).getByText("取得できません")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("判定ウィンドウ"), { target: { value: "7" } });
+    fireEvent.change(screen.getByLabelText("判定に使う直近読取回数"), { target: { value: "7" } });
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ window_size: 7 }));
   });
   it("基準値を読み込み中の表示", () => {
     renderPanel({ baseline: undefined, diagnostics: null });
     expect(within(card()).getByText(/読み込み中/)).toBeInTheDocument();
   });
-  it("基準値そのものはこの画面で編集できず、reset / rebase は診断タブへ案内する", () => {
+  it("基準値のカード自体は編集欄を持たない(read-only)。変更・未設定化はボタンからダイアログで行う(monitorId指定時)", () => {
     renderPanel({ baseline: status() });
-    expect(screen.getByText(/reset \/ rebase は、診断タブから操作します/)).toBeInTheDocument();
+    expect(screen.queryByText(/診断タブから操作します/)).toBeNull(); // 「この画面では編集できません」の案内は廃止
+    expect(screen.queryByText(/rebase|reset/)).toBeNull();
     expect(within(card()).queryAllByRole("textbox")).toHaveLength(0);
     expect(within(card()).queryAllByRole("spinbutton")).toHaveLength(0);
   });
@@ -85,12 +86,12 @@ describe("積算値チェック: 読取基準値・最新候補値・差・判�
 describe("文言・summary", () => {
   it("6. 減少チェックの説明: ON / OFF で説明が変わる(内部用語 monotonic は前面に出さない)", () => {
     const { unmount } = render(<ReadingSettingsPanel value={reading} onChange={() => {}} open onToggleOpen={() => {}} baseline={status()} />);
-    expect(screen.getByRole("note")).toHaveTextContent("現在の読取基準値より小さい候補値は、減少と判断して採用しません。");
-    expect(screen.getByRole("switch", { name: "積算値の減少を検出する" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("note")).toHaveTextContent("AI読取値が現在の読取基準値より小さい場合、正式値として採用しません。");
+    expect(screen.getByRole("switch", { name: "積算値の減少チェック" })).toHaveAttribute("aria-checked", "true");
     unmount();
     render(<ReadingSettingsPanel value={{ ...reading, monotonic: false }} onChange={() => {}} open onToggleOpen={() => {}} baseline={status()} />);
-    expect(screen.getByRole("note")).toHaveTextContent("OFFの場合、基準値より小さい値でも、他の判定条件を満たせば採用されます。");
-    expect(screen.getByRole("switch", { name: "積算値の減少を検出する" })).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByRole("note")).toHaveTextContent("OFFの場合、読取基準値より小さい値でも、他の判定条件を満たせば採用されます。");
+    expect(screen.getByRole("switch", { name: "積算値の減少チェック" })).toHaveAttribute("aria-checked", "false");
     expect(screen.queryByText("値の減少を許可しない")).toBeNull();
   });
   it("8. summary: 有効 / 3回一致 / 減少チェックON / 基準値 215998(majorityや単調増加は前面に出さない)", () => {
@@ -102,11 +103,11 @@ describe("文言・summary", () => {
   });
   it("最大変化率・期待桁数・小数点位置の説明がある。majority/consecutiveは詳細設定の「多数決/連続一致」に置く", () => {
     renderPanel({ baseline: status() });
-    expect(screen.getByText(/1分あたりに許容する最大増加量。制限なしの場合は急増チェックを行いません。/)).toBeInTheDocument();
-    expect(screen.getByText(/推論結果として期待する数字の桁数。異なる桁数は invalid_format として採用しません/)).toBeInTheDocument();
-    expect(screen.getByText(/右から何桁を小数部として扱うか（例: 2 → 12345 は 123.45）/)).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "多数決（majority）" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "連続一致（consecutive）" })).toBeInTheDocument();
+    expect(screen.getByText(/これを超える急な増加は、誤読の可能性があるため採用しません。制限なしの場合はこのチェックを行いません。/)).toBeInTheDocument();
+    expect(screen.getByText(/AIが読み取る数字の桁数です。異なる桁数の読取値は採用しません/)).toBeInTheDocument();
+    expect(screen.getByText(/右端から何桁を小数として扱うかを指定します（例: 1 → 3724644 を 372464\.4 として扱う）/)).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "多数決" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "連続一致" })).toBeInTheDocument();
   });
   it("グループ見出し: 判定の安定化 / 桁・数値形式 / 読取失敗 / 積算値チェック", () => {
     renderPanel({ baseline: status() });
@@ -116,7 +117,7 @@ describe("文言・summary", () => {
     const onChange = renderPanel({ baseline: status() });
     fireEvent.click(screen.getByRole("switch", { name: "安定化" }));
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ enabled: false }));
-    fireEvent.click(screen.getByRole("switch", { name: "積算値の減少を検出する" }));
+    fireEvent.click(screen.getByRole("switch", { name: "積算値の減少チェック" }));
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ monotonic: false }));
   });
 });
@@ -146,7 +147,7 @@ describe("コンパクトなレイアウト(入力欄の幅・列数・高さ)",
     expect(decl('.settings-tab .reading-setting-field input[type="number"]', "width")).toBe("7rem");
     expect(decl('.settings-tab .reading-setting-field.compact-wide input[type="number"]', "width")).toBe("10rem");
     expect(parseFloat(decl('.settings-tab .reading-setting-field.compact-wide input[type="number"]', "width")!)).toBeLessThanOrEqual(12);
-    expect(document.querySelectorAll(".reading-setting-field.compact-wide")).toHaveLength(3); // 最大変化率・連続読取失敗許容回数・判定方式
+    expect(document.querySelectorAll(".reading-setting-field.compact-wide")).toHaveLength(6); // 判定に使う直近読取回数・採用に必要な一致回数・最低信頼度・連続失敗回数・最大増加量・判定方式
   });
   it("10. 通常幅では2〜4列のgrid(max-contentの列)で横並び", () => {
     expect(decl(".reading-settings-grid", "display")).toBe("grid");
@@ -167,7 +168,7 @@ describe("コンパクトなレイアウト(入力欄の幅・列数・高さ)",
     renderPanel({ baseline: status() });
     const advanced = document.querySelector("details.rs-advanced") as HTMLDetailsElement;
     expect(advanced.open).toBe(false); // 小数点位置の長い説明は「詳細設定」の中(閉じている)
-    expect(advanced.textContent).toContain("先頭の0は確定値");
+    expect(advanced.textContent).toContain("先頭の0は正式値");
     expect(document.querySelectorAll("details.rs-more")).toHaveLength(0);
     for (const hint of document.querySelectorAll(".rs-hint")) if (!hint.closest(".rs-advanced")) expect(hint.textContent!.length).toBeLessThan(140);
     expect(decl(".rs-hint", "font-size")).toBe("11px");

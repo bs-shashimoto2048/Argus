@@ -214,14 +214,14 @@ describe("計測履歴: 時刻グループ(すべてのモニターのときだ�
     expect(value(".history-table.grouped tbody tr.group-start td", "border-top")).toBe("2px solid #cbd5e1");
   });
 
-  it("警告・異常などの状態強調は、時刻グループの背景より優先される(carried_forward / 基準値競合 / 読取異常)", async () => {
+  it("警告・異常などの状態強調は、時刻グループの背景より優先される(carried_forward / 読取基準値との不一致 / 読取異常)", async () => {
     mocks();
     renderApp("/history");
     await waitFor(() => expect(dataRows()).toHaveLength(9));
     const row = (id: number) => document.querySelector(`tr[data-record-id="${id}"]`) as HTMLElement;
     expect(row(23)).toHaveClass("row-state-caution"); // carried_forward
     expect(row(23)).toHaveClass("row-carried");
-    expect(row(21)).toHaveClass("row-state-danger"); // 基準値競合
+    expect(row(21)).toHaveClass("row-state-danger"); // 読取基準値との不一致
     expect(row(12)).toHaveClass("row-state-danger"); // 読取異常
     expect(row(33)).not.toHaveClass("row-state-caution"); // 正常な行には状態の強調なし
     // 状態の背景ルールは、グループ背景ルールと同じ詳細度で、後に宣言されている(同じ詳細度なら後勝ち) → 優先される
@@ -330,11 +330,11 @@ describe("Monitor Detail「設定」タブ: 2カラム・セクション整理�
     expect(within(section("推論エンジン / モデル")).getByText("cpp_onnx / digital_production_v1.onnx")).toBeInTheDocument();
     expect(within(section("基本情報")).getByText("エネセン内ガスメータ用１ / Monitor ID 3")).toBeInTheDocument();
     // 開くと中身(設定項目)が現れる。機能は削除されていない
-    expect(within(section("読取安定化設定")).getByLabelText(/判定ウィンドウ/)).not.toBeVisible(); // 閉じている間は非表示
+    expect(within(section("読取安定化設定")).getByLabelText(/判定に使う直近読取回数/)).not.toBeVisible(); // 閉じている間は非表示
     await user.click(header("読取安定化設定"));
     expect(header("読取安定化設定")).toHaveAttribute("aria-expanded", "true");
-    expect(within(section("読取安定化設定")).getByLabelText(/判定ウィンドウ/)).toBeVisible();
-    expect(within(section("読取安定化設定")).getByLabelText(/必要一致数/)).toBeVisible();
+    expect(within(section("読取安定化設定")).getByLabelText(/判定に使う直近読取回数/)).toBeVisible();
+    expect(within(section("読取安定化設定")).getByLabelText(/採用に必要な一致回数/)).toBeVisible();
   });
 
   it("セクションを開閉しても、列とタブの構造(横位置を決めるDOM)は変わらない", async () => {
@@ -368,7 +368,7 @@ describe("Monitor Detail「設定」タブ: 2カラム・セクション整理�
     expect(screen.getByLabelText("推論FPS")).toHaveValue(1);
     expect(screen.getByRole("button", { name: "前処理を編集" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "ROIを編集" })).toBeInTheDocument();
-    expect(screen.getByLabelText(/最大変化率/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/1分あたりの最大増加量/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "設定を保存" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "基本情報を保存" })).toBeInTheDocument();
   });

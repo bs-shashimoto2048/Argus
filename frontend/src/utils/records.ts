@@ -114,17 +114,17 @@ export type RecordState = { key: string; label: string; tone: RecordTone };
 
 /**
  * 記録の元値(display_status / validation_status / value_source / baseline_conflict)を、運用者向けの
- * 1つの状態へ変換する。優先順位: 通信異常・停止 > 基準値競合 > 読取異常 > 前回確定値を保持 > 要確認 > 正常。
+ * 1つの状態へ変換する。優先順位: 通信異常・停止 > 読取基準値との不一致 > 読取異常 > 直前の正式値を継続使用 > 要確認 > 正常。
  * 元値そのものは詳細Drawerで確認できる。
  */
 export function recordState(record: Pick<ReadingRecord, "display_status" | "validation_status" | "value_source" | "baseline_conflict">): RecordState {
   const display = record.display_status;
   if (display === "error" || display === "reconnecting" || display === "connecting") return { key: "comm_error", label: "通信異常", tone: "danger" };
   if (display === "stopped") return { key: "stopped", label: "停止中", tone: "muted" };
-  if (record.baseline_conflict) return { key: "baseline_conflict", label: "基準値競合", tone: "danger" };
+  if (record.baseline_conflict) return { key: "baseline_conflict", label: "基準値と不一致", tone: "danger" };
   if (display === "read_error") return { key: "read_error", label: "読取異常", tone: "danger" };
-  if (record.value_source === "carried_forward") return { key: "carried_forward", label: "前回確定値を保持", tone: "caution" };
-  if (record.value_source === "none") return { key: "no_value", label: "値なし", tone: "muted" };
+  if (record.value_source === "carried_forward") return { key: "carried_forward", label: "直前の正式値を継続使用", tone: "caution" };
+  if (record.value_source === "none") return { key: "no_value", label: "正式値なし", tone: "muted" };
   if (display === "warning" || record.validation_status === "low_confidence") return { key: "warning", label: "要確認", tone: "caution" };
   return { key: "normal", label: "正常", tone: "ok" };
 }
@@ -133,7 +133,7 @@ export const displayStatusLabels: Record<string, string> = {
   normal: "正常", warning: "要確認", read_error: "読取不能", error: "通信異常", reconnecting: "再接続中", connecting: "接続中", stopped: "停止中",
 };
 export const valueSourceLabels: Record<string, string> = {
-  confirmed: "確定(confirmed)", carried_forward: "前回確定値を保持(carried_forward)", none: "値なし(none)",
+  confirmed: "今回のAI読取値を採用", carried_forward: "直前の正式値を継続使用", none: "正式値なし",
 };
 
 // --- 記録画像 -----------------------------------------------------------------

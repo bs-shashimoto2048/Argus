@@ -31,7 +31,7 @@ export function RecordsTable({ items, onOpen, selectedId, hasMore = false, loadi
   return <div className="records-table-wrap" ref={wrapRef} onScroll={() => { if (hasMore && !loadingMore && nearEnd()) onNearEnd?.(); }} data-testid="records-scroll">
     <table className={`records-table history-table${groupByTime ? " grouped" : ""}`}>
       <thead>
-        <tr><th>取得日時</th><th>モニター</th><th className="num">確定値</th><th className="num">前回値</th><th className="num">使用量</th><th className="num">信頼度</th><th>状態</th><th>画像</th><th>詳細</th></tr>
+        <tr><th>取得日時</th><th>モニター</th><th className="num">正式値</th><th className="num">前回値</th><th className="num">使用量</th><th className="num">信頼度</th><th>状態</th><th>画像</th><th>詳細</th></tr>
       </thead>
       <tbody>
         {rows.map((record, index) => {
@@ -51,12 +51,12 @@ export function RecordsTable({ items, onOpen, selectedId, hasMore = false, loadi
             <td className="cell-monitor" title={record.monitor_name.trim()}>{record.monitor_name.trim()}</td>
             <td className="num c-value">
               <strong className="record-value">{formatValue(record.value)}</strong>
-              {carried && <small className="record-raw" title="記録時点の最新Raw(棄却されたため正式値には使っていません)">Raw {formatValue(record.raw_value)}</small>}
+              {carried && <small className="record-raw" title="記録時点の最新のAI読取値です(採用されなかったため、正式値には使っていません)">AI読取値 {formatValue(record.raw_value)}</small>}
             </td>
             <td className="num c-prev">{formatValue(record.previous_value)}</td>
             <td className="num c-usage">{formatUsage(record.usage)}</td>
             <td className="num c-conf">{formatConfidence(record.confidence)}</td>
-            <td><StateBadge state={state} />{record.is_corrected && <span className="corrected-badge small" title={`元の正式値 ${formatValue(record.original_value)}`}>修正済み</span>}</td>
+            <td><StateBadge state={state} />{record.is_corrected && <span className="corrected-badge small" title={`元の正式値 ${formatValue(record.original_value)}`}>運用者修正</span>}</td>
             <td>{hasImage(record) ? <button type="button" className="link-button" onClick={() => onOpen(record)}>画像</button> : <span className="muted small" title={record.image_error ?? undefined}>{imageStatusLabels[record.image_status]}</span>}</td>
             <td><button type="button" className="secondary small-button" onClick={() => onOpen(record)} aria-label={`${formatRecordTime(record.recorded_at)} ${record.monitor_name.trim()} の詳細`}>詳細</button></td>
           </tr>;

@@ -22,7 +22,7 @@ describe("履歴・データ: 取得とフィルタ", () => {
     renderApp("/history");
     await screen.findByText("1時間ごとの計測履歴");
     const headers = (await screen.findAllByRole("columnheader")).map((h) => h.textContent);
-    expect(headers).toEqual(["取得日時", "モニター", "確定値", "前回値", "使用量", "信頼度", "状態", "画像", "詳細"]);
+    expect(headers).toEqual(["取得日時", "モニター", "正式値", "前回値", "使用量", "信頼度", "状態", "画像", "詳細"]);
     expect(document.querySelectorAll(".records-table tbody tr")).toHaveLength(3);
     const row = document.querySelector('tr[data-record-id="2"]') as HTMLElement; // 「すべてのモニター」では時刻グループ→Monitor順に並ぶため、idで特定する
     expect(within(row).getByText("10/08 19:00")).toBeInTheDocument(); // UTC 10:00 → JST 19:00
@@ -91,15 +91,15 @@ describe("履歴・データ: 取得とフィルタ", () => {
 });
 
 describe("carried_forward の表示", () => {
-  it("履歴で「前回確定値を保持」バッジ・行の強調・棄却されたRawを表示する(正式値は value)", async () => {
+  it("履歴で「直前の正式値を継続使用」バッジ・行の強調・棄却されたRawを表示する(正式値は value)", async () => {
     standardMocks([recordsHandler()]);
     renderApp("/history");
     await screen.findByText("215858");
     const row = document.querySelector('tr[data-record-id="3"]') as HTMLElement;
     expect(row).toHaveClass("row-carried");
-    expect(within(row).getByText("前回確定値を保持")).toBeInTheDocument();
+    expect(within(row).getByText("直前の正式値を継続使用")).toBeInTheDocument();
     expect(within(row).getByText("215858")).toBeInTheDocument();
-    expect(within(row).getByText("Raw 0215850")).toBeInTheDocument();
+    expect(within(row).getByText("AI読取値 0215850")).toBeInTheDocument();
     expect(within(row).getByText("エネセン内ガスメータ用１")).toBeInTheDocument();
     expect(document.querySelector('tr[data-record-id="2"]')).not.toHaveClass("row-carried");
   });
@@ -115,14 +115,15 @@ describe("記録画像Drawer", () => {
     await user.click(within(row).getByRole("button", { name: /詳細/ }));
     const drawer = await screen.findByRole("dialog", { name: "計測記録の詳細" });
     expect(within(drawer).getByRole("img", { name: "記録時の元画像" })).toHaveAttribute("src", "/api/records/3/image/original");
-    expect(within(drawer).getByText("decrease_detected")).toBeInTheDocument(); // validation_status
-    expect(within(drawer).getByText("前回確定値を保持(carried_forward)")).toBeInTheDocument(); // value_source
+    expect(within(drawer).getByText("読取基準値より小さいため不採用")).toBeInTheDocument(); // 読取結果(内部名は出さない)
+    expect(within(drawer).getAllByText("直前の正式値を継続使用").length).toBeGreaterThan(0); // value_source
     expect(within(drawer).getByText("0215850")).toBeInTheDocument(); // Raw
-    expect(within(drawer).getByText("正常(normal)")).toBeInTheDocument(); // display_status
+    expect(within(drawer).getByText("正常")).toBeInTheDocument(); // display_status
     expect(within(drawer).getByText("なし")).toBeInTheDocument(); // baseline_conflict
     expect(within(drawer).getByText("cpp_onnx")).toBeInTheDocument();
     expect(within(drawer).getByText("digital_production_v1.onnx")).toBeInTheDocument();
-    expect(within(drawer).getByRole("note")).toHaveTextContent("採用せず");
+    expect(within(drawer).getByRole("note")).toHaveTextContent("採用されませんでした");
+    expect(within(drawer).getByRole("note")).not.toHaveTextContent("decrease_detected");
     await user.click(within(drawer).getByRole("tab", { name: "推論結果画像" }));
     expect(within(drawer).getByRole("img", { name: "記録時の推論結果画像" })).toHaveAttribute("src", "/api/records/3/image/overlay");
     await user.click(within(drawer).getByRole("button", { name: "閉じる" }));

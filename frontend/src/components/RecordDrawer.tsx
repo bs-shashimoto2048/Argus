@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { CorrectionResult, ReadingRecord, RecordCorrection } from "../types";
-import { displayStatusLabels, formatConfidence, formatRecordDateTimeFull, formatValue, imageUnavailableMessage, limitImageUpscale, recordState, valueSourceLabels } from "../utils/records";
+import { displayStatusLabels, formatConfidence, formatRecordDateTimeFull, formatValue, imageUnavailableMessage, limitImageUpscale, recordState } from "../utils/records";
+import { AI_VALUE_HELP, CARRIED_TITLE, OFFICIAL_VALUE_HELP, VALUE_SOURCE_TITLE, carriedNoteBody, validationStatusLabel, valueSourceDescription, valueSourceLabel } from "../utils/readingLabels";
 import { CorrectionDialog } from "./CorrectionDialog";
 import { StateBadge } from "./StateBadge";
 
@@ -34,37 +35,46 @@ export function RecordDrawer({ record, onClose, onCorrected }: Props) {
   const unavailable = imageUnavailableMessage(record, kind);
   const state = recordState(record);
   const carried = record.value_source === "carried_forward";
-  const sourceLabel = valueSourceLabels[record.value_source] ?? record.value_source;
   const rows: [string, string][] = [
     ["記録日時", formatRecordDateTimeFull(record.recorded_at)],
     ["推論時刻", record.inference_at ? formatRecordDateTimeFull(record.inference_at) : "--（同一tick保証なしの記録）"],
     ["モニター", record.monitor_name.trim()],
-    ["正式確定値", formatValue(record.value)],
+    ["正式値", formatValue(record.value)],
     ...(record.is_corrected ? [["元の正式値", formatValue(record.original_value)] as [string, string]] : []),
-    ["前回値", formatValue(record.previous_value)],
-    ["使用量", formatValue(record.usage)],
-    ["最新推論値（Raw）", formatValue(record.raw_value)],
+    ["1時間前の正式値", formatValue(record.previous_value)],
+    ["使用量（前回との差）", formatValue(record.usage)],
+    ["最新のAI読取値", formatValue(record.raw_value)],
+    ["AI読取値の信頼度", formatConfidence(record.raw_confidence)],
     ["正式値の信頼度", formatConfidence(record.confidence)],
-    ["最新推論値の信頼度", formatConfidence(record.raw_confidence)],
-    ["読取判定", formatValue(record.validation_status)],
-    ["値の由来", record.is_corrected ? `${sourceLabel} → 手動修正済み` : sourceLabel],
-    ["表示状態", `${displayStatusLabels[record.display_status] ?? record.display_status}(${record.display_status})`],
-    ["基準値競合", record.baseline_conflict ? "あり" : "なし"],
-    ["推論エンジン", formatValue(record.engine)],
-    ["モデル", formatValue(record.model_id)],
+    ["読取結果", validationStatusLabel(record.validation_status)],
+    [VALUE_SOURCE_TITLE, valueSourceLabel(record.value_source, record.is_corrected)],
+    ["モニター状態", displayStatusLabels[record.display_status] ?? "状態を確認してください"],
+    ["読取基準値との不一致", record.baseline_conflict ? "あり" : "なし"],
+    ["AI読取方式", formatValue(record.engine)],
+    ["使用モデル", formatValue(record.model_id)],
   ];
   return <>
     <div className="drawer-backdrop" onClick={onClose} aria-hidden="true" />
     <aside className="record-drawer" role="dialog" aria-modal="true" aria-label="計測記録の詳細">
       <div className="drawer-head">
-        <div><h2>計測記録の詳細</h2><StateBadge state={state} />{record.is_corrected && <span className="corrected-badge" title={`元の正式値 ${formatValue(record.original_value)}`}>修正済み{record.correction_count > 1 ? `（${record.correction_count}回）` : ""}</span>}</div>
+        <div><h2>計測記録の詳細</h2><StateBadge state={state} />{record.is_corrected && <span className="corrected-badge" title={`元の正式値 ${formatValue(record.original_value)}`}>運用者修正{record.correction_count > 1 ? `（${record.correction_count}回）` : ""}</span>}</div>
         <button type="button" className="icon-button" onClick={onClose} aria-label="閉じる">×</button>
       </div>
       <div className="drawer-value">
-        <small>正式確定値</small>
+        <small title={OFFICIAL_VALUE_HELP}>正式値</small>
         <strong>{formatValue(record.value)}</strong>
-        {carried && <div className="carried-note" role="note">前回確定値を保持 — 記録時点の最新Raw（{formatValue(record.raw_value)}）は{formatValue(record.validation_status)}のため採用せず、それ以前に確定済みの値を正式値としました。</div>}
-        {record.is_corrected && <div className="corrected-note" role="note">手動修正済み: 元の正式値 {formatValue(record.original_value)} → {formatValue(record.value)}（{record.corrected_by ?? "--"}、{record.corrected_at ? formatRecordDateTimeFull(record.corrected_at) : "--"}）。Raw・信頼度・読取判定・画像は記録時のままです。</div>}
+        <span className="muted tiny drawer-value-help">{OFFICIAL_VALUE_HELP}</span>
+        {carried && <div className="carried-note" role="note"><strong>{CARRIED_TITLE}</strong><p>{carriedNoteBody(record)}</p></div>}
+        {record.is_corrected && <div className="corrected-note" role="note">
+          <strong>運用者が正式値を確認・修正しました</strong>
+          <dl className="corrected-facts">
+            <div><dt>元の正式値</dt><dd>{formatValue(record.original_value)}</dd></div>
+            <div><dt>修正後の正式値</dt><dd>{formatValue(record.value)}</dd></div>
+            <div><dt>操作者</dt><dd>{record.corrected_by ?? "--"}</dd></div>
+            <div><dt>日時</dt><dd>{record.corrected_at ? formatRecordDateTimeFull(record.corrected_at) : "--"}</dd></div>
+          </dl>
+          <p>AI読取値・信頼度・画像などの記録時証跡は変更されていません。</p>
+        </div>}
         {record.correctable && onCorrected && <button type="button" className="secondary correct-button" onClick={() => setCorrecting(true)}>読取値を修正</button>}
       </div>
       <div className="drawer-tabs" role="tablist" aria-label="記録画像の種類">
@@ -85,7 +95,7 @@ export function RecordDrawer({ record, onClose, onCorrected }: Props) {
           {history.map((item) => <li key={item.id}>
             <div className="correction-line"><strong>{formatValue(item.old_value)} → {item.new_value}</strong><span>{formatRecordDateTimeFull(item.corrected_at)}</span></div>
             <div className="muted small">{item.operator} / {item.reason}</div>
-            <div className="muted small">使用量 {formatValue(item.old_usage)} → {formatValue(item.new_usage)}{item.context && (item.context as { rebase?: { performed?: boolean } }).rebase?.performed ? " / 読取基準値も再設定" : ""}</div>
+            <div className="muted small">使用量 {formatValue(item.old_usage)} → {formatValue(item.new_usage)}{item.context && (item.context as { rebase?: { performed?: boolean } }).rebase?.performed ? " / 読取基準値も変更" : ""}</div>
           </li>)}
         </ol>}
       </section>}

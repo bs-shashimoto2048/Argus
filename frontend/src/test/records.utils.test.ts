@@ -34,11 +34,11 @@ describe("表示", () => {
   it("運用者向け状態への変換", () => {
     const base = record({ id: 1 });
     expect(recordState(base).label).toBe("正常");
-    expect(recordState({ ...base, value_source: "carried_forward", validation_status: "decrease_detected" }).label).toBe("前回確定値を保持");
+    expect(recordState({ ...base, value_source: "carried_forward", validation_status: "decrease_detected" }).label).toBe("直前の正式値を継続使用");
     expect(recordState({ ...base, validation_status: "low_confidence", display_status: "warning" }).label).toBe("要確認");
     expect(recordState({ ...base, display_status: "error" }).label).toBe("通信異常");
     expect(recordState({ ...base, display_status: "read_error" }).label).toBe("読取異常");
-    expect(recordState({ ...base, baseline_conflict: true }).label).toBe("基準値競合");
+    expect(recordState({ ...base, baseline_conflict: true }).label).toBe("基準値と不一致");
     expect(recordState({ ...base, display_status: "stopped", value_source: "none" }).label).toBe("停止中");
   });
   it("画像の有無の説明", () => {
