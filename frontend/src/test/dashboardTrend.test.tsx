@@ -247,9 +247,10 @@ describe("計測履歴テーブル: 各列は折り返さない最小幅", () =>
     expect(value(".records-table th", "position")).toBe("sticky");
     expect(value(".records-table-wrap", "overflow")).toBe("auto");
   });
-  it("1366x768相当: 履歴sectionの最小高さが確保され、表の領域は残りを使う", () => {
-    expect(parseInt(value(".dashboard-page .records-section", "min-height")!)).toBeGreaterThanOrEqual(280);
-    expect(value(".dashboard-page .records-area", "flex")).toBe("1 1 0");
+  it("1366x768相当: 履歴sectionは固定の最小高さを持たず、表の領域は約3〜4時間分のclamp高さ(最小230px)", () => {
+    expect(value(".dashboard-page .records-section", "min-height")).toBe("0");
+    expect(value(".dashboard-page .records-area", "flex")).toBe("0 0 auto");
+    expect(parseInt(/clamp\((\d+)px/.exec(value(".dashboard-page .records-area", "height")!)![1])).toBeGreaterThanOrEqual(230);
   });
 });
 
