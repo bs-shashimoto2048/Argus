@@ -88,7 +88,7 @@ def test_record_due_creates_one_record_per_enabled_monitor_with_source(db):
     assert record.hour_bucket == "2026-10-08T14:00:00+09:00"  # 毎時00分の計測枠(JST)
     assert record.recorded_at == datetime(2026, 10, 8, 5, 0, 5)  # 実際の記録時刻(naive UTC)
     assert (record.value, record.numeric_value, record.display_status, record.baseline_conflict) == ("265754", "265754", "normal", False)
-    assert (record.previous_value, record.usage) == (None, None)
+    assert (record.previous_value, record.usage) == (None, "0")
     assert record.confidence == 0.95 and record.engine == "cpp_onnx" and record.model_id == "digital_production_v1.onnx"
     assert record.monitor_name == ok.display_name  # 記録時点の表示名のスナップショット
     assert (record.original_image_path, record.overlay_image_path, record.image_status) == (None, None, "disabled")  # 画像保存が無効の場合
@@ -219,19 +219,19 @@ def test_usage_is_the_difference_from_the_previous_hourly_value(db):
     set_latest(db, monitor, value="372412.4")
     svc.record_due(db, jst(15, 0, 5))
     first, second = records_of(db, monitor.id)
-    assert (first.previous_value, first.usage) == (None, None)
+    assert (first.previous_value, first.usage) == (None, "0")
     assert (second.previous_value, second.usage) == ("372411.9", "0.5")
     set_latest(db, monitor, value="372412.4")
     svc.record_due(db, jst(16, 0, 5))
     assert records_of(db, monitor.id)[2].usage == "0.0"  # 変化なしは0(欠損ではない)
 
 
-def test_usage_is_null_without_a_previous_hour_record(db):
+def test_usage_is_zero_without_a_previous_hour_record(db):  # 前回recordが存在しない=連続計測区間の開始点(読取失敗ではない)
     monitor = make_monitor(db, value="265754")
     svc.record_due(db, jst(14, 0, 5))
     svc.record_due(db, jst(16, 0, 5))  # 15時の記録が無い(欠損)
     first, second = records_of(db, monitor.id)
-    assert (second.previous_value, second.usage) == (None, None)
+    assert (second.previous_value, second.usage) == (None, "0")  # 14時との差は計上しない
 
 
 def test_usage_is_null_when_the_value_decreased(db):

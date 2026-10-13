@@ -921,6 +921,12 @@ body { overflow-x: hidden; }
 .trend-tooltip strong { display: block; font-variant-numeric: tabular-nums; }
 .trend-tooltip i { display: inline-block; width: 9px; height: 9px; margin-right: 6px; border-radius: 2px; }
 .trend-note { margin-top: 2px; font-size: 11.5px; }
+.trend-svg { cursor: crosshair; touch-action: none; }
+.trend-svg.zoomed { cursor: grab; }
+.trend-svg.zoomed.dragging { cursor: grabbing; }
+.trend-svg:focus-visible { outline: 2px solid var(--color-primary, #2563eb); outline-offset: 1px; border-radius: 4px; }
+.trend-head .trend-reset { height: 28px; padding: 0 10px; font-size: 12.5px; }
+.trend-hint { margin-top: 1px; font-size: 11px; text-align: right; user-select: none; }
 
 /* 計測履歴(Dashboard): グラフの下の残り高さを使う。最低でも数行(ヘッダー + 約7行)が見える高さを確保する */
 .dashboard-page .records-section { min-height: 330px; }

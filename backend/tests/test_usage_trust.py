@@ -46,16 +46,16 @@ def test_case2_next_confirmed_record_recovers(client, db):
     assert body["next_record"]["record_id"] and body["recomputed_records"][0]["new_usage"] == "5"
 
 
-def test_case3_untrusted_carried_forward_in_between_keeps_usage_null(client, db):
+def test_case3_carried_forward_continuing_a_corrected_value_is_trusted(client, db):
     m = make_monitor(db)
     add_record(db, m, 14, "100")
     r15 = cf(db, m, 15, "100")
     cf(db, m, 16, "105")
     add_record(db, m, 17, "112", usage=None)
     assert correct(client, r15.id, value="105").status_code == 200
-    # 15:00=修正済み → usage 5。16:00=未修正のcarried_forward → null(0と計算しない)。17:00は直前が未修正 → null(3時間分を計上しない)
+    # 15:00=修正済み(運用者確認済みのanchor) → usage 5。16:00=anchorと同じ値を保持し続けるcarried_forward → 0(確認済み正式値の継続)。17:00=新しいConfirmed値 → 継続値105との差7
     result = usages(db, m)
-    assert (result[15], result[16], result[17]) == ("5", None, None)
+    assert (result[15], result[16], result[17]) == ("5", "0", "7")
 
 
 def test_case4_correcting_the_untrusted_record_recovers_in_order(client, db):

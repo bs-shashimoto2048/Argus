@@ -107,3 +107,47 @@ export function niceTicks(min: number, max: number, count = 4): number[] {
 /** グラフ取得の上限(1回1000件 x 最大ページ数)。これを超える期間は新しい側だけを描き、注記する。 */
 export const TREND_PAGE = 1000;
 export const TREND_MAX_PAGES = 20;
+
+// --- X方向のズーム・パン ---------------------------------------------------------
+/** 最小表示幅(1時間)。データ全体がこれより短い場合は、データ全体の幅が上限=下限になる。 */
+export const MIN_VIEW_SPAN_MS = 3600_000;
+export type TimeView = { min: number; max: number };
+
+/** 表示範囲を[dataMin, dataMax]の内側・最小幅〜全体幅へ収める(幅を保ったまま端で止める。空白領域を作らない)。 */
+export function clampView(view: TimeView, dataMin: number, dataMax: number, minSpan = MIN_VIEW_SPAN_MS): TimeView {
+  const dataSpan = dataMax - dataMin;
+  const span = Math.min(dataSpan, Math.max(Math.min(minSpan, dataSpan), view.max - view.min));
+  const min = Math.min(Math.max(view.min, dataMin), dataMax - span);
+  return { min, max: min + span };
+}
+
+/** anchorの時刻(カーソル位置)を画面上の同じ位置に保ったまま、表示幅を factor 倍にする(factor<1で拡大)。 */
+export function zoomView(view: TimeView, anchor: number, factor: number, dataMin: number, dataMax: number, minSpan = MIN_VIEW_SPAN_MS): TimeView {
+  const span = view.max - view.min;
+  const ratio = span > 0 ? (anchor - view.min) / span : 0.5;
+  const next = Math.min(dataMax - dataMin, Math.max(Math.min(minSpan, dataMax - dataMin), span * factor));
+  const min = anchor - ratio * next;
+  return clampView({ min, max: min + next }, dataMin, dataMax, minSpan);
+}
+
+/** 表示範囲を deltaMs だけ動かす(正=未来側)。端で止まる。 */
+export function panView(view: TimeView, deltaMs: number, dataMin: number, dataMax: number, minSpan = MIN_VIEW_SPAN_MS): TimeView {
+  return clampView({ min: view.min + deltaMs, max: view.max + deltaMs }, dataMin, dataMax, minSpan);
+}
+
+const JST_OFFSET_MS = 9 * 3600_000;
+const TICK_STEPS_MS = [5, 10, 15, 30, 60, 120, 180, 360, 720, 1440, 2880].map((m) => m * 60_000);
+
+/** 表示範囲に応じたX軸目盛(JSTの区切りに揃えた時刻)。maxCount個以内で、最も細かい刻みを選ぶ。 */
+export function timeTicks(min: number, max: number, maxCount: number): number[] {
+  const at = (step: number) => {
+    const ticks: number[] = [];
+    for (let t = Math.ceil((min + JST_OFFSET_MS) / step) * step - JST_OFFSET_MS; t <= max; t += step) ticks.push(t);
+    return ticks;
+  };
+  for (const step of TICK_STEPS_MS) {
+    const ticks = at(step);
+    if (ticks.length <= maxCount) return ticks.length >= 2 ? ticks : [min, max];
+  }
+  return [min, max];
+}
