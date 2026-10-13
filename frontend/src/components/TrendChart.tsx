@@ -12,6 +12,7 @@ const MARGIN = { top: 10, right: 14, bottom: 22, left: 58 };
 const DEFAULT_WIDTH = 900;
 const WHEEL_ZOOM_RATE = 0.002; // wheelのdeltaY(px)1あたりの拡大・縮小率(指数)。タッチパッドの細かいdeltaでも滑らかに動く
 const KEY_ZOOM_FACTOR = 0.7; // キーボードの + / - 1回あたりの表示幅の倍率
+const MIDDLE_DOUBLE_CLICK_MS = 400; // ホイールボタンを2回押したとみなす間隔
 const KEY_PAN_RATIO = 0.2; // キーボードの ← / → 1回あたりの移動量(表示幅に対する割合)
 
 /** イベント印の描画フック。nullを返すと描かない。将来の印(基準値競合など)はここへ差し込む。 */
@@ -55,6 +56,7 @@ export function TrendChart({ monitors, filter, refreshMs, reloadToken = 0, rende
   const [dragging, setDragging] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  const lastMiddleDown = useRef(0); // ホイールボタン(中ボタン)を最後に押した時刻(2回押しの判定用)
   const geometry = useRef({ dataMin: 0, dataMax: 1, view: { min: 0, max: 1 } as TimeView, plotW: 100, width: DEFAULT_WIDTH });
   const generation = useRef(0);
   const clipId = `${useId().replace(/:/g, "")}-plot`;
@@ -187,8 +189,16 @@ export function TrendChart({ monitors, filter, refreshMs, reloadToken = 0, rende
     return () => svg.removeEventListener("wheel", onWheel);
   }, [hasChart]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ホイールボタン(中ボタン)の2回押し(MIDDLE_DOUBLE_CLICK_MS以内)で全体表示へ戻す。ブラウザは中ボタンのdblclickを安定して発火しないため、
+  // mousedownの間隔で判定する。単クリックでは何もしない。オートスクロールの起動だけ、グラフ上でのみ抑止する。
+  const onMiddleDown = (e: React.MouseEvent<SVGSVGElement>) => {
+    e.preventDefault();
+    if (e.timeStamp - lastMiddleDown.current <= MIDDLE_DOUBLE_CLICK_MS) { lastMiddleDown.current = 0; resetZoom(); } else lastMiddleDown.current = e.timeStamp;
+  };
+
   // 左ボタンのドラッグでX方向へパン(紙を掴んで動かす向き: 右へドラッグ=過去側へ)。Y方向の動きは無視する。
   const onMouseDown = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (e.button === 1) { onMiddleDown(e); return; }
     if (e.button !== 0 || !zoomed) return;
     e.preventDefault();
     svgRef.current?.focus(); // preventDefaultでfocusされなくなるため(キーボード操作のため)
@@ -235,7 +245,7 @@ export function TrendChart({ monitors, filter, refreshMs, reloadToken = 0, rende
         {([["usage", "使用量"], ["delta", "累積増加量"], ["value", "実値"]] as const).map(([key, label]) => <button type="button" key={key} className={`segment${metric === key ? " active" : ""}`} aria-pressed={metric === key} onClick={() => setMetric(key)}>{label}</button>)}
       </span>
       <span className="trend-condition muted" title="Monitor・期間は計測履歴と共通です">{conditionText}</span>
-      <button type="button" className="btn trend-reset" disabled={!zoomed} onClick={resetZoom} title="時間軸を期間全体の表示へ戻す(グラフ上のダブルクリック / 0キーでも可)">全体表示</button>
+      <button type="button" className="btn trend-reset" disabled={!zoomed} onClick={resetZoom} title="時間軸を期間全体の表示へ戻す(グラフ上のダブルクリック・ホイールボタン2回 / 0キーでも可)">全体表示</button>
       {series.length > 0 && <ul className="trend-legend" aria-label="凡例">
         {series.map((s, i) => <li key={s.monitor_id}><i style={{ background: seriesColor(i) }} aria-hidden="true" />{s.name}</li>)}
         {missing.length > 0 && <li className="legend-event legend-missing"><i className="marker-cross" aria-hidden="true">×</i>値無し</li>}
@@ -249,7 +259,7 @@ export function TrendChart({ monitors, filter, refreshMs, reloadToken = 0, rende
       {!invalid && !error && records === null && <div className="trend-empty">読み込み中…</div>}
       {!invalid && records !== null && series.length === 0 && <div className="trend-empty">この条件に該当する計測記録はありません。</div>}
       {!invalid && records !== null && series.length > 0 && <>
-        <svg ref={svgRef} className={`trend-svg${zoomed ? " zoomed" : ""}${dragging ? " dragging" : ""}`} width={width} height={HEIGHT} viewBox={`0 0 ${width} ${HEIGHT}`} role="img" tabIndex={0} aria-label={`${metricLabel}の推移。${summary}`} aria-keyshortcuts="ArrowLeft ArrowRight + - 0" data-view-min={Math.round(tMin)} data-view-max={Math.round(tMax)} data-data-min={Math.round(dataMin)} data-data-max={Math.round(dataMax)} onMouseMove={onMove} onMouseLeave={() => setHover(null)} onMouseDown={onMouseDown} onDoubleClick={resetZoom} onKeyDown={onKeyDown} data-testid="trend-svg">
+        <svg ref={svgRef} className={`trend-svg${zoomed ? " zoomed" : ""}${dragging ? " dragging" : ""}`} width={width} height={HEIGHT} viewBox={`0 0 ${width} ${HEIGHT}`} role="img" tabIndex={0} aria-label={`${metricLabel}の推移。${summary}`} aria-keyshortcuts="ArrowLeft ArrowRight + - 0" data-view-min={Math.round(tMin)} data-view-max={Math.round(tMax)} data-data-min={Math.round(dataMin)} data-data-max={Math.round(dataMax)} onMouseMove={onMove} onMouseLeave={() => setHover(null)} onMouseDown={onMouseDown} onAuxClick={(e) => { if (e.button === 1) e.preventDefault(); }} onDoubleClick={resetZoom} onKeyDown={onKeyDown} data-testid="trend-svg">
           <defs><clipPath id={clipId}><rect x={MARGIN.left} y={MARGIN.top} width={plotW} height={plotH} /></clipPath></defs>
           {ticks.map((v) => <g key={v}><line x1={MARGIN.left} x2={width - MARGIN.right} y1={py(v)} y2={py(v)} stroke="#e2e8f0" strokeWidth={1} /><text x={MARGIN.left - 6} y={py(v) + 4} textAnchor="end" fontSize={11} fill="#475569">{fmtNumber(v)}</text></g>)}
           {xTicks.map((t) => <text key={t} x={px(t)} y={HEIGHT - 6} textAnchor="middle" fontSize={11} fill="#475569">{xFormat(t)}</text>)}
@@ -277,7 +287,7 @@ export function TrendChart({ monitors, filter, refreshMs, reloadToken = 0, rende
           {hover != null && <line x1={px(hover)} x2={px(hover)} y1={MARGIN.top} y2={MARGIN.top + plotH} stroke="#94a3b8" strokeDasharray="3 3" />}
         </svg>
         {missing.length > 0 && <div className="trend-missing-note" role="note">{MISSING_VALUE_WARNING}</div>}
-        <div className="trend-hint muted">ホイール: 時間軸を拡大・縮小 / ドラッグ: 移動 / ダブルクリック: 全体表示</div>
+        <div className="trend-hint muted">ホイール: 拡大・縮小 / ドラッグ: 移動 / ダブルクリック・ホイールボタン2回: 全体表示</div>
         {hover != null && <div className="trend-tooltip" style={{ left: Math.min(Math.max(px(hover) + 10, 0), Math.max(0, width - 190)) }} role="status">
           <strong>{fullTime.format(new Date(hover))}</strong>
           {hoverRows.map(({ s, i, p }) => metric === "delta"

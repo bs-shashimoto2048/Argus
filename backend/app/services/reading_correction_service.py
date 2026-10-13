@@ -76,8 +76,8 @@ def _recompute_usage(db: Session, record: ReadingRecord, monitor_created_at: dat
     """記録自身の状況(display_status/baseline conflict/記録時刻)で、使用量を再評価する(null条件は維持される)。"""
     previous = _neighbor(db, record, -1)
     recorded_utc = record.recorded_at.replace(tzinfo=timezone.utc)
-    record.previous_value, usage = evaluate_usage(db, record.monitor_id, monitor_created_at, previous, _decimal(record.numeric_value), record.display_status, bool(record.baseline_conflict), recorded_utc,
-                                                 record.value_source, (record.correction_count or 0) > 0)
+    record.previous_value, usage = evaluate_usage(db, record.monitor_id, monitor_created_at, previous, _decimal(record.numeric_value), record.display_status, recorded_utc,
+                                                 (record.correction_count or 0) > 0)
     return usage
 
 
@@ -96,8 +96,7 @@ def correct_record(db: Session, record_id: int, value: str, reason: str, operato
         new_value, new_numeric = parse_operator_value(value, settings.expected_digits, settings.decimal_position)
     except ValueError as exc:
         raise CorrectionError("INVALID_VALUE", str(exc)) from exc
-    if record.value == new_value:
-        raise CorrectionError("NO_CHANGE", "修正後の値が、現在の正式値と同じです")
+    # 修正後の値が現在の正式値と同じでもよい: 「画像等で確認し、保持している正式値が正しい」と運用者が明示的に確認した監査記録になる。
 
     # 現在の読取基準値(runtimeのbaseline)は、履歴の修正では変更しない。明示的に指定されたときだけ、既存のrebase処理を呼ぶ。
     rebase_info: dict = {"requested": bool(rebase_current_baseline), "performed": False}

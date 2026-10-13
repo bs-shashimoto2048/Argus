@@ -66,6 +66,7 @@ export function CorrectionDialog({ record, onClose, onCorrected }: Props) {
       <div className="correction-form">
         <label>修正後の値（正式値）
           <input value={value} onChange={(e) => setValue(e.target.value)} placeholder="例: 215850 / 372414.3" inputMode="decimal" />
+          <small className="muted same-value-note">現在の正式値と同じ値でも、画像確認済みとして補正履歴を残せます。</small>
         </label>
         {rawCandidate && <button type="button" className="secondary small-button use-raw" onClick={() => setValue(rawCandidate)}>最新推論値 {rawCandidate} を入力</button>}
         <label>修正理由（必須）<input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="例: 画像で桁を確認し、読取の棄却中だったため" /></label>

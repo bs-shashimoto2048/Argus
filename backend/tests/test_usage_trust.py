@@ -1,4 +1,4 @@
-"""usageの「信頼できる正式値」判定と、手動修正後の順次再計算のテスト。一時DBのみ使用する(実運用DBは使わない)。"""
+"""手動修正後のusageの順次再計算のテスト(usageは正式値同士の差。値の由来は問わない)。一時DBのみ使用する(実運用DBは使わない)。"""
 from __future__ import annotations
 
 import io
@@ -9,7 +9,7 @@ from openpyxl import load_workbook
 from sqlalchemy import select
 
 from app.models import ReadingBaselineEvent, ReadingRecord
-from app.services.reading_record_service import is_trusted_record
+from app.services.reading_record_service import is_usage_eligible_record
 from tests.test_record_corrections import add_record, client, correct, db, make_monitor  # noqa: F401  (fixtures)
 
 pytestmark = pytest.mark.integration
@@ -46,14 +46,14 @@ def test_case2_next_confirmed_record_recovers(client, db):
     assert body["next_record"]["record_id"] and body["recomputed_records"][0]["new_usage"] == "5"
 
 
-def test_case3_carried_forward_continuing_a_corrected_value_is_trusted(client, db):
+def test_case3_carried_forward_after_a_correction_uses_the_formal_value_difference(client, db):
     m = make_monitor(db)
     add_record(db, m, 14, "100")
     r15 = cf(db, m, 15, "100")
     cf(db, m, 16, "105")
     add_record(db, m, 17, "112", usage=None)
     assert correct(client, r15.id, value="105").status_code == 200
-    # 15:00=修正済み(運用者確認済みのanchor) → usage 5。16:00=anchorと同じ値を保持し続けるcarried_forward → 0(確認済み正式値の継続)。17:00=新しいConfirmed値 → 継続値105との差7
+    # 15:00=修正済み → usage 5。16:00=同じ値105を保持するcarried_forward → 0。17:00=新しいConfirmed値 → 105との差7
     result = usages(db, m)
     assert (result[15], result[16], result[17]) == ("5", "0", "7")
 
@@ -78,29 +78,28 @@ def test_consecutive_corrected_records_recover_one_by_one(client, db):
     add_record(db, m, 18, "215867", usage=None)
     assert correct(client, r16.id, value="215863").status_code == 200
     result = usages(db, m)
-    assert (result[16], result[17], result[18]) == ("1", None, "0")  # 17は未修正のまま(null)。18は直前が基準にできない → 再開点(0)
+    assert (result[16], result[17], result[18]) == ("1", None, "5")  # 17は215862(修正した16の215863より減少)でnull。18は17の正式値215862との差5
     assert correct(client, r17.id, value="215864").status_code == 200
     result = usages(db, m)
     assert (result[16], result[17], result[18]) == ("1", "1", "3")
 
 
-def test_case5_original_baseline_conflict_is_kept_as_evidence_but_corrected_record_is_trusted(client, db):
+def test_case5_original_baseline_conflict_is_kept_as_evidence_and_does_not_affect_usage(client, db):
     m = make_monitor(db)
     add_record(db, m, 14, "100")
     r15 = add_record(db, m, 15, "100", baseline_conflict=True, value_source="carried_forward", validation_status="rate_exceeded", usage=None)
-    assert not is_trusted_record(db.get(ReadingRecord, r15.id))
+    assert is_usage_eligible_record(db.get(ReadingRecord, r15.id))  # baseline conflictはusage計算の可否に影響しない
     assert correct(client, r15.id, value="104").status_code == 200
     db.expire_all()
     rec = db.get(ReadingRecord, r15.id)
     assert (rec.baseline_conflict, rec.value_source, rec.validation_status, rec.raw_value) == (True, "carried_forward", "rate_exceeded", "0100")  # 元証跡は不変
-    assert is_trusted_record(rec) and rec.usage == "4"
+    assert is_usage_eligible_record(rec) and rec.usage == "4"
 
 
-def test_unmodified_carried_forward_is_never_trusted(db):
+def test_unmodified_carried_forward_is_eligible_when_the_video_and_reading_are_running(db):
     m = make_monitor(db)
-    rec = cf(db, m, 15, "100")
-    assert not is_trusted_record(rec)
-    assert is_trusted_record(add_record(db, m, 16, "101"))
+    assert is_usage_eligible_record(cf(db, m, 15, "100"))
+    assert not is_usage_eligible_record(cf(db, m, 16, "100", display_status="read_error"))  # 連続性を保証できない
 
 
 def test_rebase_to_the_confirmed_value_does_not_break_continuity_but_other_resets_do(client, db):

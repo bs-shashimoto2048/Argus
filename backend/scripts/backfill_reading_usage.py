@@ -1,10 +1,10 @@
-"""既存のreading_recordsへ、usageの新しい再計算ルール(信頼できる正式値)を限定的に適用する開発確認用バックフィル。
+"""既存のreading_recordsへ、usageの再計算ルール(正式値同士の差)を限定的に適用する開発確認用バックフィル。
 
 - 更新するのは派生値の previous_value / usage だけ(value・numeric_value・raw_*・validation_status・value_source・baseline_conflict・
   inference_at・画像パス・修正履歴・baseline履歴は一切変更しない)。
-- 計算は本番と同じ is_trusted_record() / compute_usage()(reading_correction_service._recompute_usage経由)を再利用する(ロジックを複製しない)。
-  今回と直前1時間の両方がtrustedなら usage = 今回 - 直前、どちらかがuntrustedならnull。直前recordが存在しない(今回がtrusted)なら usage=0。修正済み(correction_count>0)はtrusted。
-  未修正のcarried_forwardはuntrusted(usage=null のまま)。
+- 計算は本番と同じ is_usage_eligible_record() / evaluate_usage()(reading_correction_service._recompute_usage経由)を再利用する(ロジックを複製しない)。
+  usage = その時刻の正式値 - 直前1時間の正式値(carried_forward・baseline conflictでも同じ)。直前が基準にできない場合(record欠損・値なし・通信異常等・resetなど)は previous_value=null / usage=0。
+  今回に正式値が無い・対象外ならnull、正式値が減少していればnull(previous_valueは直前の値)。
 - Monitor IDと日付(JST)を必ず指定する(全Monitor・全期間へは適用しない)。dry-runが既定で、--applyで更新する。
 - 対象のDBは ARGUS_DATA_DIR(未設定ならリポジトリの data/)の argus.db。実行時に接続先を表示する。--apply の前に、SQLiteのバックアップを自動で作成する。
 
@@ -29,7 +29,7 @@ from app.core.config import settings as app_settings  # noqa: E402
 from app.core.database import SessionLocal  # noqa: E402
 from app.models import Monitor, ReadingRecord  # noqa: E402
 from app.services.reading_correction_service import _neighbor, _recompute_usage  # noqa: E402
-from app.services.reading_record_service import is_trusted_record  # noqa: E402
+from app.services.reading_record_service import is_usage_eligible_record  # noqa: E402
 
 
 def _backup(db_path: Path) -> Path:
@@ -71,7 +71,7 @@ def main() -> int:
     for record in records:
         before_previous, before_usage = record.previous_value, record.usage
         previous = _neighbor(db, record, -1)
-        trusted, previous_trusted = is_trusted_record(record), is_trusted_record(previous)
+        trusted, previous_trusted = is_usage_eligible_record(record), is_usage_eligible_record(previous)
         after_usage = _recompute_usage(db, record, monitor.created_at)  # previous_valueも同時に設定される
         record.usage = after_usage  # 保存するのはprevious_valueとusageの派生値だけ
         after_previous = record.previous_value
