@@ -1075,3 +1075,14 @@ body { overflow-x: hidden; }
 .carried-note > strong, .corrected-note > strong { display: block; font-size: 13px; line-height: 1.4; }
 .corrected-facts { grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); }
 .corrected-facts dt { white-space: nowrap; }
+
+/* ===== Dashboard専用の画面配分: 映像・現在値 > 使用量推移 > 計測履歴(約4時間分) =====
+   RecordsSectionは履歴・データ/Monitor Detailでも共用するため、履歴の高さはDashboard scopeだけで上書きする(.records-area.compact/.tall自体は変更しない)。 */
+.page.dashboard-page { width: min(100% - 32px, 1640px); }  /* 映像は16:9のcontain表示のため、高さを増やすには幅が必要 */
+.dashboard-page .preview-wrap, .dashboard-page .monitor-card .card-body .preview-wrap { height: clamp(150px, 19vh, 220px); } /* 固定値にしない(旧: clamp(110px, 15vh, 170px)) */
+.dashboard-page .monitor-region { max-height: clamp(260px, 42vh, 470px); } /* 映像が大きくなっても、1〜3台のカードが途中で切れない(4台以上はこの領域内だけスクロール) */
+.dashboard-page .records-section { flex: 0 0 auto; min-height: 0; padding: 8px 14px 3px; }
+.dashboard-page .records-area, .dashboard-page .records-area.compact { flex: 0 0 auto; height: clamp(230px, 28vh, 320px); min-height: 150px; } /* 約3〜4時間分(3台×≒10〜12行)。旧: 残り高さをすべて使う */
+.dashboard-page .history-table td { padding-top: 0; padding-bottom: 0; line-height: 1.2; }
+.dashboard-page .history-table .small-button { padding: 0 9px; line-height: 20px; font-size: 12px; }
+.dashboard-page .history-table th { padding-top: 4px; padding-bottom: 4px; }
