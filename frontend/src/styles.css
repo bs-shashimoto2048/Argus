@@ -1000,3 +1000,51 @@ body { overflow-x: hidden; }
 @keyframes accent-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .records-controls .export-xl-button[aria-busy="true"]::before { animation-duration: 2.4s; } }
 .action-button .btn-plus { font-size: 18px; font-weight: 800; line-height: 1; margin-right: 2px; }
+
+/* 読取安定化設定: 意味単位のグループ(判定の安定化 / 桁・数値形式 / 読取失敗 / 積算値チェック)に分け、短い数値入力はコンパクト幅の横並びにして縦を詰める */
+.reading-settings-body { padding-top: 2px; }
+.rs-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 18px; }
+.rs-group { min-width: 0; padding-top: 2px; margin-top: 2px; border-top: 1px solid var(--color-border); }
+.rs-group.rs-span-2 { grid-column: 1 / -1; }
+.rs-group:first-child { border-top: 0; padding-top: 0; }
+.rs-group h4 { margin: 0 0 1px; font-size: 12px; font-weight: 700; color: var(--color-text-secondary); }
+.rs-group-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 14px; }
+.rs-group-head .rs-admin-note { margin: 0; color: var(--color-text-secondary); font-size: 11px; }
+.reading-settings-grid { display: grid; gap: 3px 16px; align-items: end; }
+.reading-settings-grid.cols-2 { grid-template-columns: repeat(2, minmax(0, max-content)); }
+.reading-settings-grid.cols-3 { grid-template-columns: repeat(3, minmax(0, max-content)); }
+.reading-settings-grid.cols-4 { grid-template-columns: repeat(4, minmax(0, max-content)); }
+.reading-setting-field { display: flex; flex-direction: column; gap: 1px; min-width: 0; margin: 0; font-size: 12px; line-height: 1.25; }
+.settings-tab .collapsible-body label.reading-setting-field { margin: 0; }
+.settings-tab .reading-setting-field input[type="number"] { width: 7rem; max-width: 100%; height: 26px; margin: 0; }
+.settings-tab .reading-setting-field.compact-wide input[type="number"], .settings-tab .reading-setting-field.compact-wide select { width: 10rem; max-width: 100%; height: 26px; margin: 0; }
+.rs-hint { margin: 2px 0 0; color: var(--color-text-secondary); font-size: 11px; line-height: 1.35; }
+.settings-tab .muted.rs-hint { font-size: 11px; }
+.rs-inline { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 2px 16px; }
+.rs-inline .rs-inline-hint { flex: 1 1 14rem; margin: 0 0 2px; min-width: 0; }
+.rs-admin-note { margin-top: 3px; }
+.rs-advanced { margin-top: 3px; font-size: 11.5px; }
+.rs-advanced summary { cursor: pointer; color: var(--color-text-secondary); }
+.rs-advanced .reading-settings-grid { margin-top: 3px; }
+.rs-switch { width: 3.4rem; height: 24px; padding: 0; border: 1px solid var(--color-border-strong); border-radius: 999px; background: var(--color-surface-secondary, #f1f5f9); color: var(--color-text-secondary); font-size: 11.5px; font-weight: 700; cursor: pointer; }
+.rs-switch.on { border-color: #16a34a; background: #16a34a; color: #fff; }
+.rs-switch:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+/* 現在の判定状態(read-only)。設定のinputとは視覚的に分ける */
+.rs-status-card { display: grid; grid-template-columns: repeat(3, minmax(0, max-content)) minmax(0, 1fr); gap: 2px 20px; align-items: end; margin-top: 3px; padding: 3px 10px; border: 1px solid var(--color-border); border-radius: 8px; background: #f1f5f9; font-size: 12px; }
+.rs-status-card.warn { border-color: #fdba74; background: #fff7ed; }
+.rs-status-row { display: flex; flex-direction: column; min-width: 0; }
+.rs-status-row span { color: var(--color-text-secondary); font-size: 10.5px; }
+.rs-status-row strong { font-size: 13.5px; line-height: 1.2; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.rs-status-row strong.neg { color: #c2410c; }
+.rs-status-card.warn .rs-status-judge strong { color: #c2410c; font-size: 12.5px; }
+.rs-status-detail { font-size: 11px; color: var(--color-text-secondary); }
+.rs-status-detail summary { cursor: pointer; }
+@media (max-width: 1100px) {
+  .rs-groups { grid-template-columns: minmax(0, 1fr); }
+  .reading-settings-grid.cols-3, .reading-settings-grid.cols-4 { grid-template-columns: repeat(2, minmax(0, max-content)); }
+  .rs-status-card { grid-template-columns: repeat(2, minmax(0, max-content)); }
+}
+@media (max-width: 520px) {
+  .reading-settings-grid.cols-2, .reading-settings-grid.cols-3, .reading-settings-grid.cols-4 { grid-template-columns: minmax(0, 1fr); }
+  .rs-status-card { grid-template-columns: minmax(0, 1fr); }
+}

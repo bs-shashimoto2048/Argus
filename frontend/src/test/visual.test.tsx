@@ -323,7 +323,7 @@ describe("Monitor Detail「設定」タブ: 2カラム・セクション整理�
     for (const title of ["基本情報", "映像ソース", "推論エンジン / モデル"]) expect(header(title)).toHaveAttribute("aria-expanded", "true");
     for (const title of ["前処理", "ROI（関心領域）", "読取安定化設定", "危険な操作"]) expect(header(title)).toHaveAttribute("aria-expanded", "false");
     // 閉じた状態の概要(summary)
-    expect(within(section("読取安定化設定")).getByText("有効 / majority / 3一致 / 単調増加")).toBeInTheDocument();
+    expect(within(section("読取安定化設定")).getByText(/^有効 \/ 3回一致 \/ 減少チェックON/)).toBeInTheDocument(); // majority・単調増加などの内部用語は前面に出さない
     expect(within(section("ROI（関心領域）")).getByText("幅50% × 高さ25%")).toBeInTheDocument();
     expect(within(section("前処理")).getByText("3項目を設定")).toBeInTheDocument();
     expect(within(section("映像ソース")).getByText(/URL 192\.168\.25\.212/)).toBeInTheDocument();

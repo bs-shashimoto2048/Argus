@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
-import type { Inference, Monitor, ReadingDiagnostics, RuntimeDiagnostics, Source } from "../types";
+import type { BaselineStatus, Inference, Monitor, ReadingDiagnostics, RuntimeDiagnostics, Source } from "../types";
 import { formatDateTimeJst } from "../utils/datetime";
 import { InferenceSettings } from "../components/InferenceSettings";
 import { ReadingSettingsPanel } from "../components/ReadingSettingsPanel";
@@ -55,6 +55,7 @@ export function MonitorDetailPage() {
   const [error, setError] = useState("");
   const [editor, setEditor] = useState<"roi" | "preprocess" | null>(null);
   const [readingDiagnostics, setReadingDiagnostics] = useState<ReadingDiagnostics | null>(null);
+  const [baselineStatus, setBaselineStatus] = useState<BaselineStatus | null | undefined>(undefined); // 読取基準値(設定タブのread-only表示用)。undefined=読み込み中 / null=取得失敗
   const [runtimeDiagnostics, setRuntimeDiagnostics] = useState<RuntimeDiagnostics | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -109,6 +110,14 @@ export function MonitorDetailPage() {
   // Raw値(Debug用)。推論Runtime停止中は404/409になるため失敗は無視する。
   useEffect(() => {
     const poll = () => api.readingDiagnostics(monitorId).then(setReadingDiagnostics).catch(() => setReadingDiagnostics(null));
+    poll();
+    const timer = window.setInterval(poll, 5000);
+    return () => window.clearInterval(timer);
+  }, [monitorId]);
+
+  // 読取基準値(設定タブの「積算値チェック」に表示するread-only情報)。取得できなくても設定の操作はできる。
+  useEffect(() => {
+    const poll = () => api.readingBaseline(monitorId).then(setBaselineStatus).catch(() => setBaselineStatus(null));
     poll();
     const timer = window.setInterval(poll, 5000);
     return () => window.clearInterval(timer);
@@ -261,7 +270,7 @@ export function MonitorDetailPage() {
           </div>
           <div className="settings-col settings-col-right">
         <InferenceSettings value={inference} onChange={setInference} open={openSections.inference} onToggleOpen={() => toggleSection("inference")} />
-        <ReadingSettingsPanel value={inference.reading} onChange={(reading) => setInference({ ...inference, reading })} open={openSections.reading} onToggleOpen={() => toggleSection("reading")} />
+        <ReadingSettingsPanel value={inference.reading} onChange={(reading) => setInference({ ...inference, reading })} open={openSections.reading} onToggleOpen={() => toggleSection("reading")} baseline={baselineStatus} diagnostics={readingDiagnostics} />
         <section className="panel settings-save" aria-label="保存関連">
           <h3>保存</h3>
           <div className="settings-actions"><button className="save-button" onClick={save} disabled={cppModelMissing} title={cppModelMissing ? "C++ ONNXではモデルを選択してください" : undefined}>設定を保存</button></div>
