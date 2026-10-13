@@ -587,8 +587,6 @@ body { overflow-x: hidden; }
 .records-area.tall { height: clamp(300px, calc(100vh - 410px), 900px); }
 .monitor-card .card-notices { min-height: 84px; }
 
-/* 初回描画でカード読込前後に履歴領域が動かないよう、カード領域の高さを確保する */
-.dashboard-page .monitor-grid { min-height: 470px; align-content: start; }
 
 /* Settings / Diagnosticsタブ: 高さの違うパネルでも隙間ができないよう、段組みで並べる */
 .settings-tab-grid, .diagnostics-grid { display: block; column-width: 440px; column-gap: 12px; }
@@ -749,10 +747,9 @@ body { overflow-x: hidden; }
 .dashboard-page .dashboard-toolbar { margin: 0; }
 .dashboard-page .monitor-grid { min-height: 0; margin: 0; align-content: start; }
 .dashboard-page .alert { margin: 0; }
-/* 計測履歴: カードの下に残った高さをすべて使う。表の領域(records-area)が伸縮し、その中だけがスクロールする。 */
-.dashboard-page .records-section { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; margin: 0; padding: 10px 14px 6px; }
-.dashboard-page .records-head { flex: 0 0 auto; margin-bottom: 6px; }
-.dashboard-page .records-area, .dashboard-page .records-area.compact { flex: 1 1 0; height: auto; min-height: 150px; }
+/* 計測履歴: 高さ・余白の最終値は末尾の「Dashboard 密度調整」ブロック。表の中だけがスクロールする。 */
+.dashboard-page .records-section { display: flex; flex-direction: column; margin: 0; }
+.dashboard-page .records-head { flex: 0 0 auto; }
 .dashboard-page .records-area .records-table-wrap { flex: 1 1 auto; height: 100%; min-height: 0; overflow-y: auto; }
 .dashboard-page .records-count { flex: 0 0 auto; }
 
@@ -898,16 +895,14 @@ body { overflow-x: hidden; }
 /* ページ全体: viewport高さを下限に、カード領域・グラフ・履歴の順に並べる。カード領域は最大高さを持ち、Monitor台数でページは伸びない。 */
 .dashboard-page { height: auto; min-height: calc(100vh - var(--nav-h)); min-height: calc(100dvh - var(--nav-h)); }
 /* Monitorカード: 1行に最大3枚。1〜3台は1行、4台以上は3列のまま、この領域の中だけが縦スクロールする。 */
-.dashboard-page .monitor-region { max-height: clamp(240px, 36vh, 420px); overflow-x: hidden; overflow-y: auto; scrollbar-gutter: stable; }
+.dashboard-page .monitor-region { overflow-x: hidden; overflow-y: auto; scrollbar-gutter: stable; }
 .dashboard-page .monitor-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.dashboard-page .preview-wrap { height: clamp(80px, 11vh, 160px); }
-.dashboard-page .monitor-card .card-notices { min-height: 44px; }
 .card-count-hint { align-self: center; margin-left: auto; padding: 4px 10px; border: 1px solid var(--color-border-strong); border-radius: 999px; background: var(--color-surface); color: var(--color-text); font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .card-count-hint small { margin-left: 6px; color: var(--color-text-secondary); font-weight: 500; font-size: 11.5px; }
 @media (max-width: 900px) { .dashboard-page .monitor-grid { grid-template-columns: 1fr; } }
 
 /* 使用量推移グラフ(SVG手描き。幅は親に追従、高さは180px固定) */
-.dashboard-page .trend-panel { margin: 0; padding: 8px 14px 6px; }
+.dashboard-page .trend-panel { margin: 0; }
 .trend-head { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 14px; margin-bottom: 2px; }
 .trend-head h2 { margin: 0; font-size: 15px; line-height: 1.3; }
 .trend-head .segment { height: 28px; padding: 0 12px; font-size: 12.5px; }
@@ -931,9 +926,6 @@ body { overflow-x: hidden; }
 .trend-head .trend-reset { height: 28px; padding: 0 10px; font-size: 12.5px; }
 .trend-hint { margin-top: 1px; font-size: 11px; text-align: right; user-select: none; }
 
-/* 計測履歴(Dashboard): グラフの下の残り高さを使う。最低でも数行(ヘッダー + 約7行)が見える高さを確保する */
-.dashboard-page .records-section { min-height: 330px; }
-
 /* 計測履歴テーブル: 表はコンテナ幅いっぱい(width:100%)に使い、各セルは折り返さない。
    モニター名以外の列は内容幅(width:1% + nowrap)に詰め、余った幅は「モニター」列へ配る。狭い画面では表の内部だけ横スクロールする。 */
 .records-table { width: 100%; min-width: 0; table-layout: auto; }
@@ -956,7 +948,7 @@ body { overflow-x: hidden; }
 
 /* ===== Monitorカード: 中央=画像(約70%) | 現在値・信頼度・更新(縦並び、約30%)。取得状態・警告は下段 ===== */
 .monitor-card .card-body { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 3fr); gap: 6px; align-items: stretch; padding: 0 8px; }
-.monitor-card .card-body .preview-wrap { height: clamp(110px, 15vh, 170px); border-radius: 4px; overflow: hidden; }
+.monitor-card .card-body .preview-wrap { border-radius: 4px; overflow: hidden; }
 .monitor-card .card-body .video-image { object-fit: contain; }
 .monitor-card .card-body .card-values { display: flex; flex-direction: column; justify-content: center; gap: 8px; min-width: 0; padding: 4px 2px; border-top: 0; min-height: 0; background: transparent; }
 .monitor-card .card-body .card-values > div { min-width: 0; }
@@ -968,8 +960,6 @@ body { overflow-x: hidden; }
 .dashboard-page .monitor-card .card-notices, .monitor-card .card-notices { min-height: 0; padding: 0 10px 8px; }
 .monitor-card .card-notices:empty { padding: 0; }
 .monitor-card .card-notices .carried-badge, .monitor-card .card-notices .baseline-conflict-badge { width: 100%; box-sizing: border-box; }
-.dashboard-page .preview-wrap { height: clamp(110px, 15vh, 170px); }
-.dashboard-page .monitor-card .card-body .preview-wrap { height: clamp(110px, 15vh, 170px); }
 
 /* 値無し(null)の印: 赤い×(前回値保持=菱形・手動修正=二重丸とは別の記号)。警告文はグラフ内の左下寄りに、値無しがある時だけ出す。 */
 .trend-body .trend-missing-note { position: absolute; left: 64px; bottom: 26px; z-index: 2; max-width: calc(100% - 80px); padding: 2px 8px; border-radius: 4px; background: rgb(254 242 242 / 94%); border: 1px solid #fecaca; color: #b91c1c; font-size: 11.5px; line-height: 1.4; pointer-events: none; }
@@ -1076,13 +1066,58 @@ body { overflow-x: hidden; }
 .corrected-facts { grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); }
 .corrected-facts dt { white-space: nowrap; }
 
-/* ===== Dashboard専用の画面配分: 映像・現在値 > 使用量推移 > 計測履歴(約4時間分) =====
-   RecordsSectionは履歴・データ/Monitor Detailでも共用するため、履歴の高さはDashboard scopeだけで上書きする(.records-area.compact/.tall自体は変更しない)。 */
-.page.dashboard-page { width: min(100% - 32px, 1640px); }  /* 映像は16:9のcontain表示のため、高さを増やすには幅が必要 */
-.dashboard-page .preview-wrap, .dashboard-page .monitor-card .card-body .preview-wrap { height: clamp(150px, 19vh, 220px); } /* 固定値にしない(旧: clamp(110px, 15vh, 170px)) */
-.dashboard-page .monitor-region { max-height: clamp(260px, 42vh, 470px); } /* 映像が大きくなっても、1〜3台のカードが途中で切れない(4台以上はこの領域内だけスクロール) */
-.dashboard-page .records-section { flex: 0 0 auto; min-height: 0; padding: 8px 14px 3px; }
-.dashboard-page .records-area, .dashboard-page .records-area.compact { flex: 0 0 auto; height: clamp(230px, 28vh, 320px); min-height: 150px; } /* 約3〜4時間分(3台×≒10〜12行)。旧: 残り高さをすべて使う */
-.dashboard-page .history-table td { padding-top: 0; padding-bottom: 0; line-height: 1.2; }
-.dashboard-page .history-table .small-button { padding: 0 9px; line-height: 20px; font-size: 12px; }
-.dashboard-page .history-table th { padding-top: 4px; padding-bottom: 4px; }
+/* ===== Dashboard 密度調整(最終値) =====
+   Dashboardの余白・文字サイズ・映像/履歴の高さはこのブロックで決まる(上の旧ルールは構造・色などのみ)。
+   優先順位: Monitor映像・現在値 > 使用量推移 > 計測履歴。余白と装飾を削り、空いた面積は映像へ回す。 */
+/* ページ: 映像は16:9のcontain表示のため、高さを増やすには幅が必要(Dashboardだけ広げる) */
+.page.dashboard-page { width: min(100% - 24px, 1840px); gap: 5px; padding: 5px 0 4px; }
+/* ツールバー */
+.dashboard-page .dashboard-toolbar { min-height: 0; gap: 6px 10px; }
+.dashboard-page .summary-chips { gap: 6px; }
+.dashboard-page .summary-chip { height: 28px; gap: 6px; padding: 0 10px 0 9px; }
+.dashboard-page .summary-chip .chip-label { font-size: 12px; }
+.dashboard-page .summary-chip strong { font-size: 16px; }
+.dashboard-page .action-group { gap: 8px; }
+.dashboard-page .action-button, .dashboard-page .monitoring-control { height: 30px; font-size: 12.5px; }
+.dashboard-page .action-button { padding: 0 12px; }
+.dashboard-page .monitoring-status, .dashboard-page .monitoring-fps { padding: 0 8px; }
+.dashboard-page .monitoring-gear { width: 26px; height: 26px; font-size: 14px; }
+.dashboard-page .card-count-hint { padding: 2px 8px; font-size: 12px; }
+/* Monitorカード */
+.dashboard-page .monitor-grid { gap: 8px; }
+.dashboard-page .monitor-region { max-height: clamp(260px, 44vh, 480px); } /* 1〜3台は切れない。4台以上はこの領域内だけスクロール */
+.dashboard-page .monitor-card .card-head { gap: 6px; padding: 4px 10px; }
+.dashboard-page .monitor-card .card-title { font-size: 14px; font-weight: 700; }
+.dashboard-page .monitor-card .status-badge { padding: 2px 7px; font-size: 10.5px; }
+.dashboard-page .monitor-card .card-body { grid-template-columns: minmax(0, 1fr) clamp(118px, 22%, 170px); gap: 6px; padding: 0 6px; align-items: start; } /* 映像=残り幅 / 数値=現在値が折り返さない最小幅(約22%) */
+.dashboard-page .monitor-card .card-body .preview-wrap { height: auto; aspect-ratio: 16 / 9; max-height: clamp(165px, 23vh, 262px); } /* 幅に応じた16:9(contain表示で上下に空きを作らない)。高さの上限はviewport比。旧: height clamp(150px, 19vh, 220px) */
+.dashboard-page .monitor-card .card-body .card-values { align-self: stretch; gap: 6px; }
+.dashboard-page .monitor-card .card-body .card-value-primary strong { font-size: clamp(24px, 1.72vw, 28px); } /* 現在値は小さくしない */
+.dashboard-page .monitor-card .card-body .card-value-confidence strong { font-size: clamp(14px, 1vw, 15px); }
+.dashboard-page .monitor-card .card-body .card-value-updated strong { font-size: clamp(11px, .8vw, 12px); }
+.dashboard-page .monitor-card .card-body .card-values small { font-size: 10.5px; line-height: 1.25; }
+.dashboard-page .monitor-card .card-meta { padding: 2px 10px 3px; font-size: 10.5px; line-height: 1.3; }
+.dashboard-page .monitor-card .card-notices { padding: 0 6px 5px; } /* 通知なし(:empty)のときは高さを使わない(上の旧ルール) */
+/* 使用量推移グラフ(プロット領域180pxは維持。見出し・凡例・説明だけ詰める) */
+.dashboard-page .trend-panel { padding: 4px 10px 3px; }
+.dashboard-page .trend-head { gap: 2px 12px; margin-bottom: 0; }
+.dashboard-page .trend-head h2 { font-size: 14px; line-height: 1.25; }
+.dashboard-page .trend-head .segment, .dashboard-page .trend-head .trend-reset { height: 24px; padding: 0 10px; font-size: 12px; }
+.dashboard-page .trend-condition { font-size: 11.5px; }
+.dashboard-page .trend-legend { gap: 0 12px; font-size: 11.5px; }
+.dashboard-page .trend-hint { margin-top: 0; font-size: 11px; line-height: 1.3; }
+/* 計測履歴: 約3〜4時間分(表の中だけがスクロール)。履歴の領域は大きく戻さない */
+.dashboard-page .records-section { flex: 0 0 auto; min-height: 0; padding: 5px 10px 2px; }
+.dashboard-page .records-head { gap: 2px 14px; margin-bottom: 3px; }
+.dashboard-page .records-head h2 { font-size: 14.5px; line-height: 1.25; }
+.dashboard-page .records-head p { margin: 0; font-size: 12px; line-height: 1.3; }
+.dashboard-page .records-controls { gap: 6px; }
+.dashboard-page .records-controls .record-filters .filter-group { gap: 6px; }
+.dashboard-page .record-filters .filter-select select { height: 28px; font-size: 12.5px; }
+.dashboard-page .records-controls .segment { height: 26px; padding: 0 10px; font-size: 12.5px; }
+.dashboard-page .records-controls > button { height: 28px; padding: 0 12px; font-size: 12.5px; }
+.dashboard-page .records-area, .dashboard-page .records-area.compact { flex: 0 0 auto; height: clamp(230px, 28vh, 320px); min-height: 150px; }
+.dashboard-page .history-table th { padding-top: 3px; padding-bottom: 3px; font-size: 11.5px; }
+.dashboard-page .history-table td { padding-top: 0; padding-bottom: 0; font-size: 12px; line-height: 1.2; }
+.dashboard-page .history-table .small-button { padding: 0 9px; font-size: 11.5px; line-height: 20px; }
+.dashboard-page .records-count { min-height: 16px; margin-top: 2px; font-size: 11.5px; line-height: 16px; }
