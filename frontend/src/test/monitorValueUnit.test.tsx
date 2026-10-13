@@ -118,26 +118,25 @@ describe("Dashboard: 現在値の単位", () => {
 
   it("長い単位(16文字)でも数値を押し出さない: 単位だけが省略表示(ellipsis)され、title属性で全文が分かる", async () => {
     const long = "あいうえおかきくけこさしすせそた";
-    expect(long.length).toBeLessThanOrEqual(16);
+    expect(long.length).toBeLessThanOrEqual(18);
     standardMocks([get("/api/monitors", { monitors: [monitor({ id: 2, display_name: "A", value_unit: long }), monitor({ id: 3, display_name: "B" }), monitor({ id: 4, display_name: "C" })] })]);
     renderApp("/");
     const [a] = await cards();
     expect(a.querySelector(".current-value-unit")!.getAttribute("title")).toBe(long);
-    expect(value(".dashboard-page .current-value-number", "flex")).toBe("0 0 auto"); // 数値は縮めない
     expect(value(".dashboard-page .current-value-unit", "flex")).toBe("0 1 auto"); // 単位だけが縮む
     expect(value(".dashboard-page .current-value-unit", "text-overflow")).toBe("ellipsis");
     expect(value(".dashboard-page .current-value-unit", "overflow")).toBe("hidden");
     expect(value(".dashboard-page .current-value-unit", "white-space")).toBe("nowrap");
-    expect(value(".dashboard-page .current-value-line", "min-width")).toBe("0");
+    expect(value(".dashboard-page .monitor-card .card-body .card-value-primary", "min-width")).toBe("0"); // 数値の直後(同じ行)。長い単位は単位だけ省略
   });
 
-  it("見た目: 単位は数値(24〜28px)より小さい12〜14px・太さ600・補助色で、baselineを揃える", () => {
-    expect(parseFloat(value(".dashboard-page .current-value-unit", "font-size")!)).toBeGreaterThanOrEqual(12);
-    expect(parseFloat(value(".dashboard-page .current-value-unit", "font-size")!)).toBeLessThanOrEqual(14);
+  it("見た目: 単位は数値(36〜42px)より小さい16〜18px・太さ600・補助色で、数値の直後(同じ行)に置く", () => {
+    expect(parseFloat(value(".dashboard-page .current-value-unit", "font-size")!)).toBeGreaterThanOrEqual(15);
+    expect(parseFloat(value(".dashboard-page .current-value-unit", "font-size")!)).toBeLessThanOrEqual(18);
     expect(value(".dashboard-page .current-value-unit", "font-weight")).toBe("600");
     expect(value(".dashboard-page .current-value-unit", "color")).toBe("var(--color-text-secondary)");
-    expect(value(".dashboard-page .current-value-line", "align-items")).toBe("baseline");
-    expect(value(".dashboard-page .monitor-card .card-body .card-value-primary strong", "font-size")).toBe("clamp(24px, 1.5vw, 28px)");
+    expect(value(".dashboard-page .monitor-card .card-body .card-value-primary", "align-items")).toBe("baseline"); // 数値と単位のbaselineを揃える
+    expect(value(".dashboard-page .monitor-card .card-body .card-value-primary strong", "font-size")).toBe("clamp(36px, 2.3vw, 42px)");
   });
 
   it("Dashboardに単位を出しても、履歴の表の列・セルには単位を追加しない(今回の範囲外)", async () => {

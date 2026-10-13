@@ -281,7 +281,7 @@ describe("Dashboard全体をviewport内に収め、計測履歴の表が残り�
 
   it("上部(toolbar)・カード領域・グラフは固定サイズ(flex: 0 0 auto)、計測履歴のsectionが残り領域(flex: 1 1 auto)を使い、最低でも数行ぶんの高さ(min-height)を持つ", () => {
     expect(value(".dashboard-page > *", "flex")).toBe("0 0 auto");
-    expect(value(".dashboard-page .records-section", "flex")).toBe("0 0 auto"); // 履歴は残り高さを使い切らない(映像優先)
+    expect(value(".dashboard-page .records-section", "flex")).toBe("1 1 auto"); // 映像の分を引いた残り高さを履歴が使う(固定行数に拘らない)
     expect(value(".dashboard-page .records-section", "min-height")).toBe("0"); // 履歴の高さは records-area のclamp(最小230px)で決まる。1366x768でも表が数行見える
     expect(value(".dashboard-page .records-section", "display")).toBe("flex");
     expect(value(".dashboard-page .records-section", "flex-direction")).toBe("column");
@@ -289,8 +289,8 @@ describe("Dashboard全体をviewport内に収め、計測履歴の表が残り�
   });
 
   it("Dashboardの履歴の表の領域は約3〜4時間分の高さ(viewport比のclamp)に抑え、表の容器だけがoverflow-y:autoでスクロールする", () => {
-    expect(value(".dashboard-page .records-area.compact", "flex")).toBe("0 0 auto");
-    expect(value(".dashboard-page .records-area.compact", "height")).toBe("clamp(230px, 28vh, 320px)"); // 映像・現在値を優先し、履歴に残り高さを使い切らせない
+    expect(value(".dashboard-page .records-area.compact", "flex")).toBe("1 1 0");
+    expect(value(".dashboard-page .records-area.compact", "height")).toBe("auto"); // 映像・現在値を先に確保し、残りを履歴へ
     expect(declared(".dashboard-page .records-area.compact", "min-height")).toBe(true);
     expect(value(".dashboard-page .records-area .records-table-wrap", "overflow-y")).toBe("auto");
     expect(value(".dashboard-page .records-area .records-table-wrap", "min-height")).toBe("0");
@@ -315,13 +315,13 @@ describe("Dashboard全体をviewport内に収め、計測履歴の表が残り�
     expect(value(".monitor-card .card-notices", "min-height")).toBe("0"); // 警告が無い正常時は余白を作らない(カード高さは同じ行のカードに揃う)
     expect(value(".monitor-grid", "align-items")).toBe("stretch"); // 3枚の高さを揃える
     expect(value(".monitor-card", "align-self")).toBe("stretch");
-    expect(value(".dashboard-page .monitor-card .card-body .preview-wrap", "max-height")).toBe("clamp(165px, 23vh, 262px)"); // Dashboardは映像を優先(固定pxにしない。幅に応じた16:9で、高さの上限だけviewport比)
+    expect(value(".dashboard-page .monitor-card .card-body .preview-wrap", "height")).toMatch(/^clamp\(172px, min\(/); // Dashboardは映像を優先(固定pxにしない。幅に応じた16:9で、高さの上限だけviewport比)
     expect(value(".video-image", "object-fit")).toBe("contain"); // 画像はaspect-ratioを維持
   });
 
   it("Dashboardのページ全体で縦overflowを起こすルール(固定高さのmin-heightや履歴領域の固定px高さ)が残っていない", () => {
     expect(value(".dashboard-page .monitor-grid", "min-height")).toBe("0"); // 以前の470px確保を解除
-    expect(value(".dashboard-page .records-area", "height")).toMatch(/^clamp\(.*vh/); // 固定pxではなくviewport比(上限あり)
+    expect(value(".dashboard-page .records-area", "height")).toBe("auto"); // 固定pxではなく残り高さ(flex)。1366x768でも最小高さ分は確保
   });
 
   it("ページ送りなし・段階読み込みは維持(Dashboardの履歴がスクロール領域内に描画され、続きの取得が動く)", async () => {

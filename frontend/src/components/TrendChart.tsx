@@ -261,8 +261,8 @@ export function TrendChart({ monitors, filter, refreshMs, reloadToken = 0, rende
       {!invalid && records !== null && series.length > 0 && <>
         <svg ref={svgRef} className={`trend-svg${zoomed ? " zoomed" : ""}${dragging ? " dragging" : ""}`} width={width} height={HEIGHT} viewBox={`0 0 ${width} ${HEIGHT}`} role="img" tabIndex={0} aria-label={`${metricLabel}の推移。${summary}`} aria-keyshortcuts="ArrowLeft ArrowRight + - 0" data-view-min={Math.round(tMin)} data-view-max={Math.round(tMax)} data-data-min={Math.round(dataMin)} data-data-max={Math.round(dataMax)} onMouseMove={onMove} onMouseLeave={() => setHover(null)} onMouseDown={onMouseDown} onAuxClick={(e) => { if (e.button === 1) e.preventDefault(); }} onDoubleClick={resetZoom} onKeyDown={onKeyDown} data-testid="trend-svg">
           <defs><clipPath id={clipId}><rect x={MARGIN.left} y={MARGIN.top} width={plotW} height={plotH} /></clipPath></defs>
-          {ticks.map((v) => <g key={v}><line x1={MARGIN.left} x2={width - MARGIN.right} y1={py(v)} y2={py(v)} stroke="#e2e8f0" strokeWidth={1} /><text x={MARGIN.left - 6} y={py(v) + 4} textAnchor="end" fontSize={11} fill="#475569">{fmtNumber(v)}</text></g>)}
-          {xTicks.map((t) => <text key={t} x={px(t)} y={HEIGHT - 6} textAnchor="middle" fontSize={11} fill="#475569">{xFormat(t)}</text>)}
+          {ticks.map((v) => <g key={v}><line x1={MARGIN.left} x2={width - MARGIN.right} y1={py(v)} y2={py(v)} stroke="#e2e8f0" strokeWidth={1} /><text x={MARGIN.left - 6} y={py(v) + 4} textAnchor="end" fontSize={13} fill="#475569">{fmtNumber(v)}</text></g>)}
+          {xTicks.map((t) => <text key={t} x={px(t)} y={HEIGHT - 6} textAnchor="middle" fontSize={13} fill="#475569">{xFormat(t)}</text>)}
           <g clipPath={`url(#${clipId})`}>
           {series.map((s, i) => <g key={s.monitor_id} className="trend-series" data-monitor-id={s.monitor_id} stroke={seriesColor(i)}>
             {splitSegments(s.points).map((seg, k) => seg.length === 1

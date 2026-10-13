@@ -48,7 +48,7 @@ export function MonitorCard({ monitor, onClick, displayFps, latestRecord }: Prop
           明瞭に)。status判定ロジック自体は変更せず、合成済みのdisplayStatusを
           表示色の切替にのみ使う。 */}
       <div className="card-values">
-        <div className="card-value-primary"><small>現在値</small><div className="current-value-line"><strong className="current-value-number">{monitor.current_value ?? "--"}</strong>{unit && <span className="current-value-unit" title={unit}>{unit}</span>}</div></div>
+        <div className="card-value-primary"><small>現在値</small><strong className="current-value-number">{monitor.current_value ?? "--"}</strong>{unit && <span className="current-value-unit" title={unit}>{unit}</span>}</div>
         <div className={`card-value-confidence status-${displayStatus}`}><small>信頼度</small><strong>{monitor.confidence == null ? "--" : `${(monitor.confidence * 100).toFixed(1)}%`}</strong></div>
         <div className="card-value-updated"><small>更新</small><strong>{formatTimeJst(monitor.last_updated)}</strong></div>
       </div>
