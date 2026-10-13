@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { CorrectionResult, ReadingRecord, RecordCorrection } from "../types";
-import { displayStatusLabels, formatConfidence, formatRecordDateTimeFull, formatValue, imageUnavailableMessage, recordState, valueSourceLabels } from "../utils/records";
+import { displayStatusLabels, formatConfidence, formatRecordDateTimeFull, formatValue, imageUnavailableMessage, limitImageUpscale, recordState, valueSourceLabels } from "../utils/records";
 import { CorrectionDialog } from "./CorrectionDialog";
 import { StateBadge } from "./StateBadge";
 
@@ -74,7 +74,7 @@ export function RecordDrawer({ record, onClose, onCorrected }: Props) {
       <div className="drawer-image">
         {unavailable ? <div className="image-empty" role="status">{unavailable}</div>
           : loadFailed ? <div className="image-empty" role="status">保存した画像を読み込めません（ファイルの削除、画像保存先の変更、共有フォルダの不通の可能性があります）</div>
-          : <img key={`${record.id}-${kind}`} src={api.recordImage(record.id, kind)} alt={kind === "original" ? "記録時の元画像" : "記録時の推論結果画像"} onError={() => setLoadFailed(true)} />}
+          : <img key={`${record.id}-${kind}`} src={api.recordImage(record.id, kind)} alt={kind === "original" ? "記録時の元画像" : "記録時の推論結果画像"} onLoad={(e) => limitImageUpscale(e.currentTarget)} onError={() => setLoadFailed(true)} />}
       </div>
       <dl className="drawer-fields">
         {rows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}

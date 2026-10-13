@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { BaselineStatus, CorrectionResult, ReadingRecord } from "../types";
-import { formatConfidence, formatRecordDateTimeFull, formatValue, valueSourceLabels } from "../utils/records";
+import { formatConfidence, formatRecordDateTimeFull, formatValue, limitImageUpscale, valueSourceLabels } from "../utils/records";
 import { stripLeadingZeros } from "../utils/readingFormat";
 
 const OPERATOR_KEY = "argus.baseline.operator"; // 基準値の操作と同じ(自己申告の操作者名を覚えておく)
@@ -49,7 +49,7 @@ export function CorrectionDialog({ record, onClose, onCorrected }: Props) {
       <p className="muted">保存したoverlay画像で実際の値を確認してから、修正後の値を入力してください。修正しても、最新推論値・信頼度・読取判定・画像などの元の証跡は変わらず、修正の履歴が監査記録として残ります。</p>
       <div className="correction-grid">
         <div className="correction-image">
-          {overlayAvailable ? <img src={api.recordImage(record.id, "overlay")} alt="記録時の推論結果画像" /> : <div className="image-empty">記録画像なし</div>}
+          {overlayAvailable ? <img src={api.recordImage(record.id, "overlay")} alt="記録時の推論結果画像" onLoad={(e) => limitImageUpscale(e.currentTarget)} /> : <div className="image-empty">記録画像なし</div>}
         </div>
         <dl className="correction-facts">
           <div><dt>記録日時</dt><dd>{formatRecordDateTimeFull(record.recorded_at)}</dd></div>

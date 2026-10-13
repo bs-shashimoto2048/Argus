@@ -456,8 +456,9 @@ button.danger { background: var(--color-danger); }
 .drawer-tabs { display: flex; gap: 4px; margin-bottom: 8px; }
 .drawer-tabs button { flex: 1; background: var(--color-surface); border-color: var(--color-border-strong); color: var(--color-text); }
 .drawer-tabs button.active { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
-.drawer-image { display: grid; place-items: center; min-height: 200px; max-height: 340px; overflow: hidden; border: 1px solid var(--color-border); border-radius: 8px; background: #0f172a; }
-.drawer-image img { display: block; max-width: 100%; max-height: 340px; object-fit: contain; }
+/* 記録画像(元画像・推論結果画像、digital/drum共通): 画像全体が必ず枠内に収まる(cropしない)。縦横比は画像自身のものを優先し、固定比にしない。 */
+.drawer-image { display: grid; place-items: center; width: 100%; max-width: 100%; min-width: 0; min-height: 96px; overflow: hidden; border: 1px solid var(--color-border); border-radius: 8px; background: #0f172a; }
+.drawer-image img { display: block; width: 100%; max-width: 100%; height: auto; max-height: min(40vh, 420px); object-fit: contain; object-position: center; image-rendering: auto; }
 .image-empty { padding: 28px 20px; color: #cbd5e1; font-size: 13.5px; text-align: center; }
 .drawer-fields { margin: 12px 0 0; }
 .drawer-fields > div { display: grid; grid-template-columns: 150px 1fr; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--color-border); font-size: 13px; }
@@ -552,9 +553,9 @@ body { overflow-x: hidden; }
 .monitors-table { min-width: 760px; }
 .monitors-page .records-area { height: auto; }
 
-/* 記録画像Drawerの画像: 読込前後でサイズが変わらない */
-.drawer-image { aspect-ratio: 16 / 9; min-height: 0; max-height: none; width: 100%; }
-.drawer-image img { width: 100%; height: 100%; max-height: none; object-fit: contain; }
+/* 記録画像Drawer: 画像のnatural widthに引っ張られてDrawer自体が横に広がらない */
+.record-drawer { min-width: 0; overflow-x: hidden; }
+.record-drawer > * { min-width: 0; }
 
 /* Monitor Detail: タブ */
 .detail-tabs { display: flex; gap: 2px; margin: 4px 0 14px; border-bottom: 1px solid var(--color-border-strong); }
@@ -869,10 +870,12 @@ body { overflow-x: hidden; }
 .correction-line { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; font-variant-numeric: tabular-nums; }
 .correction-line span { color: var(--color-text-secondary); font-size: 12px; white-space: nowrap; }
 .correction-modal { width: min(900px, 96vw); }
-.correction-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 14px; margin: 10px 0; align-items: start; }
+.correction-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(300px, 1fr); gap: 14px; margin: 10px 0; align-items: start; }
+.correction-grid > * { min-width: 0; }
 @media (max-width: 760px) { .correction-grid { grid-template-columns: minmax(0, 1fr); } }
-.correction-image { display: grid; place-items: center; min-height: 140px; overflow: hidden; border-radius: 8px; background: #0f172a; }
-.correction-image img { display: block; max-width: 100%; max-height: 260px; object-fit: contain; }
+/* 画像全体が必ず枠内に収まる(cropしない)。横長のドラムcropでも上下に余白ができるだけで、全桁が見える。縦横比は画像自身のものを優先。 */
+.correction-image { display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; width: 100%; max-width: 100%; min-width: 0; min-height: 96px; overflow: hidden; border-radius: 8px; background: #0f172a; }
+.correction-image img { display: block; width: 100%; max-width: 100%; height: auto; max-height: min(40vh, 420px); object-fit: contain; object-position: center; image-rendering: auto; }
 .correction-facts { margin: 0; font-size: 13px; }
 .correction-facts > div { display: grid; grid-template-columns: 140px 1fr; gap: 8px; padding: 3px 0; border-bottom: 1px solid var(--color-border); }
 .correction-facts dt { color: var(--color-text-secondary); }
