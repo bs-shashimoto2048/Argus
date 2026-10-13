@@ -9,7 +9,7 @@ import type { RecordFilterValue } from "../components/RecordFilters";
 import { DashboardSettingsModal } from "../components/DashboardSettingsModal";
 import { useDashboardSettings } from "../hooks/useDashboardSettings";
 import { combinedMonitorStatus } from "../utils/monitorStatus";
-import { addDays, startOfDayJst, todayJst } from "../utils/records";
+import { addDays, defaultRecordPeriod, startOfDayJst, todayJst } from "../utils/records";
 
 /** Monitorカード領域で、実際に見えているカードの数(領域内に半分以上入っているカード)。レイアウトを測れない環境では先頭の1行ぶん。 */
 export function countVisibleCards(region: HTMLElement, total: number): number {
@@ -27,7 +27,7 @@ export function DashboardPage() {
   const [error, setError] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   // 計測履歴とグラフで共有する条件(Monitor・期間)。コントロールは履歴ヘッダーにあり、グラフも同じ条件で描く。
-  const [filter, setFilter] = useState<RecordFilterValue>({ monitorIds: [], period: { mode: "today", startDate: todayJst(), endDate: todayJst() } });
+  const [filter, setFilter] = useState<RecordFilterValue>({ monitorIds: [], period: defaultRecordPeriod() });
   const [visibleCards, setVisibleCards] = useState(3);
   const regionRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();

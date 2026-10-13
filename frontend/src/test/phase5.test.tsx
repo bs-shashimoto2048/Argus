@@ -534,3 +534,16 @@ describe("既存機能の維持", () => {
     expect(await screen.findByRole("dialog", { name: "計測記録の詳細" })).toBeInTheDocument();
   });
 });
+
+describe("Monitor Detail: 履歴タブの任意期間の初期値", () => {
+  it("初めて「任意期間」を押すと、Dashboard・履歴・データと同じ1か月前〜今日", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-09T05:30:00Z"));
+    try {
+      detailMocks([recordsHandler()]);
+      renderApp("/monitors/3?tab=history");
+      await userEvent.setup().click(await screen.findByRole("button", { name: "任意期間" }));
+      expect([(screen.getByLabelText("開始日") as HTMLInputElement).value, (screen.getByLabelText("終了日") as HTMLInputElement).value]).toEqual(["2026-09-09", "2026-10-09"]);
+    } finally { vi.useRealTimers(); }
+  });
+});

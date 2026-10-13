@@ -244,7 +244,7 @@ def test_usage_is_null_when_the_value_decreased(db):
 
 
 @pytest.mark.parametrize("action", ["reset", "rebase", "auto_semantic_reset"])
-def test_usage_is_null_across_a_baseline_reset_or_rebase(db, action):
+def test_usage_restarts_at_zero_after_a_baseline_reset_or_rebase(db, action):  # 連続性が切れた後の最初の正常なrecord=再開点
     monitor = make_monitor(db, value="265754")
     svc.record_due(db, jst(14, 0, 5))
     db.add(ReadingBaselineEvent(monitor_id=monitor.id, monitor_name=monitor.name, action=action, reason="t", operator="o",
@@ -253,7 +253,7 @@ def test_usage_is_null_across_a_baseline_reset_or_rebase(db, action):
     set_latest(db, monitor, value="265760")
     svc.record_due(db, jst(15, 0, 5))
     second = records_of(db, monitor.id)[1]
-    assert (second.previous_value, second.usage) == ("265754", None)
+    assert (second.previous_value, second.usage) == (None, "0")  # 14時の値(基準が切れている)はpreviousに出さず、新しい区間の開始点
 
 
 def test_baseline_event_before_the_previous_record_does_not_block_usage(db):
@@ -280,7 +280,7 @@ def test_usage_is_null_when_either_hour_has_a_baseline_conflict(db):
     assert second.baseline_conflict is True and second.usage is None
 
 
-def test_usage_is_null_when_the_previous_hour_was_not_normal(db):
+def test_usage_restarts_at_zero_when_the_previous_hour_had_no_value(db):
     monitor = make_monitor(db, status="error", value="265754")
     svc.record_due(db, jst(14, 3, 0), started_at=jst(13, 0, 0))  # 値なしの記録
     db_monitor = db.get(Monitor, monitor.id)
@@ -288,7 +288,7 @@ def test_usage_is_null_when_the_previous_hour_was_not_normal(db):
     db.commit()
     svc.record_due(db, jst(15, 0, 5))
     second = records_of(db, monitor.id)[1]
-    assert (second.value, second.previous_value, second.usage) == ("265754", None, None)
+    assert (second.value, second.previous_value, second.usage) == ("265754", None, "0")  # 直前は値なし → 基準にできない → 再開点
 
 
 # --- Worker ---

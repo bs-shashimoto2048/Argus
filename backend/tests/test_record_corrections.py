@@ -255,7 +255,8 @@ def test_next_record_usage_is_null_when_baseline_was_reset_in_between(client, db
     db.commit()
     assert correct(client, r8.id).status_code == 200
     db.expire_all()
-    assert db.get(ReadingRecord, r9.id).usage is None  # reset/rebaseをまたぐ使用量はnull(従来の条件を維持)
+    nxt = db.get(ReadingRecord, r9.id)
+    assert (nxt.previous_value, nxt.usage) == (None, "0")  # reset/rebaseで連続性が切れた後の最初の正常なrecordは、新しい区間の開始点
 
 
 def test_next_record_that_also_carries_the_same_value_is_not_rewritten(client, db):

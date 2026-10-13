@@ -63,7 +63,7 @@ def test_case4_untrusted_first_record_stays_null(db, monkeypatch):
     assert first.value_source == "carried_forward" and (first.previous_value, first.usage) == (None, None)
 
 
-def test_case5_untrusted_previous_record_still_blocks_usage(db, monkeypatch):
+def test_case5_untrusted_previous_record_makes_the_next_trusted_record_a_restart_point(db, monkeypatch):
     monitor = make_monitor(db, value="100")
     svc.record_due(db, jst(10, 0, 5))
     untrusted(monkeypatch)
@@ -73,7 +73,8 @@ def test_case5_untrusted_previous_record_still_blocks_usage(db, monkeypatch):
     set_latest(db, monitor, value="110")
     svc.record_due(db, jst(12, 0, 5))
     r10, r11, r12 = records_of(db, monitor.id)
-    assert (r10.usage, r11.usage, r12.usage) == ("0", None, None)  # previousは存在するがuntrusted → null
+    assert (r10.usage, r11.usage) == ("0", None)  # untrusted record自身は0にしない
+    assert (r12.previous_value, r12.usage) == (None, "0")  # 直前はuntrustedで基準にできない → 再開点(untrustedの値をpreviousに出さない)
 
 
 def test_case7_excel_first_record_has_blank_previous_and_zero_usage(client, corrections_db):  # noqa: F811
@@ -86,3 +87,28 @@ def test_case7_excel_first_record_has_blank_previous_and_zero_usage(client, corr
     rows = {r[0].value.hour: [c.value for c in r] for r in ws.iter_rows(min_row=2)}
     assert rows[14][4] in (None, "") and rows[14][5] == 0
     assert rows[15][4] == 100 and rows[15][5] == 5
+
+
+def test_restart_after_an_untrusted_record_then_normal_difference(db, monkeypatch):
+    """実例(Monitor 4 10/13): 09:00 untrusted carried_forward(invalid_format) → 10:00 Confirmed = 再開点 → 11:00 通常の差分。"""
+    monitor = make_monitor(db, value="372443.8")
+    untrusted(monkeypatch)
+    svc.record_due(db, jst(9, 0, 5))
+    monkeypatch.undo()
+    set_latest(db, monitor, value="372446.8")
+    svc.record_due(db, jst(10, 0, 5))
+    set_latest(db, monitor, value="372449.9")
+    svc.record_due(db, jst(11, 0, 5))
+    r9, r10, r11 = records_of(db, monitor.id)
+    assert (r9.value_source, r9.previous_value, r9.usage) == ("carried_forward", None, None)  # untrusted自身は0にしない
+    assert (r10.previous_value, r10.usage) == (None, "0")  # untrustedの正式値(372443.8)をpreviousに出さない
+    assert (r11.previous_value, r11.usage) == ("372446.8", "3.1")
+
+
+def test_a_decrease_between_trusted_records_is_still_null(db):
+    monitor = make_monitor(db, value="200")
+    svc.record_due(db, jst(10, 0, 5))
+    set_latest(db, monitor, value="150")
+    svc.record_due(db, jst(11, 0, 5))
+    _, second = records_of(db, monitor.id)
+    assert (second.previous_value, second.usage) == ("200", None)  # 減少は再開点ではなく異常(従来どおりnull)

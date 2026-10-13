@@ -172,7 +172,7 @@ def is_anchored_continuation(db: Session, record: ReadingRecord | None, monitor_
     return False
 
 
-def compute_usage(
+def evaluate_usage(
     db: Session,
     monitor_id: int,
     monitor_created_at: datetime | None,
@@ -183,40 +183,47 @@ def compute_usage(
     now_utc: datetime,
     value_source: str | None = "confirmed",
     corrected: bool = False,
-) -> str | None:
-    """使用量 = 今回の定時計測値 - 直前1時間の定時計測値。今回と直前の**両方**が信頼できる記録でなければNone。
+) -> tuple[str | None, str | None]:
+    """(previous_value, usage)。使用量 = 今回の定時計測値 - 直前1時間の定時計測値(両方が信頼できる記録のとき)。
 
-    直前1時間の定時計測recordそのものが存在しない場合(計測開始・長時間停止後の再開・期間内の最初の記録)は、
-    読取失敗ではなく「新しい連続計測区間の開始点」なので、今回が信頼できる記録ならusage=0(以前の記録へは遡らない)。
-    今回が信頼できない場合は、直前が無くてもNone。直前recordが存在するのに信頼できない場合もNone。
+    **連続計測区間の開始点(再開点)**: 今回が信頼できる記録で、使用量の差分の基準にできる直前値が無い場合は、
+    `previous_value=None`・`usage=0`(新しい区間の最初の点)。基準にできない直前値とは、
+    直前1時間のrecordが存在しない / 直前recordが値なし / 直前が信頼できない(未修正のcarried_forward・read_error・baseline conflict等) /
+    直前以降にbaselineの明示的なreset・別値へのrebase・自動クリアがあり連続性が切れた、場合。
+    信頼できない記録の正式値は、previous_valueとして表示しない(基準にしていないため)。以前の記録へは遡らない。
+
+    **今回が信頼できない記録は、直前が無くても usage=None**(untrusted record自身を0にしない)。previous_valueは直前recordの値のまま。
+    値が減少した場合も usage=None(previous_valueは直前の値)。
 
     信頼できる記録: 通常のConfirmed / 手動修正済み / **手動修正済みを起点に同じ値を保持し続けるcarried_forward**
     (is_anchored_continuation。運用者が確認した正式値の継続なので、usage=0として扱う)。
-    anchorに繋がらない未修正のcarried_forwardは従来どおり信頼しない。
-
-    Noneになる条件: 今回が信頼できない/直前記録があるのに信頼できない/値が減少/直前記録以降にbaselineのreset・rebase・自動クリアがあった。
-    直前が信頼できない区間を飛ばして、複数時間分を1時間の使用量として計上しない。
-    baselineのrebaseは、その新しい値が前後どちらかの信頼できる記録の値と一致する場合(=運用者が確認した値への再設定)は
-    連続性を壊さないものとして扱う(監査履歴は変更しない)。
+    anchorに繋がらない未修正のcarried_forwardは信頼しない。
+    baselineのrebaseは、その新しい値が前後どちらかの値と一致する場合(=運用者が確認した値への再設定)は連続性を壊さないものとして扱う。
     """
+    shown_previous = previous.value if previous is not None else None
     if numeric is None:
-        return None
+        return shown_previous, None
     previous_numeric = _decimal(previous.numeric_value) if previous is not None else None
     trusted = is_trusted_values(numeric=numeric, value_source=value_source, display=display, baseline_conflict=baseline_conflict, corrected=corrected)
     continuation = False
     if not trusted and previous is not None and value_source == "carried_forward" and previous_numeric == numeric:
         continuation = trusted = is_anchored_continuation(db, previous, monitor_created_at)  # 修正済みanchorからの継続保持
     if not trusted:
-        return None
-    if previous is None:
-        return "0"  # 比較する前回recordが存在しない = 連続計測区間の開始点
-    if previous_numeric is None or not (is_trusted_record(previous) or is_anchored_continuation(db, previous, monitor_created_at)):
-        return None
+        return shown_previous, None
+    if previous is None or previous_numeric is None or not (is_trusted_record(previous) or is_anchored_continuation(db, previous, monitor_created_at)):
+        return None, "0"  # 基準にできる直前値が無い = 連続計測区間の開始点
     if numeric < previous_numeric:
-        return None
+        return shown_previous, None
     if _baseline_break(db, monitor_id, monitor_created_at, previous, numeric, _naive_utc(now_utc), ignore_auto_clear=continuation):
-        return None
-    return format(numeric - previous_numeric, "f")
+        if continuation:
+            return shown_previous, None  # resetで修正済みanchorからの継続が終わった後の、未修正のcarried_forward自身は信頼しない
+        return None, "0"  # 運用者のreset・別値へのrebase等で連続性が切れた後の最初の正常な点
+    return shown_previous, format(numeric - previous_numeric, "f")
+
+
+def compute_usage(*args, **kwargs) -> str | None:
+    """使用量だけを返す(evaluate_usageの2番目の値)。"""
+    return evaluate_usage(*args, **kwargs)[1]
 
 
 def _live_raw_and_validation(monitor_id: int) -> tuple[str | None, str | None]:
@@ -281,7 +288,7 @@ def build_record(db: Session, monitor: Monitor, bucket: datetime, now_utc: datet
 
     previous = db.scalar(select(ReadingRecord).where(
         ReadingRecord.monitor_id == monitor.id, ReadingRecord.hour_bucket == (bucket - timedelta(hours=1)).isoformat()))
-    usage = compute_usage(db, monitor.id, monitor.created_at, previous, numeric, display, baseline_conflict, now_utc, value_source)
+    previous_value, usage = evaluate_usage(db, monitor.id, monitor.created_at, previous, numeric, display, baseline_conflict, now_utc, value_source)
     inference = monitor.inference
     if use_snapshot:
         confidence = snapshot.confirmed_confidence if has_value else None
@@ -302,7 +309,7 @@ def build_record(db: Session, monitor: Monitor, bucket: datetime, now_utc: datet
         value_source=value_source,
         numeric_value=str(numeric) if numeric is not None else None,
         raw_value=raw_value if has_value else None,
-        previous_value=previous.value if previous is not None else None,
+        previous_value=previous_value,
         usage=usage,
         confidence=confidence,
         raw_confidence=raw_confidence,

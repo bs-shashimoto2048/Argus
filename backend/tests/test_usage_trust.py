@@ -78,7 +78,7 @@ def test_consecutive_corrected_records_recover_one_by_one(client, db):
     add_record(db, m, 18, "215867", usage=None)
     assert correct(client, r16.id, value="215863").status_code == 200
     result = usages(db, m)
-    assert (result[16], result[17], result[18]) == ("1", None, None)
+    assert (result[16], result[17], result[18]) == ("1", None, "0")  # 17は未修正のまま(null)。18は直前が基準にできない → 再開点(0)
     assert correct(client, r17.id, value="215864").status_code == 200
     result = usages(db, m)
     assert (result[16], result[17], result[18]) == ("1", "1", "3")
@@ -119,7 +119,7 @@ def test_rebase_to_the_confirmed_value_does_not_break_continuity_but_other_reset
     db.add(ReadingBaselineEvent(monitor_id=m2.id, monitor_name="m", occurred_at=q15.recorded_at - timedelta(minutes=10), action="reset", old_value="100", new_value=None, reason="x", operator="o", client_host="h"))
     db.commit()
     assert correct(client, q15.id, value="105").status_code == 200
-    assert usages(db, m2)[15] is None
+    assert usages(db, m2)[15] == "0"  # 無関係な値へのreset後の最初の正常なrecordは、新しい区間の開始点(差分は計上しない)
 
 
 def test_recompute_does_not_touch_unrelated_usage_or_evidence(client, db):

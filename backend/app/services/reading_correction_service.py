@@ -23,7 +23,7 @@ from reading.models import ReadingSettings
 
 from ..models import Monitor, ReadingRecord, ReadingRecordCorrection
 from . import reading_baseline_service as baseline_service
-from .reading_record_service import _decimal, _iso, _naive_utc, compute_usage, correctable_reason, neighbor_record
+from .reading_record_service import _decimal, _iso, _naive_utc, evaluate_usage, correctable_reason, neighbor_record
 
 logger = logging.getLogger("argus.record_corrections")
 
@@ -75,10 +75,10 @@ _neighbor = neighbor_record  # 1時間前/後の計測枠の記録(usage判定�
 def _recompute_usage(db: Session, record: ReadingRecord, monitor_created_at: datetime | None) -> str | None:
     """記録自身の状況(display_status/baseline conflict/記録時刻)で、使用量を再評価する(null条件は維持される)。"""
     previous = _neighbor(db, record, -1)
-    record.previous_value = previous.value if previous is not None else None
     recorded_utc = record.recorded_at.replace(tzinfo=timezone.utc)
-    return compute_usage(db, record.monitor_id, monitor_created_at, previous, _decimal(record.numeric_value), record.display_status, bool(record.baseline_conflict), recorded_utc,
-                         record.value_source, (record.correction_count or 0) > 0)
+    record.previous_value, usage = evaluate_usage(db, record.monitor_id, monitor_created_at, previous, _decimal(record.numeric_value), record.display_status, bool(record.baseline_conflict), recorded_utc,
+                                                 record.value_source, (record.correction_count or 0) > 0)
+    return usage
 
 
 def correct_record(db: Session, record_id: int, value: str, reason: str, operator: str, client_host: str = "", rebase_current_baseline: bool = False) -> dict:
