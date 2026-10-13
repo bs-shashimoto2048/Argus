@@ -35,6 +35,11 @@ export function addDays(date: string, days: number): string {
   return result.toISOString().slice(0, 10);
 }
 
+/** 記録画像の表示: 小さい画像を引き伸ばしすぎない(最大でnatural幅のfactor倍。ただし枠が小さい時は枠に収める)。imgのonLoadで呼ぶ。 */
+export function limitImageUpscale(img: HTMLImageElement, factor = 2, minWidthPx = 240): void {
+  if (img.naturalWidth > 0) img.style.maxWidth = `${Math.max(img.naturalWidth * factor, minWidthPx)}px`;
+}
+
 /** 暦上の1か月前(YYYY-MM-DD)。30日前ではなく月を1つ戻し、その月に同じ日が無ければ最終日へ丸める(3/31→2/28、うるう年は2/29)。 */
 export function oneMonthBefore(date: string): string {
   const [y, m, d] = date.split("-").map(Number);

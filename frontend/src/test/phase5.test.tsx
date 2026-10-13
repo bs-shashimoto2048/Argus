@@ -191,8 +191,8 @@ describe("画面揺れ防止(CSS)", () => {
     // バッジの有無に関わらず、通知欄は全カードに存在する
     await waitFor(() => expect(document.querySelectorAll(".monitor-card .card-notices")).toHaveLength(3));
   });
-  it("記録画像(Drawer)は固定の縦横比で、読込前後でサイズが変わらない", () => {
-    expect(value(".drawer-image", "aspect-ratio")).toBe("16 / 9");
+  it("記録画像(Drawer)は固定の縦横比にせず(画像自身の縦横比を優先)、全体が枠内に収まる(contain)", () => {
+    expect(value(".drawer-image", "aspect-ratio")).toBeUndefined();
     expect(value(".drawer-image img", "object-fit")).toBe("contain");
   });
 });
