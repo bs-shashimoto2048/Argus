@@ -43,8 +43,8 @@ _ACCEPTED_VALIDATION = ("confirmed", "low_confidence")
 _FRAME_MAX_AGE_SECONDS = 10.0
 # 記録に使う推論snapshotの鮮度の上限(秒)。映像/推論が止まって古い推論結果を、定時計測の証跡にしない。
 _SNAPSHOT_MAX_AGE_SECONDS = 10.0
-# usageを無効にする、baselineの操作イベント。
-_BASELINE_RESET_ACTIONS = ("reset", "rebase", "auto_semantic_reset")
+# usageの連続性を切る、baselineの運用者の操作イベント(auto_semantic_reset=設定変更に伴う自動クリアは切らない)。
+_BASELINE_RESET_ACTIONS = ("reset", "rebase")
 
 
 def display_status(monitor_status: str | None, inference_status: str | None) -> str:
@@ -89,30 +89,25 @@ def set_hourly_records_enabled(db: Session, enabled: bool) -> None:
     db.commit()
 
 
-def is_trusted_values(*, numeric: Decimal | None, value_source: str | None, display: str | None, baseline_conflict: bool, corrected: bool) -> bool:
-    """usage計算上、「現在の正式値として信頼できる」記録か。
+def is_usage_eligible_values(*, numeric: Decimal | None, display: str | None, corrected: bool) -> bool:
+    """usage計算の対象にできる「正式値」か。値の由来(confirmed / carried_forward)・baseline conflictは問わない。
 
-    - 手動修正済み(運用者が画像等を確認して正式値を確定した)は、記録時にbaseline conflict・carried_forward・
-      decrease_detected等だったとしても信頼できる(記録時の証跡そのものは変更しない。usage計算の失格条件だけをoverrideする)。
-    - 未修正は、通常のConfirmed(value_source=confirmed)で、display_statusが正常系・baseline conflictなしの場合だけ。
-      未修正のcarried_forwardは、正式値欄に値があっても信頼しない(実際の使用量0とは保証できない)。
+    - 正式値(numeric_value)が存在すること。
+    - 手動修正済みは、運用者が画像等で確認した正式値なので、display_statusによらず対象。
+    - それ以外は、映像・読取が稼働中(display_statusがnormal/warning)であること。通信異常・停止・read_error等では、
+      正式値が保持されていても連続性を保証できないため対象外(その後に最初に現れる対象recordが、新しい区間の開始点=usage 0)。
     """
     if numeric is None:
         return False
     if corrected:
         return True
-    return value_source == "confirmed" and display in _VALUE_OK_STATUSES and not baseline_conflict
+    return display in _VALUE_OK_STATUSES
 
 
-def is_trusted_record(record: ReadingRecord | None) -> bool:
+def is_usage_eligible_record(record: ReadingRecord | None) -> bool:
     if record is None:
         return False
-    return is_trusted_values(numeric=_decimal(record.numeric_value), value_source=record.value_source, display=record.display_status,
-                             baseline_conflict=bool(record.baseline_conflict), corrected=(record.correction_count or 0) > 0)
-
-
-# 修正済みrecordを起点にした「継続carried_forward」を遡る最大件数(1時間単位で連続するrecordだけを辿る。無制限に過去へ探索しない)。
-_ANCHOR_MAX_STEPS = 24 * 7
+    return is_usage_eligible_values(numeric=_decimal(record.numeric_value), display=record.display_status, corrected=(record.correction_count or 0) > 0)
 
 
 def neighbor_record(db: Session, record: ReadingRecord, delta_hours: int) -> ReadingRecord | None:
@@ -121,11 +116,10 @@ def neighbor_record(db: Session, record: ReadingRecord, delta_hours: int) -> Rea
     return db.scalar(select(ReadingRecord).where(ReadingRecord.monitor_id == record.monitor_id, ReadingRecord.hour_bucket == bucket.isoformat()))
 
 
-def _baseline_break(db: Session, monitor_id: int, monitor_created_at: datetime | None, previous: ReadingRecord, numeric: Decimal, upper: datetime, ignore_auto_clear: bool = False) -> bool:
-    """previous以降(upperまで)に、連続性を壊すbaselineのreset・rebase・自動クリアがあったか。
+def _baseline_break(db: Session, monitor_id: int, monitor_created_at: datetime | None, previous: ReadingRecord, numeric: Decimal, upper: datetime) -> bool:
+    """previous以降(upperまで)に、運用者のreset・別値へのrebaseがあり、連続性が切れたか。
     rebaseは、その新しい値が前後どちらかの値と一致する場合(運用者が確認した値への再設定)は連続性を壊さない。
-    ignore_auto_clear: 設定変更(decimal_position/expected_digits)に伴う自動クリア(auto_semantic_reset)は無視する
-    (修正済み正式値の継続保持では値そのものが変わらないため。運用者のreset・別値へのrebaseは従来どおり壊す)。"""
+    設定変更(decimal_position/expected_digits)に伴う自動クリア(auto_semantic_reset)は、正式値そのものが変わらないため切らない。"""
     previous_numeric = _decimal(previous.numeric_value)
     query = select(ReadingBaselineEvent).where(
         ReadingBaselineEvent.monitor_id == monitor_id,
@@ -138,37 +132,7 @@ def _baseline_break(db: Session, monitor_id: int, monitor_created_at: datetime |
     for event in db.scalars(query):
         if event.action == "rebase" and _decimal(event.new_value) in (numeric, previous_numeric):
             continue
-        if ignore_auto_clear and event.action == "auto_semantic_reset":
-            continue
         return True
-    return False
-
-
-def is_anchored_continuation(db: Session, record: ReadingRecord | None, monitor_created_at: datetime | None) -> bool:
-    """usage計算上、recordが「手動修正済み(運用者確認済み)の正式値を起点に、同じ値を保持し続けている」か。
-
-    手動修正済みrecord自身、または、そこから1時間単位で途切れずに、同じ値のcarried_forwardが続いているrecord。
-    終了条件(Falseになる): 値なし / 値がanchorと異なる / 直前1時間のrecord欠損(連続性が切れる) / baselineのreset・別値へのrebase /
-    carried_forwardでない(新しいConfirmed値)が、手動修正済みでもないrecordに行き当たった。
-    通常の未修正carried_forward(修正済みanchorに繋がらないもの)は対象外。元の証跡(value_source等)は変更しない。
-    """
-    current = record
-    for _ in range(_ANCHOR_MAX_STEPS):
-        if current is None:
-            return False
-        numeric = _decimal(current.numeric_value)
-        if numeric is None:
-            return False
-        if (current.correction_count or 0) > 0:
-            return True
-        if current.value_source != "carried_forward":
-            return False
-        previous = neighbor_record(db, current, -1)
-        if previous is None or _decimal(previous.numeric_value) != numeric:
-            return False
-        if _baseline_break(db, current.monitor_id, monitor_created_at, previous, numeric, current.recorded_at, ignore_auto_clear=True):
-            return False
-        current = previous
     return False
 
 
@@ -179,51 +143,30 @@ def evaluate_usage(
     previous: ReadingRecord | None,
     numeric: Decimal | None,
     display: str,
-    baseline_conflict: bool,
     now_utc: datetime,
-    value_source: str | None = "confirmed",
     corrected: bool = False,
 ) -> tuple[str | None, str | None]:
-    """(previous_value, usage)。使用量 = 今回の定時計測値 - 直前1時間の定時計測値(両方が信頼できる記録のとき)。
+    """(previous_value, usage)。使用量 = その時刻に保存された正式値 - 直前1時間の正式値。
 
-    **連続計測区間の開始点(再開点)**: 今回が信頼できる記録で、使用量の差分の基準にできる直前値が無い場合は、
-    `previous_value=None`・`usage=0`(新しい区間の最初の点)。基準にできない直前値とは、
-    直前1時間のrecordが存在しない / 直前recordが値なし / 直前が信頼できない(未修正のcarried_forward・read_error・baseline conflict等) /
-    直前以降にbaselineの明示的なreset・別値へのrebase・自動クリアがあり連続性が切れた、場合。
-    信頼できない記録の正式値は、previous_valueとして表示しない(基準にしていないため)。以前の記録へは遡らない。
+    値の由来(confirmed / carried_forward)やbaseline conflictでは区別せず、正式値同士の差を使う。
+    例: 18:00=100 / 19:00=105(carried_forward) → 19:00のusage=5。105のまま続く20:00以降は0。
 
-    **今回が信頼できない記録は、直前が無くても usage=None**(untrusted record自身を0にしない)。previous_valueは直前recordの値のまま。
-    値が減少した場合も usage=None(previous_valueは直前の値)。
-
-    信頼できる記録: 通常のConfirmed / 手動修正済み / **手動修正済みを起点に同じ値を保持し続けるcarried_forward**
-    (is_anchored_continuation。運用者が確認した正式値の継続なので、usage=0として扱う)。
-    anchorに繋がらない未修正のcarried_forwardは信頼しない。
-    baselineのrebaseは、その新しい値が前後どちらかの値と一致する場合(=運用者が確認した値への再設定)は連続性を壊さないものとして扱う。
+    連続計測区間の開始点(再開点): 今回が対象の正式値で、差分の基準にできる直前値が無いとき `previous_value=None`・`usage=0`。
+    基準にできない直前値 = 直前recordが存在しない(計測開始・長時間停止後の再開) / 正式値なし / 対象外(通信異常・read_error等で連続性が保証できない) /
+    運用者のreset・別値へのrebaseで連続性が切れた。信頼できない値をpreviousとして表示せず、以前の記録へは遡らない。
+    今回に正式値が無い・対象外の場合は usage=None。正式値が直前より減少した場合も usage=None(previous_valueは直前の値)。
     """
     shown_previous = previous.value if previous is not None else None
-    if numeric is None:
+    if not is_usage_eligible_values(numeric=numeric, display=display, corrected=corrected):
         return shown_previous, None
-    previous_numeric = _decimal(previous.numeric_value) if previous is not None else None
-    trusted = is_trusted_values(numeric=numeric, value_source=value_source, display=display, baseline_conflict=baseline_conflict, corrected=corrected)
-    continuation = False
-    if not trusted and previous is not None and value_source == "carried_forward" and previous_numeric == numeric:
-        continuation = trusted = is_anchored_continuation(db, previous, monitor_created_at)  # 修正済みanchorからの継続保持
-    if not trusted:
-        return shown_previous, None
-    if previous is None or previous_numeric is None or not (is_trusted_record(previous) or is_anchored_continuation(db, previous, monitor_created_at)):
+    if previous is None or not is_usage_eligible_record(previous):
         return None, "0"  # 基準にできる直前値が無い = 連続計測区間の開始点
+    previous_numeric = _decimal(previous.numeric_value)
     if numeric < previous_numeric:
         return shown_previous, None
-    if _baseline_break(db, monitor_id, monitor_created_at, previous, numeric, _naive_utc(now_utc), ignore_auto_clear=continuation):
-        if continuation:
-            return shown_previous, None  # resetで修正済みanchorからの継続が終わった後の、未修正のcarried_forward自身は信頼しない
-        return None, "0"  # 運用者のreset・別値へのrebase等で連続性が切れた後の最初の正常な点
+    if _baseline_break(db, monitor_id, monitor_created_at, previous, numeric, _naive_utc(now_utc)):
+        return None, "0"  # 運用者のreset・別値へのrebaseで連続性が切れた後の最初の点
     return shown_previous, format(numeric - previous_numeric, "f")
-
-
-def compute_usage(*args, **kwargs) -> str | None:
-    """使用量だけを返す(evaluate_usageの2番目の値)。"""
-    return evaluate_usage(*args, **kwargs)[1]
 
 
 def _live_raw_and_validation(monitor_id: int) -> tuple[str | None, str | None]:
@@ -288,7 +231,7 @@ def build_record(db: Session, monitor: Monitor, bucket: datetime, now_utc: datet
 
     previous = db.scalar(select(ReadingRecord).where(
         ReadingRecord.monitor_id == monitor.id, ReadingRecord.hour_bucket == (bucket - timedelta(hours=1)).isoformat()))
-    previous_value, usage = evaluate_usage(db, monitor.id, monitor.created_at, previous, numeric, display, baseline_conflict, now_utc, value_source)
+    previous_value, usage = evaluate_usage(db, monitor.id, monitor.created_at, previous, numeric, display, now_utc)
     inference = monitor.inference
     if use_snapshot:
         confidence = snapshot.confirmed_confidence if has_value else None

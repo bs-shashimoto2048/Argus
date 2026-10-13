@@ -183,14 +183,14 @@ def test_value_source_follows_the_latest_validation_status(db, monkeypatch, vali
     assert (record.value, record.raw_value, record.validation_status, record.value_source) == ("372413.8", "372413.0", validation, source)
 
 
-def test_carried_forward_usage_is_null_until_it_is_corrected(db, monkeypatch):
+def test_carried_forward_usage_is_the_formal_value_difference(db, monkeypatch):
     monitor = make_monitor(db, value="372412.4")
     svc.record_due(db, jst(14, 0, 5))
     set_latest(db, monitor, value="372413.8")
     monkeypatch.setattr(svc, "_live_raw_and_validation", lambda _id: ("372413.0", "decrease_detected"))  # 回転途中でRawが棄却されている
     svc.record_due(db, jst(15, 0, 5))
     second = records_of(db, monitor.id)[1]
-    assert (second.value, second.value_source, second.previous_value, second.usage) == ("372413.8", "carried_forward", "372412.4", None)  # 未修正のcarried_forwardは信頼値にしない(実際の使用量は保証できない)
+    assert (second.value, second.value_source, second.previous_value, second.usage) == ("372413.8", "carried_forward", "372412.4", "1.4")  # 未修正のcarried_forwardは信頼値にしない(実際の使用量は保証できない)
 
 
 def test_backfill_value_source_sets_the_origin_of_existing_records():
@@ -243,7 +243,7 @@ def test_usage_is_null_when_the_value_decreased(db):
     assert (second.previous_value, second.usage) == ("265759", None)
 
 
-@pytest.mark.parametrize("action", ["reset", "rebase", "auto_semantic_reset"])
+@pytest.mark.parametrize("action", ["reset", "rebase"])
 def test_usage_restarts_at_zero_after_a_baseline_reset_or_rebase(db, action):  # 連続性が切れた後の最初の正常なrecord=再開点
     monitor = make_monitor(db, value="265754")
     svc.record_due(db, jst(14, 0, 5))
@@ -267,7 +267,7 @@ def test_baseline_event_before_the_previous_record_does_not_block_usage(db):
     assert records_of(db, monitor.id)[1].usage == "6"
 
 
-def test_usage_is_null_when_either_hour_has_a_baseline_conflict(db):
+def test_baseline_conflict_does_not_nullify_the_formal_value_usage(db):
     monitor = make_monitor(db, value="265759")
     svc.record_due(db, jst(14, 0, 5))
     now = datetime.utcnow()
@@ -277,7 +277,7 @@ def test_usage_is_null_when_either_hour_has_a_baseline_conflict(db):
     set_latest(db, monitor, value="265760")
     svc.record_due(db, jst(15, 0, 5))
     second = records_of(db, monitor.id)[1]
-    assert second.baseline_conflict is True and second.usage is None
+    assert second.baseline_conflict is True and second.usage == "1"  # baseline conflictでも、正式値同士の差を計算する
 
 
 def test_usage_restarts_at_zero_when_the_previous_hour_had_no_value(db):

@@ -22,26 +22,27 @@
 | `value_source` | `confirmed`: 記録時点の最新候補が正常に確定した値 / `carried_forward`: 最新Rawは棄却中（pending・invalid_format・decrease_detected・rate_exceeded・no_reading等。桁の回転途中・見切れ中を含む）だが、直前の正常Confirmed値を保持した / `none`: 正式に記録できるConfirmed値が無い |
 | `raw_value` | 記録時点の最新Raw（先頭0を含む元の桁列）。runtime稼働中のみ。`carried_forward`のときは`value`と一致しないことがある |
 | `previous_value` | 前回（1時間前の枠）の定時計測値。差分の基準にできる前回値が無い場合（前回recordが存在しない・値なし・信頼できない・連続性が切れた）は、今回が信頼できれば `null`（再開点。エラーではない。画面は「--」、Excelは空欄） |
-| `usage` | 今回 − 前回の定時計測値（Decimalの文字列）。下記の場合は `null` |
+| `usage` | その時刻に保存された正式値 − 直前1時間の正式値（Decimalの文字列。値の由来 confirmed / carried_forward は問わない）。下記の場合は `0` / `null` |
 | `confidence` / `validation_status` / `display_status` | 信頼度、検証status、記録時点の表示状態（正常/要確認/読取不能/通信異常 等） |
 | `baseline_conflict` | 記録時点でbaseline conflictの警告中か |
 | `engine` / `model_id` / `monitor_name` | 記録時点のengine、model、Monitor表示名のスナップショット |
 | 画像列 | `original_image_path` / `overlay_image_path`（画像保存先からの相対パス）/ `image_status` / `image_error`（下記「記録画像」） |
 
-### 使用量（usage）が `0` になる場合（連続計測区間の開始点・再開点）
-今回が信頼できる正式値で、**使用量の差分の基準にできる直前値が無い**とき、`usage=0`、`previous_value=null`（新しい連続計測区間の最初の点）。
-基準にできない直前値とは: 直前1時間のrecordが存在しない（計測開始・長時間停止後の再開・期間内の最初の記録） / 直前recordが値なし /
-直前が信頼できない（未修正のcarried_forward・read_error・baseline conflict等） / 直前以降にbaselineの運用者のreset・別値へのrebaseがあり連続性が切れた。
-信頼できない記録の正式値は`previous_value`として表示しない（差分の基準にしていないため）。以前の記録へは遡らない。
-読取失敗ではないため、Dashboardグラフは赤い×・値無し警告を出さず、Y=0の通常のプロットから新しい折れ線区間を始める。
-例: 09:00 未修正carried_forward(invalid_format) → `usage=null`（untrusted自身は0にしない） / 10:00 Confirmed → `previous_value=null, usage=0` /
-11:00 Confirmed → 通常の差分（`previous_value`=10:00の値）。
-今回が信頼できない場合は、直前が無くても `null`。値が減少した場合は再開点ではなく異常として `null`（`previous_value`は直前の値）。
+### 使用量（usage）の計算
+usage は **その時刻に保存された正式値 − 直前1時間の正式値** です。正式値の由来（`confirmed` / `carried_forward`）や `baseline_conflict` では区別しません。
+例: 18:00 = 100 / 19:00 = 105（Raw異常で正式値105を保持した `carried_forward`）→ 19:00 の usage = 5。105 のまま続く 20:00 以降は 0。
 
-### 使用量（usage）が `null` になる場合
-今回の値なし／今回が信頼できない（未修正のcarried_forward等）／値が減少／どちらかの`display_status`が正常・要確認以外／どちらかが
-baseline conflict／前回の記録以降にbaselineのreset・rebase・自動クリアがあった（正常な連続データではない）。
-値が変わらない場合は `0`（欠損ではない）。
+**対象になる正式値**: 正式値（`numeric_value`）があり、映像・読取が稼働中（`display_status` が normal / warning）であること。
+手動修正済み（`correction_count > 0`）は、運用者が画像等で確認した値なので `display_status` によらず対象。
+
+**連続計測区間の開始点（再開点）**: 今回が対象の正式値で、差分の基準にできる直前値が無いとき、`previous_value=null`、`usage=0`（新しい区間の最初の点）。
+基準にできない直前値 = 直前1時間のrecordが存在しない（計測開始・長時間停止後の再開） / 直前recordに正式値が無い / 直前が通信異常・read_error等で連続性を保証できない /
+直前以降に運用者のresetまたは別値へのrebaseがあり連続性が切れた。以前の記録へは遡りません。読取失敗ではないため、グラフは赤い×を出さず、Y=0の通常のプロットになります。
+
+**`usage=null` になる場合**: 今回に正式値が無い / 今回が通信異常・read_error等で対象外 / 正式値が直前より減少した（`previous_value` は直前の値）。
+
+rebaseは、新しい値が前後どちらかの正式値と一致する場合（運用者が確認した値への再設定）は連続性を壊しません。
+設定変更（decimal_position / expected_digits）に伴うbaselineの自動クリア（`auto_semantic_reset`）も、正式値が変わらないため切りません。
 
 ## 状態変化との関係
 通信異常・読取不能・baseline conflict・reset/rebase等の**状態イベントは、この計測履歴に独立した行として混在させない**。
@@ -62,9 +63,7 @@ Drumメーターは桁の回転中に、最新Rawが6桁以下になったり `i
 
 記録画像は「その瞬間」の実際の画像のため、`carried_forward` では正式記録値・Raw・画像（回転途中で数字が見切れている等）が
 完全には一致しないことがある。これは正常な仕様で、「画像から新しい値を確定せず、直前の正常確定値を保持した」と後から
-説明できるように、`validation_status`と`value_source`を残している。`usage`は、前回の定時計測値から連続していれば通常どおり
-計算する（baseline conflict・reset/rebase・値の減少・前回欠損・通信異常等のnull条件は変わらない。読取不能（`display_status=read_error`）の
-時間帯も、usageは`null`）。
+説明できるように、`validation_status`と`value_source`を残している。`usage`は、carried_forwardでも正式値同士の差で計算する（上記「使用量（usage）の計算」）。
 
 ## 記録画像（Phase 2）
 1時間記録を作った時点の**元画像**と**推論オーバーレイ**を、1組だけ保存する（全推論フレームは保存しない。自動削除もしない）。
@@ -153,9 +152,10 @@ Raw・validation_status・正式値と、元画像・overlayが別のtickのも�
 - **変更するもの**: `value`/`numeric_value`と、それに連動する`usage`/`previous_value`だけ。**元証跡（`raw_value`・`raw_confidence`・`validation_status`・`value_source`・
   画像・`inference_at`）は変更しません**。`value_source`は`manual_corrected`へ上書きせず、`carried_forward`のまま、`correction_count`/`original_value`/`corrected_at`/`corrected_by`で修正済みを表します
   （UI: 「前回確定値を保持 → 手動修正済み」、一覧に「修正済み」badge）。
-- **usageの再計算**: 修正した記録と、**次の1時間の記録**の`usage`/`previous_value`を、同じ規則（通信異常・読取不能・baseline conflict・reset/rebase・値の減少はnull）で再評価します
-  （例: 07:00=215836、08:00=215858→215850、09:00=215865 → 08:00のusage 22→14、09:00のusage 7→15）。次の記録が同じ誤った値を保持していても、値は書き換えません
-  （必要なら個別に修正）。連続区間の一括補正は別機能として未実装です。
+- **同じ値への補正**: 修正後の値が現在の正式値と同じでも受け付ける。「画像等で確認し、保持している正式値が正しい」と運用者が明示的に確認した監査記録になり、
+  `reading_record_corrections` に `old_value == new_value` の履歴が追加され、`correction_count` が増え、「修正済み」(手動修正マーカー)になる。元証跡は変えず、baselineも自動では変更しない（明示した場合のみ）。
+- **usageの再計算**: 修正した記録と後続の `usage` / `previous_value` を、上記「使用量（usage）の計算」の規則で順に再評価する（例: 07:00=215836、08:00=215858→215850、09:00=215865 → 08:00のusage 22→14、09:00のusage 7→15）。
+  後続の値は書き換えない（必要なら個別に修正）。連続区間の一括補正は別機能として未実装です。
 - **監査履歴**: `reading_record_corrections`（追記のみ。複数回修正しても全履歴が残る）。old/newの値とusage、理由、操作者、修正時点の元証跡のコピー、client_host、context（次の記録のusage変化など）。
   `GET /api/records/{id}/corrections`で新しい順に取得できます。
 - **baselineとの関係**: 履歴の修正だけでは、現在の読取基準値（runtimeのbaseline）を変更しません。修正ダイアログの「現在の読取基準値もこの値へ再設定する」（既定OFF、現在も競合が続いている場合に表示）を
@@ -167,29 +167,11 @@ Raw・validation_status・正式値と、元画像・overlayが別のtickのも�
 `GET /api/records`は、`hour_bucket` DESC → Monitorの表示順（`display_order` ASC） → `monitor_id` → `id` の安定した順序で返し、`limit`/`offset`（段階読み込み）もこの順序で行います
 （同じ計測枠の行が取得境界をまたいでも連続し、すでに表示している行が動かないため）。
 
-## usageの「信頼できる正式値」(手動修正後の再計算)
+## usageの再計算（手動修正後・バックフィル）
 
-usage(使用量)は「今回の値 − 直前1時間の値」で、**今回と直前の両方が信頼できる記録**のときだけ計算します(`is_trusted_record`)。
-直前1時間のrecordが存在しない場合だけは、今回が信頼できれば `usage=0`（連続区間の開始点）です。
-
-- 信頼できる: (A) 通常のConfirmed(`value_source=confirmed`・display_statusが正常系・baseline conflictなし・値あり) または (B) **手動修正済み**(`correction_count>0`)。
-- 手動修正済みは、記録時に baseline conflict / carried_forward / decrease_detected / rate_exceeded だった場合も、usage計算上は信頼できる(運用者が画像等を確認して正式値を確定したため)。
-  元の `baseline_conflict` / `value_source` / `validation_status` / Raw / 画像は監査証跡として変更しない。
-- **未修正のcarried_forward**は、正式値欄に値があっても信頼しない(実際の使用量0とは保証できない)ため、その記録のusageも、次の記録のusageもnull。
-  untrustedな区間を飛ばして複数時間分を1時間の使用量として計上しない。
-  **ただし、手動修正済みrecord(trusted anchor)から1時間単位で途切れず、同じ値(numeric_valueも同じ)を保持し続けるcarried_forward**は、
-  運用者が確認した正式値の継続保持として、usage計算上は信頼できる(usage=0、previous_value=直前1時間の正式値。`is_anchored_continuation`)。
-  元の証跡(value_source=carried_forward・Raw・validation_status・baseline_conflict・画像・修正履歴)は変更しない。
-  継続は次で終わる: 値なしrecord / 値がanchorと異なる / 直前1時間のrecord欠損(以後は新しい連続区間=usage 0) /
-  **運用者の明示的なreset、または別値へのrebase** / 修正済みでない非carried_forward(新しいConfirmed値)に行き当たる。
-  **設定変更(decimal_position/expected_digits)に伴うbaselineの自動クリア(`auto_semantic_reset`)は、値そのものが変わらないため継続を切らない(確定仕様)。**
-  なお、rebaseでも新しい値が前後の値と一致する場合(運用者が確認した値への再設定)は継続を切らない。
-  anchorに繋がらない通常の未修正carried_forwardは、従来どおりnull。
-  既存recordのusage(旧仕様で保存された値を含む)は、バックフィルを明示的に実行したMonitor・日付だけが更新され、全履歴の自動再評価はしない。
-  遡るのは最大168件(1時間単位で連続するrecordだけ)。新しいConfirmed値が出た場合は、最後の有効な継続値との差を使用量とする(例: 215862→215865 で 3)。
-- 修正後は、修正した記録と、直後の記録の `previous_value` / `usage` だけを再計算して保存する(値・証跡は書き換えない。直後の記録が変わらなければそこで止める。
-  ただし同じ値のcarried_forwardが連続している間は、継続範囲(と直後のConfirmed)まで順次再計算する)。
-  欠損した記録を順番に修正すれば、usageとグラフも順番に復旧する。応答の `recomputed_records` に再計算した記録の一覧が入る。
-- baselineのrebaseが連続性を壊すのは、その新しい値が前後どちらの信頼できる記録の値とも一致しない場合(reset・自動クリアは従来どおり常に壊す)。確認済みの値への再設定は壊さない。
-- Dashboardは、修正の成功後に履歴とグラフをBackendから取り直す(usageをFrontendで仮計算しない)。usageが復旧した点の赤い×(値無し)は通常のプロットになる。
-- 既存の記録のusageは自動では書き換えない(修正した記録とその直後の記録だけが再計算される)。
+- 手動修正後は、修正した記録と後続の `previous_value` / `usage` だけを時系列順に再計算して保存する（値・証跡は書き換えない）。
+  直後の記録の `previous_value` / `usage` が変わらなければそこで止める。ただし同じ値のcarried_forwardが連続している間は、旧規則で保存されたusageが残っている可能性があるため先へ進む。
+  応答の `recomputed_records` に再計算した記録の一覧が入る。
+- 元の証跡（`value` 以外の `raw_value`・`raw_confidence`・`validation_status`・`value_source`・`baseline_conflict`・画像・`inference_at`）は、再計算でも変更しない。
+- Dashboardは、修正の成功後に履歴とグラフをBackendから取り直す（usageをFrontendで仮計算しない）。
+- 既存recordのusage（旧仕様で保存された値を含む）は自動では書き換えない。`backend/scripts/backfill_reading_usage.py` を、Monitor・日付を指定して実行した範囲だけが更新される（dry-runが既定。`--apply` の前にDBをバックアップする）。

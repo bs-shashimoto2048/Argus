@@ -310,3 +310,48 @@ describe("修正済みanchorからの継続carried_forward(usage=0)", () => {
     expect(svgEl().querySelectorAll("polyline.trend-line")).toHaveLength(1); // 折れ線が途切れず継続する
   });
 });
+
+describe("ホイールボタン(中ボタン)のダブルクリックで全体表示", () => {
+  it("ホイールボタンを短い間隔で2回押すと全体表示へ戻る(単クリックでは戻らない)", async () => {
+    await renderChart();
+    wheel(-800);
+    expect(view().span).toBeLessThan(14 * HOUR);
+    fireEvent.mouseDown(svgEl(), { button: 1, clientX: 450 }); // 1回目: 何もしない
+    expect(view().span).toBeLessThan(14 * HOUR);
+    expect(resetButton()).toBeEnabled();
+    fireEvent.mouseDown(svgEl(), { button: 1, clientX: 450 }); // 2回目: 全体表示
+    expect(view().span).toBe(14 * HOUR);
+    expect(resetButton()).toBeDisabled();
+  });
+
+  it("中ボタンのmousedownはグラフ上でだけpreventDefaultする(オートスクロール抑止)。ズーム状態は変わらない", async () => {
+    await renderChart();
+    wheel(-800);
+    const before = view();
+    expect(fireEvent.mouseDown(svgEl(), { button: 1 })).toBe(false); // preventDefault済み
+    expect(view()).toEqual(before);
+    expect(fireEvent.mouseDown(screen.getByRole("heading", { name: "使用量推移" }), { button: 1 })).toBe(true); // グラフ外は通常動作
+  });
+
+  it("間隔が空いた2回目は2回押しとして扱わない / 左ボタン・右ボタンは対象外", async () => {
+    await renderChart();
+    wheel(-800);
+    const span = view().span;
+    fireEvent.mouseDown(svgEl(), { button: 1 });
+    vi.setSystemTime(new Date(Date.now() + 450)); // 2回目までの間隔を空ける(イベントのtimeStampはこのテストでは偽のDate基準)
+    fireEvent.mouseDown(svgEl(), { button: 1 });
+    expect(view().span).toBe(span);
+    fireEvent.mouseDown(svgEl(), { button: 2 });
+    fireEvent.mouseDown(svgEl(), { button: 2 });
+    expect(view().span).toBe(span);
+  });
+
+  it("既存の操作(左ダブルクリック・0キー・全体表示ボタン)は維持され、操作説明に ホイールボタン2回 が載っている", async () => {
+    const user = userEvent.setup();
+    await renderChart();
+    expect(screen.getByText(/ダブルクリック・ホイールボタン2回: 全体表示/)).toBeInTheDocument();
+    wheel(-800); fireEvent.doubleClick(svgEl()); expect(view().span).toBe(14 * HOUR);
+    wheel(-800); fireEvent.keyDown(svgEl(), { key: "0" }); expect(view().span).toBe(14 * HOUR);
+    wheel(-800); await user.click(resetButton()); expect(view().span).toBe(14 * HOUR);
+  });
+});

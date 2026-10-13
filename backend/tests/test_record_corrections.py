@@ -145,7 +145,6 @@ def test_record_not_found(client):
     (dict(operator=""), "OPERATOR_REQUIRED"), (dict(operator="  "), "OPERATOR_REQUIRED"),
     (dict(value="abc"), "INVALID_VALUE"), (dict(value=""), "INVALID_VALUE"), (dict(value="12-3"), "INVALID_VALUE"),
     (dict(value="21585000"), "INVALID_VALUE"),  # expected_digits(7桁)を超える
-    (dict(value="215858"), "NO_CHANGE"),  # 現在の正式値と同じ
 ])
 def test_invalid_requests_are_rejected_without_changes(client, db, over, code):
     _monitor, _r7, r8, _r9 = carried_scenario(db)
@@ -270,7 +269,7 @@ def test_next_record_that_also_carries_the_same_value_is_not_rewritten(client, d
     db.expire_all()
     nxt = db.get(ReadingRecord, r9.id)
     assert nxt.value == "215858" and nxt.correction_count == 0  # 同じ誤った値を保持していても、勝手に一括書き換えしない
-    assert nxt.previous_value == "215850" and nxt.usage is None  # previous_valueだけ整合。未修正のcarried_forwardはusageを計算しない(8と自動計算しない)
+    assert nxt.previous_value == "215850" and nxt.usage == "8"  # 正式値同士の差(215858 - 修正後の215850)。値自体は書き換えない
     assert correct(client, r9.id, value="215851", reason="次の記録も個別に修正").status_code == 200  # 必要なら次のrecordも個別に修正できる
 
 
