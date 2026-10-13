@@ -125,20 +125,24 @@ def compute_usage(
 ) -> str | None:
     """使用量 = 今回の定時計測値 - 直前1時間の定時計測値。今回と直前の**両方**が信頼できる記録でなければNone。
 
-    Noneになる条件: 直前記録なし/どちらかが信頼できない(is_trusted_values: 未修正のcarried_forward・baseline conflict・
+    直前1時間の定時計測recordそのものが存在しない場合(計測開始・長時間停止後の再開・期間内の最初の記録)は、
+    読取失敗ではなく「新しい連続計測区間の開始点」なので、今回が信頼できる記録ならusage=0(以前の記録へは遡らない)。
+    今回が信頼できない場合は、直前が無くてもNone。直前recordが存在するのに信頼できない場合もNone。
+
+    Noneになる条件: 今回が信頼できない/直前記録があるのに信頼できない(is_trusted_values: 未修正のcarried_forward・baseline conflict・
     正常系でないdisplay_status等。手動修正済みは信頼できる)/値が減少/直前記録以降にbaselineのreset・rebase・自動クリアがあった。
     直前が信頼できない区間を飛ばして、複数時間分を1時間の使用量として計上しない。
     baselineのrebaseは、その新しい値が前後どちらかの信頼できる記録の値と一致する場合(=運用者が確認した値への再設定)は
     連続性を壊さないものとして扱う(監査履歴は変更しない)。
     """
-    if previous is None or numeric is None:
-        return None
-    previous_numeric = _decimal(previous.numeric_value)
-    if previous_numeric is None:
+    if numeric is None:
         return None
     if not is_trusted_values(numeric=numeric, value_source=value_source, display=display, baseline_conflict=baseline_conflict, corrected=corrected):
         return None
-    if not is_trusted_record(previous):
+    if previous is None:
+        return "0"  # 比較する前回recordが存在しない = 連続計測区間の開始点
+    previous_numeric = _decimal(previous.numeric_value)
+    if previous_numeric is None or not is_trusted_record(previous):
         return None
     if numeric < previous_numeric:
         return None

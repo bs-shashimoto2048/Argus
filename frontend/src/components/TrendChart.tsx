@@ -1,15 +1,18 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { api } from "../api/client";
 import type { ReadingRecord } from "../types";
 import { periodError, periodToRange } from "../utils/records";
-import { TREND_MAX_PAGES, TREND_PAGE, buildSeries, extractChartEvents, niceTicks, seriesColor, splitSegments } from "../utils/trend";
-import type { ChartEvent, TrendMetric, TrendSeries } from "../utils/trend";
+import { TREND_MAX_PAGES, TREND_PAGE, buildSeries, clampView, extractChartEvents, niceTicks, panView, seriesColor, splitSegments, timeTicks, zoomView } from "../utils/trend";
+import type { ChartEvent, TimeView, TrendMetric, TrendSeries } from "../utils/trend";
 import type { RecordFilterValue } from "./RecordFilters";
 
 const HEIGHT = 180; // グラフ本体の高さ(px)
 const MARGIN = { top: 10, right: 14, bottom: 22, left: 58 };
 const DEFAULT_WIDTH = 900;
+const WHEEL_ZOOM_RATE = 0.002; // wheelのdeltaY(px)1あたりの拡大・縮小率(指数)。タッチパッドの細かいdeltaでも滑らかに動く
+const KEY_ZOOM_FACTOR = 0.7; // キーボードの + / - 1回あたりの表示幅の倍率
+const KEY_PAN_RATIO = 0.2; // キーボードの ← / → 1回あたりの移動量(表示幅に対する割合)
 
 /** イベント印の描画フック。nullを返すと描かない。将来の印(基準値競合など)はここへ差し込む。 */
 export type EventMarkerRenderer = (event: ChartEvent, pos: { x: number; y: number; color: string }) => ReactNode;
@@ -48,8 +51,13 @@ export function TrendChart({ monitors, filter, refreshMs, reloadToken = 0, rende
   const [error, setError] = useState("");
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const [hover, setHover] = useState<number | null>(null);
+  const [zoom, setZoom] = useState<TimeView | null>(null); // 表示中の時間範囲。nullは全期間
+  const [dragging, setDragging] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const geometry = useRef({ dataMin: 0, dataMax: 1, view: { min: 0, max: 1 } as TimeView, plotW: 100, width: DEFAULT_WIDTH });
   const generation = useRef(0);
+  const clipId = `${useId().replace(/:/g, "")}-plot`;
 
   const invalid = periodError(filter.period);
   const range = periodToRange(filter.period);
@@ -80,7 +88,7 @@ export function TrendChart({ monitors, filter, refreshMs, reloadToken = 0, rende
   useEffect(() => {
     if (!from || !to) return;
     const id = ++generation.current;
-    setRecords(null); setError(""); setTruncated(false); setHover(null);
+    setRecords(null); setError(""); setTruncated(false); setHover(null); setZoom(null); // 条件(Monitor・期間)が変わったら全体表示へ戻す
     void load(id, false);
   }, [load, from, to]);
 
@@ -110,9 +118,13 @@ export function TrendChart({ monitors, filter, refreshMs, reloadToken = 0, rende
   // --- 座標 ---
   const times = series.flatMap((s) => s.points.map((p) => p.time));
   const ys = series.flatMap((s) => s.points.flatMap((p) => (p.y == null ? [] : [p.y])));
-  let tMin = times.length ? Math.min(...times) : 0;
-  let tMax = times.length ? Math.max(...times) : 1;
-  if (tMax - tMin < 3600_000) { tMin -= 1800_000; tMax += 1800_000; }
+  let dataMin = times.length ? Math.min(...times) : 0;
+  let dataMax = times.length ? Math.max(...times) : 1;
+  if (dataMax - dataMin < 3600_000) { dataMin -= 1800_000; dataMax += 1800_000; }
+  // 表示範囲(view): ズーム中はdata範囲の内側。X座標だけがviewに従い、Y軸(下のyMin/yMax/ticks)は選択期間全体のデータで決める。
+  const view = zoom ? clampView(zoom, dataMin, dataMax) : { min: dataMin, max: dataMax };
+  const tMin = view.min, tMax = view.max;
+  const zoomed = tMax - tMin < dataMax - dataMin - 1;
   let yMin = ys.length ? Math.min(...ys) : 0;
   let yMax = ys.length ? Math.max(...ys) : 1;
   if (metric !== "value") yMin = Math.min(0, yMin); // 使用量・累積増加量は0を基準線に含める
@@ -125,18 +137,87 @@ export function TrendChart({ monitors, filter, refreshMs, reloadToken = 0, rende
   const py = (v: number) => MARGIN.top + (1 - (v - yMin) / (yMax - yMin)) * plotH;
   const xFormat = timeFormat(tMax - tMin);
   const xTickCount = Math.max(2, Math.min(7, Math.floor(plotW / 120)));
-  const xTicks = Array.from({ length: xTickCount }, (_, i) => tMin + ((tMax - tMin) * i) / (xTickCount - 1));
+  const xTicks = timeTicks(tMin, tMax, xTickCount);
+  const inView = (t: number) => t >= tMin && t <= tMax;
+  geometry.current = { dataMin, dataMax, view, plotW, width };
   const colorOf = (monitorId: number) => seriesColor(Math.max(0, series.findIndex((s) => s.monitor_id === monitorId)));
 
   const uniqueTimes = useMemo(() => [...new Set(times)].sort((a, b) => a - b), [records, metric]); // eslint-disable-line react-hooks/exhaustive-deps
-  const onMove = (e: React.MouseEvent<SVGSVGElement>) => {
-    if (uniqueTimes.length === 0) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / (rect.width || width)) * width;
-    const t = tMin + ((x - MARGIN.left) / plotW) * (tMax - tMin);
-    setHover(uniqueTimes.reduce((best, cur) => (Math.abs(cur - t) < Math.abs(best - t) ? cur : best), uniqueTimes[0]));
+  // カーソルのX位置(svg座標)。svgの表示幅とviewBox幅が違う場合を補正する。
+  const svgX = (clientX: number) => {
+    const rect = svgRef.current?.getBoundingClientRect();
+    return rect ? ((clientX - rect.left) / (rect.width || geometry.current.width)) * geometry.current.width : 0;
   };
-  const hoverRows = hover == null ? [] : series.map((s, i) => ({ s, i, p: s.points.find((p) => p.time === hover) })).filter((r) => r.p);
+  const timeAt = (x: number) => { const g = geometry.current; return g.view.min + ((x - MARGIN.left) / g.plotW) * (g.view.max - g.view.min); };
+  const onMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (dragging) return;
+    const visible = uniqueTimes.filter(inView); // hover対象は表示範囲内の時刻だけ
+    if (visible.length === 0) { setHover(null); return; }
+    const t = timeAt(svgX(e.clientX));
+    setHover(visible.reduce((best, cur) => (Math.abs(cur - t) < Math.abs(best - t) ? cur : best), visible[0]));
+  };
+
+  // --- ズーム・パン(APIは再取得しない。取得済みrecordsの表示範囲だけを変える) ---
+  const applyView = (next: TimeView) => {
+    const g = geometry.current;
+    const clamped = clampView(next, g.dataMin, g.dataMax);
+    g.view = clamped; // 連続するwheel/dragイベントが、再描画前でも最新の範囲から計算できるようにする
+    setZoom(clamped.max - clamped.min >= g.dataMax - g.dataMin - 1 ? null : clamped);
+    setHover(null);
+  };
+  const zoomBy = (factor: number, anchor?: number) => {
+    const g = geometry.current;
+    applyView(zoomView(g.view, anchor ?? (g.view.min + g.view.max) / 2, factor, g.dataMin, g.dataMax));
+  };
+  const resetZoom = () => { geometry.current.view = { min: geometry.current.dataMin, max: geometry.current.dataMax }; setZoom(null); setHover(null); };
+  const panByRatio = (ratio: number) => { const g = geometry.current; applyView(panView(g.view, (g.view.max - g.view.min) * ratio, g.dataMin, g.dataMax)); };
+
+  // wheelはグラフ本体の上だけ preventDefault する(passive:falseのnativeリスナー)。グラフの外では通常のページスクロール。
+  const hasChart = !invalid && records !== null && series.length > 0;
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const delta = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY; // 行単位のwheel(Firefox等)はpxへ換算
+      if (delta === 0) return;
+      zoomBy(Math.exp(delta * WHEEL_ZOOM_RATE), timeAt(svgX(e.clientX)));
+    };
+    svg.addEventListener("wheel", onWheel, { passive: false });
+    return () => svg.removeEventListener("wheel", onWheel);
+  }, [hasChart]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 左ボタンのドラッグでX方向へパン(紙を掴んで動かす向き: 右へドラッグ=過去側へ)。Y方向の動きは無視する。
+  const onMouseDown = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (e.button !== 0 || !zoomed) return;
+    e.preventDefault();
+    svgRef.current?.focus(); // preventDefaultでfocusされなくなるため(キーボード操作のため)
+    let lastX = e.clientX;
+    setDragging(true); setHover(null);
+    const move = (ev: MouseEvent) => {
+      const g = geometry.current;
+      const rect = svgRef.current?.getBoundingClientRect();
+      const scale = rect && rect.width ? g.width / rect.width : 1;
+      const dx = (ev.clientX - lastX) * scale;
+      lastX = ev.clientX;
+      applyView(panView(g.view, -(dx / g.plotW) * (g.view.max - g.view.min), g.dataMin, g.dataMax));
+    };
+    const up = () => { setDragging(false); window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+  };
+  // キーボード: グラフにfocusがあるときだけ有効(処理したキーだけpreventDefault)。
+  const onKeyDown = (e: React.KeyboardEvent<SVGSVGElement>) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === "ArrowLeft") panByRatio(-KEY_PAN_RATIO);
+    else if (e.key === "ArrowRight") panByRatio(KEY_PAN_RATIO);
+    else if (e.key === "+" || e.key === "=") zoomBy(KEY_ZOOM_FACTOR);
+    else if (e.key === "-") zoomBy(1 / KEY_ZOOM_FACTOR);
+    else if (e.key === "0") resetZoom();
+    else return;
+    e.preventDefault();
+  };
+  const hoverRows = hover == null || !inView(hover) ? [] : series.map((s, i) => ({ s, i, p: s.points.find((p) => p.time === hover) })).filter((r) => r.p);
 
   const metricLabel = metric === "usage" ? "使用量" : metric === "delta" ? "累積増加量" : "実値";
   const fmtDelta = (v: number) => (v > 0 ? `+${fmtNumber(v)}` : fmtNumber(v));
@@ -144,6 +225,7 @@ export function TrendChart({ monitors, filter, refreshMs, reloadToken = 0, rende
   const eventKinds = [...new Set(events.map((e) => e.kind))];
   // 値無し(null)の点: 折れ線の点にはせず、赤い×で該当時刻に印を付ける。表示中の指標のデータに1件でもあれば警告文を出す。
   const missing = series.flatMap((s) => s.points.filter((p) => p.y == null).map((p) => ({ monitor_id: s.monitor_id, name: s.name, time: p.time })));
+  const visibleMissing = missing.filter((m) => inView(m.time)); // 表示範囲外の印は描かない(警告文・凡例は期間全体の有無で判定)
   const summary = series.map((s) => { const last = [...s.points].reverse().find((p) => p.y != null); return `${s.name}: ${last ? fmtNumber(last.y!) : "データなし"}`; }).join("、");
 
   return <section className="panel trend-panel" aria-label="使用量推移グラフ">
@@ -153,6 +235,7 @@ export function TrendChart({ monitors, filter, refreshMs, reloadToken = 0, rende
         {([["usage", "使用量"], ["delta", "累積増加量"], ["value", "実値"]] as const).map(([key, label]) => <button type="button" key={key} className={`segment${metric === key ? " active" : ""}`} aria-pressed={metric === key} onClick={() => setMetric(key)}>{label}</button>)}
       </span>
       <span className="trend-condition muted" title="Monitor・期間は計測履歴と共通です">{conditionText}</span>
+      <button type="button" className="btn trend-reset" disabled={!zoomed} onClick={resetZoom} title="時間軸を期間全体の表示へ戻す(グラフ上のダブルクリック / 0キーでも可)">全体表示</button>
       {series.length > 0 && <ul className="trend-legend" aria-label="凡例">
         {series.map((s, i) => <li key={s.monitor_id}><i style={{ background: seriesColor(i) }} aria-hidden="true" />{s.name}</li>)}
         {missing.length > 0 && <li className="legend-event legend-missing"><i className="marker-cross" aria-hidden="true">×</i>値無し</li>}
@@ -166,22 +249,25 @@ export function TrendChart({ monitors, filter, refreshMs, reloadToken = 0, rende
       {!invalid && !error && records === null && <div className="trend-empty">読み込み中…</div>}
       {!invalid && records !== null && series.length === 0 && <div className="trend-empty">この条件に該当する計測記録はありません。</div>}
       {!invalid && records !== null && series.length > 0 && <>
-        <svg className="trend-svg" width={width} height={HEIGHT} viewBox={`0 0 ${width} ${HEIGHT}`} role="img" aria-label={`${metricLabel}の推移。${summary}`} onMouseMove={onMove} onMouseLeave={() => setHover(null)} data-testid="trend-svg">
+        <svg ref={svgRef} className={`trend-svg${zoomed ? " zoomed" : ""}${dragging ? " dragging" : ""}`} width={width} height={HEIGHT} viewBox={`0 0 ${width} ${HEIGHT}`} role="img" tabIndex={0} aria-label={`${metricLabel}の推移。${summary}`} aria-keyshortcuts="ArrowLeft ArrowRight + - 0" data-view-min={Math.round(tMin)} data-view-max={Math.round(tMax)} data-data-min={Math.round(dataMin)} data-data-max={Math.round(dataMax)} onMouseMove={onMove} onMouseLeave={() => setHover(null)} onMouseDown={onMouseDown} onDoubleClick={resetZoom} onKeyDown={onKeyDown} data-testid="trend-svg">
+          <defs><clipPath id={clipId}><rect x={MARGIN.left} y={MARGIN.top} width={plotW} height={plotH} /></clipPath></defs>
           {ticks.map((v) => <g key={v}><line x1={MARGIN.left} x2={width - MARGIN.right} y1={py(v)} y2={py(v)} stroke="#e2e8f0" strokeWidth={1} /><text x={MARGIN.left - 6} y={py(v) + 4} textAnchor="end" fontSize={11} fill="#475569">{fmtNumber(v)}</text></g>)}
           {xTicks.map((t) => <text key={t} x={px(t)} y={HEIGHT - 6} textAnchor="middle" fontSize={11} fill="#475569">{xFormat(t)}</text>)}
+          <g clipPath={`url(#${clipId})`}>
           {series.map((s, i) => <g key={s.monitor_id} className="trend-series" data-monitor-id={s.monitor_id} stroke={seriesColor(i)}>
             {splitSegments(s.points).map((seg, k) => seg.length === 1
               ? <circle key={k} className="trend-dot" cx={px(seg[0].time)} cy={py(seg[0].y)} r={2.6} fill={seriesColor(i)} stroke="none" />
               : <polyline key={k} className="trend-line" fill="none" strokeWidth={1.8} strokeLinejoin="round" points={seg.map((p) => `${px(p.time).toFixed(1)},${py(p.y).toFixed(1)}`).join(" ")} />)}
           </g>)}
-          {events.map((event, k) => {
+          </g>
+          {events.filter((event) => inView(event.time)).map((event, k) => {
             const s = series.find((x) => x.monitor_id === event.monitor_id);
             if (!s) return null;
             const point = s.points.find((p) => p.time === event.time);
             const node = renderEvent(event, { x: px(event.time), y: point?.y != null ? py(point.y) : MARGIN.top + plotH, color: colorOf(event.monitor_id) });
             return node ? <g key={k} className={`trend-event event-${event.kind}`} data-monitor-id={event.monitor_id}>{node}</g> : null;
           })}
-          {missing.map((m, k) => {
+          {visibleMissing.map((m, k) => {
             const x = px(m.time), y = MARGIN.top + plotH - 1; // 値が無いので、グラフ下端(軸の位置)に印を置く
             return <g key={`${m.monitor_id}-${m.time}-${k}`} className="trend-missing" data-monitor-id={m.monitor_id}>
               <path d={`M${x - 5} ${y - 9}L${x + 5} ${y + 1}M${x - 5} ${y + 1}L${x + 5} ${y - 9}`} stroke={MISSING_COLOR} strokeWidth={2.4} strokeLinecap="round" fill="none" />
@@ -191,6 +277,7 @@ export function TrendChart({ monitors, filter, refreshMs, reloadToken = 0, rende
           {hover != null && <line x1={px(hover)} x2={px(hover)} y1={MARGIN.top} y2={MARGIN.top + plotH} stroke="#94a3b8" strokeDasharray="3 3" />}
         </svg>
         {missing.length > 0 && <div className="trend-missing-note" role="note">{MISSING_VALUE_WARNING}</div>}
+        <div className="trend-hint muted">ホイール: 時間軸を拡大・縮小 / ドラッグ: 移動 / ダブルクリック: 全体表示</div>
         {hover != null && <div className="trend-tooltip" style={{ left: Math.min(Math.max(px(hover) + 10, 0), Math.max(0, width - 190)) }} role="status">
           <strong>{fullTime.format(new Date(hover))}</strong>
           {hoverRows.map(({ s, i, p }) => metric === "delta"

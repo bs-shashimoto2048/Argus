@@ -3,7 +3,7 @@
 - 更新するのは派生値の previous_value / usage だけ(value・numeric_value・raw_*・validation_status・value_source・baseline_conflict・
   inference_at・画像パス・修正履歴・baseline履歴は一切変更しない)。
 - 計算は本番と同じ is_trusted_record() / compute_usage()(reading_correction_service._recompute_usage経由)を再利用する(ロジックを複製しない)。
-  今回と直前1時間の両方がtrustedなら usage = 今回 - 直前、どちらかがuntrustedならnull。修正済み(correction_count>0)はtrusted。
+  今回と直前1時間の両方がtrustedなら usage = 今回 - 直前、どちらかがuntrustedならnull。直前recordが存在しない(今回がtrusted)なら usage=0。修正済み(correction_count>0)はtrusted。
   未修正のcarried_forwardはuntrusted(usage=null のまま)。
 - Monitor IDと日付(JST)を必ず指定する(全Monitor・全期間へは適用しない)。dry-runが既定で、--applyで更新する。
 - 対象のDBは ARGUS_DATA_DIR(未設定ならリポジトリの data/)の argus.db。実行時に接続先を表示する。--apply の前に、SQLiteのバックアップを自動で作成する。
