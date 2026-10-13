@@ -6,7 +6,7 @@ import type { DataStorageSettings, DataStorageStatus, Monitor, ReadingRecord } f
 
 export function monitor(over: Partial<Monitor> & { id: number }): Monitor {
   return {
-    name: `m${over.id}`, display_name: `メーター${over.id}`, location: "", enabled: true, status: "running", created_at: "2026-10-01T00:00:00", updated_at: "2026-10-01T00:00:00",
+    name: `m${over.id}`, display_name: `メーター${over.id}`, location: "", value_unit: "", enabled: true, status: "running", created_at: "2026-10-01T00:00:00", updated_at: "2026-10-01T00:00:00",
     source: null, inference: { engine: "cpp_onnx", model_id: "digital_production_v1.onnx" } as Monitor["inference"], current_value: "265803", previous_value: null, confidence: 0.95,
     last_updated: "2026-10-09T00:00:00", previous_confidence: null, previous_confirmed_at: null, inference_status: "ok", last_inference_error: null, current_inference_error: null, reading_baseline: null, ...over,
   };

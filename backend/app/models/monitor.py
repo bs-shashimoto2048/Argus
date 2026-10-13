@@ -9,6 +9,8 @@ class Monitor(Base):
     name: Mapped[str] = mapped_column(String(80), unique=True, index=True)
     display_name: Mapped[str] = mapped_column(String(160))
     location: Mapped[str] = mapped_column(String(160), default="")
+    # 測定値の単位(表示用メタデータ。例: m³ / kWh)。空文字=単位なし。Runtime・推論・基準値には影響しない。
+    value_unit: Mapped[str] = mapped_column(String(16), default="", server_default="")
     # Dashboard/Monitor管理の表示順(小さいほど先頭)。一覧は display_order ASC -> id ASC。欠番があってもよい。
     # 既存DBへのcolumn追加時はNULLになるため、起動時に現在のid昇順で補完する(main.py)。
     display_order: Mapped[int | None] = mapped_column(Integer, nullable=True)

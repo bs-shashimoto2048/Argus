@@ -28,7 +28,7 @@ describe("Dashboardの画面配分(映像優先)", () => {
     expect(value(".monitor-card .card-body .video-image", "object-fit")).toBe("contain");
     expect(value(".video-image", "object-fit")).toBe("contain");
     expect(value(".monitor-card .card-body", "grid-template-columns")).toBe("minmax(0, 7fr) minmax(0, 3fr)"); // 旧(全体既定)。Dashboardは映像=残り幅、数値=折り返さない最小幅
-    expect(value(".dashboard-page .monitor-card .card-body", "grid-template-columns")).toBe("minmax(0, 1fr) clamp(118px, 22%, 170px)");
+    expect(value(".dashboard-page .monitor-card .card-body", "grid-template-columns")).toBe("minmax(0, 1fr) clamp(132px, 25%, 180px)");
   });
 
   it("Dashboardだけ履歴を縮める: records-areaは約3〜4時間分のclamp高さ(viewport比、上限あり)で、旧「残り高さをすべて使う」ではない", () => {

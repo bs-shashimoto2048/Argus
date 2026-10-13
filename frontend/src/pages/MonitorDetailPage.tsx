@@ -77,7 +77,7 @@ export function MonitorDetailPage() {
   // 条件と対応させる)。nameはIssue #25で編集可能になった(内部識別名だが、
   // 実行時の識別には常にMonitor ID(id)が使われ、nameを参照する経路が無いことを
   // 確認済み。UNIQUE制約・フォーマット制約(^[A-Za-z0-9_-]+$)はBackend側で検証)。
-  const [basicInfo, setBasicInfo] = useState<{ name: string; display_name: string; location: string }>({ name: "", display_name: "", location: "" });
+  const [basicInfo, setBasicInfo] = useState<{ name: string; display_name: string; location: string; value_unit: string }>({ name: "", display_name: "", location: "", value_unit: "" });
   const [savingBasicInfo, setSavingBasicInfo] = useState(false);
 
   useEffect(() => {
@@ -93,7 +93,7 @@ export function MonitorDetailPage() {
         setMonitor(value);
         setSource(value.source);
         setInference(value.inference);
-        setBasicInfo({ name: value.name, display_name: value.display_name, location: value.location });
+        setBasicInfo({ name: value.name, display_name: value.display_name, location: value.location, value_unit: value.value_unit ?? "" });
       })
       .catch((reason: Error) => setError(reason.message));
   }, [monitorId]);
@@ -189,7 +189,7 @@ export function MonitorDetailPage() {
     }
   };
 
-  // Issue #20/#25: 基本情報(内部名/表示名/設置場所)の保存。source/inferenceキーを
+  // Issue #20/#25: 基本情報(内部名/表示名/設置場所/測定単位)の保存。source/inferenceキーを
   // 一切含まないPATCHを送ることで、Backend側がRuntime/VideoReader/
   // InferenceSchedulerに触れない経路(update_monitorの基本情報のみ判定)を
   // 通るようにする。nameの重複/フォーマットエラーはBackendのvalidationに委ね、
@@ -197,9 +197,9 @@ export function MonitorDetailPage() {
   const saveBasicInfo = async () => {
     setSavingBasicInfo(true);
     try {
-      const updated = await api.update(monitorId, { name: basicInfo.name, display_name: basicInfo.display_name, location: basicInfo.location });
+      const updated = await api.update(monitorId, { name: basicInfo.name, display_name: basicInfo.display_name, location: basicInfo.location, value_unit: basicInfo.value_unit.trim() });
       setMonitor(updated);
-      setBasicInfo({ name: updated.name, display_name: updated.display_name, location: updated.location });
+      setBasicInfo({ name: updated.name, display_name: updated.display_name, location: updated.location, value_unit: updated.value_unit ?? "" });
       setMessage("基本情報を保存しました");
       setError("");
     } catch (reason) {
@@ -243,6 +243,7 @@ export function MonitorDetailPage() {
             </label>
             <label>表示名<input required value={basicInfo.display_name} onChange={(e) => setBasicInfo({ ...basicInfo, display_name: e.target.value })} /></label>
             <label>設置場所<input value={basicInfo.location} onChange={(e) => setBasicInfo({ ...basicInfo, location: e.target.value })} /></label>
+            <label className="basic-unit">測定単位<input value={basicInfo.value_unit} maxLength={16} placeholder="例: m³" onChange={(e) => setBasicInfo({ ...basicInfo, value_unit: e.target.value })} /><small className="muted">現在値・履歴などで表示する単位です。</small></label>
           </div>
           <details className="settings-hint">
             <summary>内部名について</summary>

@@ -37,17 +37,17 @@ describe("Dashboard密度調整: 最終値ブロック", () => {
     expect(rules(".dashboard-page .records-area.compact")).toHaveLength(1);
   });
 
-  it("Monitor映像: 高さ上限は viewport比 clamp(165px, 23vh, 262px)、16:9、contain、幅は残り幅+数値の最小幅(約22%)", () => {
+  it("Monitor映像: 高さ上限は viewport比 clamp(165px, 23vh, 262px)、16:9、contain、幅は残り幅+数値と単位の最小幅(約25%)", () => {
     expect(value(".dashboard-page .monitor-card .card-body .preview-wrap", "max-height")).toBe("clamp(165px, 23vh, 262px)");
     expect(value(".dashboard-page .monitor-card .card-body .preview-wrap", "aspect-ratio")).toBe("16 / 9");
     expect(value(".monitor-card .card-body .video-image", "object-fit")).toBe("contain");
-    expect(value(".dashboard-page .monitor-card .card-body", "grid-template-columns")).toBe("minmax(0, 1fr) clamp(118px, 22%, 170px)");
+    expect(value(".dashboard-page .monitor-card .card-body", "grid-template-columns")).toBe("minmax(0, 1fr) clamp(132px, 25%, 180px)");
   });
 
   it("文字サイズ: 情報階層ごとに整理(Monitor名14 / badge10.5 / 信頼度14〜15 / 更新11〜12 / 取得状態10.5 / 履歴11.5〜12)。現在値は24〜28pxのまま", () => {
     expect(px(".dashboard-page .monitor-card .card-title", "font-size")).toBe(14);
     expect(px(".dashboard-page .monitor-card .status-badge", "font-size")).toBe(10.5);
-    expect(value(".dashboard-page .monitor-card .card-body .card-value-primary strong", "font-size")).toBe("clamp(24px, 1.72vw, 28px)");
+    expect(value(".dashboard-page .monitor-card .card-body .card-value-primary strong", "font-size")).toBe("clamp(24px, 1.5vw, 28px)");
     expect(value(".dashboard-page .monitor-card .card-body .card-value-confidence strong", "font-size")).toBe("clamp(14px, 1vw, 15px)");
     expect(value(".dashboard-page .monitor-card .card-body .card-value-updated strong", "font-size")).toBe("clamp(11px, .8vw, 12px)");
     expect(px(".dashboard-page .monitor-card .card-meta", "font-size")).toBe(10.5);
@@ -67,6 +67,7 @@ describe("Dashboard密度調整: 最終値ブロック", () => {
     expect(value(".dashboard-page .monitor-card .card-head", "padding")).toBe("4px 10px");
     expect(value(".dashboard-page .monitor-card .card-meta", "padding")).toBe("2px 10px 3px");
     expect(value(".monitor-card .card-notices:empty", "padding")).toBe("0");
+    expect(value(".dashboard-page .monitor-card .card-notices:empty", "padding")).toBe("0"); // 通常状態(通知なし)は高さ0
     expect(value(".dashboard-page .monitor-card .card-notices", "min-height") ?? value(".monitor-card .card-notices", "min-height")).toBe("0"); // 空の通知領域を残さない
     expect(value(".page.dashboard-page", "gap")).toBe("5px");
     expect(value(".dashboard-page .monitor-grid", "gap")).toBe("8px");
