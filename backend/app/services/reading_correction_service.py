@@ -23,7 +23,7 @@ from reading.models import ReadingSettings
 
 from ..models import Monitor, ReadingRecord, ReadingRecordCorrection
 from . import reading_baseline_service as baseline_service
-from .reading_record_service import _decimal, _iso, _naive_utc, compute_usage, correctable_reason
+from .reading_record_service import _decimal, _iso, _naive_utc, compute_usage, correctable_reason, neighbor_record
 
 logger = logging.getLogger("argus.record_corrections")
 
@@ -69,10 +69,7 @@ def list_corrections(db: Session, record_id: int) -> list[dict] | None:
     return [_serialize_correction(row) for row in rows]
 
 
-def _neighbor(db: Session, record: ReadingRecord, delta_hours: int) -> ReadingRecord | None:
-    """同じMonitorの、1時間前(delta=-1)/1時間後(delta=+1)の計測枠の記録。"""
-    bucket = datetime.fromisoformat(record.hour_bucket) + timedelta(hours=delta_hours)
-    return db.scalar(select(ReadingRecord).where(ReadingRecord.monitor_id == record.monitor_id, ReadingRecord.hour_bucket == bucket.isoformat()))
+_neighbor = neighbor_record  # 1時間前/後の計測枠の記録(usage判定と共通)
 
 
 def _recompute_usage(db: Session, record: ReadingRecord, monitor_created_at: datetime | None) -> str | None:
@@ -131,8 +128,8 @@ def correct_record(db: Session, record_id: int, value: str, reason: str, operato
         record.corrected_by = operator
         record.usage = _recompute_usage(db, record, created_at)  # 修正した記録のusage
         # 未来側の記録を時系列順に再評価する。更新するのは previous_value / usage だけ(値・証跡は書き換えない)。
-        # usageは「直前1時間との差」なので、修正した記録の値・信頼状態が影響するのは直後の記録だけ。直後の記録の
-        # previous_value/usageが変わらなければ、それ以降も変わらないのでそこで止める(以降を無用に書き換えない)。
+        # 通常、修正した記録が影響するのは直後の記録だけなので、直後の記録のprevious_value/usageが変わらなければそこで止める。
+        # ただし、同じ値のcarried_forwardが連続している間(修正済みanchorからの継続保持)は、後続も影響し得るため先へ進む。
         affected: list[dict] = []
         cursor = record
         while True:
@@ -142,7 +139,8 @@ def correct_record(db: Session, record_id: int, value: str, reason: str, operato
             before_usage, before_previous = nxt.usage, nxt.previous_value
             nxt.usage = _recompute_usage(db, nxt, created_at)
             affected.append({"record_id": nxt.id, "hour_bucket": nxt.hour_bucket, "value": nxt.value, "value_source": nxt.value_source, "old_usage": before_usage, "new_usage": nxt.usage})
-            if nxt.usage == before_usage and nxt.previous_value == before_previous and len(affected) > 0:
+            continuing = nxt.value_source == "carried_forward" and nxt.numeric_value is not None and nxt.numeric_value == cursor.numeric_value
+            if nxt.usage == before_usage and nxt.previous_value == before_previous and not continuing:
                 break
             cursor = nxt
         next_info = affected[0] if affected else None

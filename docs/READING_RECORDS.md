@@ -172,7 +172,15 @@ usage(使用量)は「今回の値 − 直前1時間の値」で、**今回と�
   元の `baseline_conflict` / `value_source` / `validation_status` / Raw / 画像は監査証跡として変更しない。
 - **未修正のcarried_forward**は、正式値欄に値があっても信頼しない(実際の使用量0とは保証できない)ため、その記録のusageも、次の記録のusageもnull。
   untrustedな区間を飛ばして複数時間分を1時間の使用量として計上しない。
-- 修正後は、修正した記録と、直後の記録の `previous_value` / `usage` だけを再計算して保存する(値・証跡は書き換えない。直後の記録が変わらなければそこで止める)。
+  **ただし、手動修正済みrecord(trusted anchor)から1時間単位で途切れず、同じ値(numeric_valueも同じ)を保持し続けるcarried_forward**は、
+  運用者が確認した正式値の継続保持として、usage計算上は信頼できる(usage=0、previous_value=直前1時間の正式値。`is_anchored_continuation`)。
+  元の証跡(value_source=carried_forward・Raw・validation_status・baseline_conflict・画像・修正履歴)は変更しない。
+  継続は次で終わる: 値なしrecord / 値がanchorと異なる / 直前1時間のrecord欠損(以後は新しい連続区間=usage 0) / 運用者のresetや別値へのrebase /
+  修正済みでない非carried_forward(新しいConfirmed値)に行き当たる。設定変更(decimal_position/expected_digits)に伴う自動クリア(auto_semantic_reset)は、
+  値そのものが変わらないため継続を切らない。anchorに繋がらない通常の未修正carried_forwardは、従来どおりnull。
+  遡るのは最大168件(1時間単位で連続するrecordだけ)。新しいConfirmed値が出た場合は、最後の有効な継続値との差を使用量とする(例: 215862→215865 で 3)。
+- 修正後は、修正した記録と、直後の記録の `previous_value` / `usage` だけを再計算して保存する(値・証跡は書き換えない。直後の記録が変わらなければそこで止める。
+  ただし同じ値のcarried_forwardが連続している間は、継続範囲(と直後のConfirmed)まで順次再計算する)。
   欠損した記録を順番に修正すれば、usageとグラフも順番に復旧する。応答の `recomputed_records` に再計算した記録の一覧が入る。
 - baselineのrebaseが連続性を壊すのは、その新しい値が前後どちらの信頼できる記録の値とも一致しない場合(reset・自動クリアは従来どおり常に壊す)。確認済みの値への再設定は壊さない。
 - Dashboardは、修正の成功後に履歴とグラフをBackendから取り直す(usageをFrontendで仮計算しない)。usageが復旧した点の赤い×(値無し)は通常のプロットになる。

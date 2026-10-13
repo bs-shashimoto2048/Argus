@@ -111,6 +111,67 @@ def is_trusted_record(record: ReadingRecord | None) -> bool:
                              baseline_conflict=bool(record.baseline_conflict), corrected=(record.correction_count or 0) > 0)
 
 
+# 修正済みrecordを起点にした「継続carried_forward」を遡る最大件数(1時間単位で連続するrecordだけを辿る。無制限に過去へ探索しない)。
+_ANCHOR_MAX_STEPS = 24 * 7
+
+
+def neighbor_record(db: Session, record: ReadingRecord, delta_hours: int) -> ReadingRecord | None:
+    """同じMonitorの、1時間前(delta=-1)/1時間後(delta=+1)の計測枠の記録。"""
+    bucket = datetime.fromisoformat(record.hour_bucket) + timedelta(hours=delta_hours)
+    return db.scalar(select(ReadingRecord).where(ReadingRecord.monitor_id == record.monitor_id, ReadingRecord.hour_bucket == bucket.isoformat()))
+
+
+def _baseline_break(db: Session, monitor_id: int, monitor_created_at: datetime | None, previous: ReadingRecord, numeric: Decimal, upper: datetime, ignore_auto_clear: bool = False) -> bool:
+    """previous以降(upperまで)に、連続性を壊すbaselineのreset・rebase・自動クリアがあったか。
+    rebaseは、その新しい値が前後どちらかの値と一致する場合(運用者が確認した値への再設定)は連続性を壊さない。
+    ignore_auto_clear: 設定変更(decimal_position/expected_digits)に伴う自動クリア(auto_semantic_reset)は無視する
+    (修正済み正式値の継続保持では値そのものが変わらないため。運用者のreset・別値へのrebaseは従来どおり壊す)。"""
+    previous_numeric = _decimal(previous.numeric_value)
+    query = select(ReadingBaselineEvent).where(
+        ReadingBaselineEvent.monitor_id == monitor_id,
+        ReadingBaselineEvent.action.in_(_BASELINE_RESET_ACTIONS),
+        ReadingBaselineEvent.occurred_at > previous.recorded_at,
+        ReadingBaselineEvent.occurred_at <= upper,
+    )
+    if monitor_created_at is not None:
+        query = query.where(ReadingBaselineEvent.occurred_at >= monitor_created_at)
+    for event in db.scalars(query):
+        if event.action == "rebase" and _decimal(event.new_value) in (numeric, previous_numeric):
+            continue
+        if ignore_auto_clear and event.action == "auto_semantic_reset":
+            continue
+        return True
+    return False
+
+
+def is_anchored_continuation(db: Session, record: ReadingRecord | None, monitor_created_at: datetime | None) -> bool:
+    """usage計算上、recordが「手動修正済み(運用者確認済み)の正式値を起点に、同じ値を保持し続けている」か。
+
+    手動修正済みrecord自身、または、そこから1時間単位で途切れずに、同じ値のcarried_forwardが続いているrecord。
+    終了条件(Falseになる): 値なし / 値がanchorと異なる / 直前1時間のrecord欠損(連続性が切れる) / baselineのreset・別値へのrebase /
+    carried_forwardでない(新しいConfirmed値)が、手動修正済みでもないrecordに行き当たった。
+    通常の未修正carried_forward(修正済みanchorに繋がらないもの)は対象外。元の証跡(value_source等)は変更しない。
+    """
+    current = record
+    for _ in range(_ANCHOR_MAX_STEPS):
+        if current is None:
+            return False
+        numeric = _decimal(current.numeric_value)
+        if numeric is None:
+            return False
+        if (current.correction_count or 0) > 0:
+            return True
+        if current.value_source != "carried_forward":
+            return False
+        previous = neighbor_record(db, current, -1)
+        if previous is None or _decimal(previous.numeric_value) != numeric:
+            return False
+        if _baseline_break(db, current.monitor_id, monitor_created_at, previous, numeric, current.recorded_at, ignore_auto_clear=True):
+            return False
+        current = previous
+    return False
+
+
 def compute_usage(
     db: Session,
     monitor_id: int,
@@ -129,34 +190,31 @@ def compute_usage(
     読取失敗ではなく「新しい連続計測区間の開始点」なので、今回が信頼できる記録ならusage=0(以前の記録へは遡らない)。
     今回が信頼できない場合は、直前が無くてもNone。直前recordが存在するのに信頼できない場合もNone。
 
-    Noneになる条件: 今回が信頼できない/直前記録があるのに信頼できない(is_trusted_values: 未修正のcarried_forward・baseline conflict・
-    正常系でないdisplay_status等。手動修正済みは信頼できる)/値が減少/直前記録以降にbaselineのreset・rebase・自動クリアがあった。
+    信頼できる記録: 通常のConfirmed / 手動修正済み / **手動修正済みを起点に同じ値を保持し続けるcarried_forward**
+    (is_anchored_continuation。運用者が確認した正式値の継続なので、usage=0として扱う)。
+    anchorに繋がらない未修正のcarried_forwardは従来どおり信頼しない。
+
+    Noneになる条件: 今回が信頼できない/直前記録があるのに信頼できない/値が減少/直前記録以降にbaselineのreset・rebase・自動クリアがあった。
     直前が信頼できない区間を飛ばして、複数時間分を1時間の使用量として計上しない。
     baselineのrebaseは、その新しい値が前後どちらかの信頼できる記録の値と一致する場合(=運用者が確認した値への再設定)は
     連続性を壊さないものとして扱う(監査履歴は変更しない)。
     """
     if numeric is None:
         return None
-    if not is_trusted_values(numeric=numeric, value_source=value_source, display=display, baseline_conflict=baseline_conflict, corrected=corrected):
+    previous_numeric = _decimal(previous.numeric_value) if previous is not None else None
+    trusted = is_trusted_values(numeric=numeric, value_source=value_source, display=display, baseline_conflict=baseline_conflict, corrected=corrected)
+    continuation = False
+    if not trusted and previous is not None and value_source == "carried_forward" and previous_numeric == numeric:
+        continuation = trusted = is_anchored_continuation(db, previous, monitor_created_at)  # 修正済みanchorからの継続保持
+    if not trusted:
         return None
     if previous is None:
         return "0"  # 比較する前回recordが存在しない = 連続計測区間の開始点
-    previous_numeric = _decimal(previous.numeric_value)
-    if previous_numeric is None or not is_trusted_record(previous):
+    if previous_numeric is None or not (is_trusted_record(previous) or is_anchored_continuation(db, previous, monitor_created_at)):
         return None
     if numeric < previous_numeric:
         return None
-    query = select(ReadingBaselineEvent).where(
-        ReadingBaselineEvent.monitor_id == monitor_id,
-        ReadingBaselineEvent.action.in_(_BASELINE_RESET_ACTIONS),
-        ReadingBaselineEvent.occurred_at > previous.recorded_at,
-        ReadingBaselineEvent.occurred_at <= _naive_utc(now_utc),
-    )
-    if monitor_created_at is not None:
-        query = query.where(ReadingBaselineEvent.occurred_at >= monitor_created_at)
-    for event in db.scalars(query):
-        if event.action == "rebase" and _decimal(event.new_value) in (numeric, previous_numeric):
-            continue  # 確認済みの値への再設定は、連続性を壊さない
+    if _baseline_break(db, monitor_id, monitor_created_at, previous, numeric, _naive_utc(now_utc), ignore_auto_clear=continuation):
         return None
     return format(numeric - previous_numeric, "f")
 

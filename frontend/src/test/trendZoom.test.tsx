@@ -293,3 +293,20 @@ describe("連続計測区間の最初のrecord(前回recordなし・usage=0)", (
     expect(cells.length).toBeGreaterThan(3);
   });
 });
+
+describe("修正済みanchorからの継続carried_forward(usage=0)", () => {
+  it("◇(前回値保持)と○(手動修正)は残したまま、usage 0 の通常点として描き、赤×・警告は出さない", async () => {
+    const all = [
+      rec(1, 14, { usage: "4" }),
+      rec(2, 15, { value_source: "carried_forward", is_corrected: true, correction_count: 1, usage: "5", baseline_conflict: true }),
+      rec(3, 16, { value_source: "carried_forward", usage: "0", previous_value: "102" }),
+      rec(4, 17, { value_source: "carried_forward", usage: "0", previous_value: "102" }),
+    ];
+    await renderChart(all);
+    expect(document.querySelectorAll(".trend-missing")).toHaveLength(0);
+    expect(screen.queryByText(/値無しの記録があります/)).toBeNull();
+    expect(document.querySelectorAll(".event-manual_corrected")).toHaveLength(1);
+    expect(document.querySelectorAll(".event-carried_forward")).toHaveLength(3); // 修正済み自身・継続2件(◇は証跡としてそのまま)
+    expect(svgEl().querySelectorAll("polyline.trend-line")).toHaveLength(1); // 折れ線が途切れず継続する
+  });
+});
