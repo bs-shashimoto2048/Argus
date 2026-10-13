@@ -230,7 +230,7 @@ export function MonitorDetailPage() {
       {tab === "monitoring" && <MonitoringTab monitor={monitor} rawInferenceValue={rawInferenceValue} rawDiffersFromConfirmed={rawDiffersFromConfirmed} modelMissing={modelMissing}
         readingDiagnostics={readingDiagnostics} runtimeDiagnostics={runtimeDiagnostics} videoTab={videoTab} onVideoTab={setVideoTab} lightbox={lightbox} onLightbox={setLightbox} />}
 
-      {tab === "history" && <RecordsSection monitors={[{ id: monitor.id, display_name: monitor.display_name }]} fixedMonitorId={monitor.id} title="この Monitor の計測履歴" description="1時間ごとの正式な記録（reading_records）。" size="tall" />}
+      {tab === "history" && <RecordsSection monitors={[{ id: monitor.id, display_name: monitor.display_name }]} fixedMonitorId={monitor.id} title="この Monitor の計測履歴" description="1時間ごとの正式な記録（1時間・1件）。" size="tall" />}
 
       {tab === "settings" && <section className="settings-tab">
         <div className="settings-columns">
@@ -270,7 +270,7 @@ export function MonitorDetailPage() {
           </div>
           <div className="settings-col settings-col-right">
         <InferenceSettings value={inference} onChange={setInference} open={openSections.inference} onToggleOpen={() => toggleSection("inference")} />
-        <ReadingSettingsPanel value={inference.reading} onChange={(reading) => setInference({ ...inference, reading })} open={openSections.reading} onToggleOpen={() => toggleSection("reading")} baseline={baselineStatus} diagnostics={readingDiagnostics} />
+        <ReadingSettingsPanel value={inference.reading} onChange={(reading) => setInference({ ...inference, reading })} open={openSections.reading} onToggleOpen={() => toggleSection("reading")} baseline={baselineStatus} diagnostics={readingDiagnostics} monitorId={monitorId} onBaselineChanged={setBaselineStatus} />
         <section className="panel settings-save" aria-label="保存関連">
           <h3>保存</h3>
           <div className="settings-actions"><button className="save-button" onClick={save} disabled={cppModelMissing} title={cppModelMissing ? "C++ ONNXではモデルを選択してください" : undefined}>設定を保存</button></div>

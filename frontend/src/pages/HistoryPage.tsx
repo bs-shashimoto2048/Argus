@@ -9,6 +9,6 @@ export function HistoryPage() {
   useEffect(() => { api.monitors().then((result) => setMonitors(result.monitors)).catch(() => setMonitors([])); }, []);
   return <main className="page history-page">
     <div className="page-head"><h1>履歴・データ</h1></div>
-    <RecordsSection monitors={monitors} title="1時間ごとの計測履歴" description="reading_records（1 Monitor 1時間 1件の正式な記録）。終了日はその日の終わりまでを含みます。" showExport size="tall" />
+    <RecordsSection monitors={monitors} title="1時間ごとの計測履歴" description="1時間ごとの正式な記録（1モニター・1時間・1件）。終了日はその日の終わりまでを含みます。" showExport size="tall" />
   </main>;
 }

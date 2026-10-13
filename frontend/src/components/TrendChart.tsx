@@ -41,7 +41,7 @@ type Props = {
   renderEvent?: EventMarkerRenderer;
 };
 
-export const MISSING_VALUE_WARNING = "※ 値無しの記録があります。該当記録を補正すると、プロットとグラフが正しく表示されます。";
+export const MISSING_VALUE_WARNING = "※ 正式値のない記録があります。該当記録を確認・修正すると、プロットとグラフが正しく表示されます。";
 const MISSING_COLOR = "#dc2626";
 
 // 使用量推移グラフ。履歴と同じ条件(Monitor・期間)のrecordsを取得し、Monitorごとに1本の折れ線(SVG手描き)で表示する。
@@ -248,9 +248,9 @@ export function TrendChart({ monitors, filter, refreshMs, reloadToken = 0, rende
       <button type="button" className="btn trend-reset" disabled={!zoomed} onClick={resetZoom} title="時間軸を期間全体の表示へ戻す(グラフ上のダブルクリック・ホイールボタン2回 / 0キーでも可)">全体表示</button>
       {series.length > 0 && <ul className="trend-legend" aria-label="凡例">
         {series.map((s, i) => <li key={s.monitor_id}><i style={{ background: seriesColor(i) }} aria-hidden="true" />{s.name}</li>)}
-        {missing.length > 0 && <li className="legend-event legend-missing"><i className="marker-cross" aria-hidden="true">×</i>値無し</li>}
-        {eventKinds.includes("carried_forward") && <li className="legend-event"><i className="marker-diamond" aria-hidden="true" />前回値保持</li>}
-        {eventKinds.includes("manual_corrected") && <li className="legend-event"><i className="marker-ring" aria-hidden="true" />手動修正</li>}
+        {missing.length > 0 && <li className="legend-event legend-missing"><i className="marker-cross" aria-hidden="true">×</i>正式値なし</li>}
+        {eventKinds.includes("carried_forward") && <li className="legend-event"><i className="marker-diamond" aria-hidden="true" />直前値を継続</li>}
+        {eventKinds.includes("manual_corrected") && <li className="legend-event"><i className="marker-ring" aria-hidden="true" />運用者修正</li>}
       </ul>}
     </div>
     <div className="trend-body" ref={wrapRef}>
@@ -281,7 +281,7 @@ export function TrendChart({ monitors, filter, refreshMs, reloadToken = 0, rende
             const x = px(m.time), y = MARGIN.top + plotH - 1; // 値が無いので、グラフ下端(軸の位置)に印を置く
             return <g key={`${m.monitor_id}-${m.time}-${k}`} className="trend-missing" data-monitor-id={m.monitor_id}>
               <path d={`M${x - 5} ${y - 9}L${x + 5} ${y + 1}M${x - 5} ${y + 1}L${x + 5} ${y - 9}`} stroke={MISSING_COLOR} strokeWidth={2.4} strokeLinecap="round" fill="none" />
-              <title>{`${m.name}: 値無し`}</title>
+              <title>{`${m.name}: 正式値なし`}</title>
             </g>;
           })}
           {hover != null && <line x1={px(hover)} x2={px(hover)} y1={MARGIN.top} y2={MARGIN.top + plotH} stroke="#94a3b8" strokeDasharray="3 3" />}

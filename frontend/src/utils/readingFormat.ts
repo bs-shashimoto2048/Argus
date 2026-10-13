@@ -27,6 +27,6 @@ export function formatDuration(totalSeconds: number | null | undefined): string 
 // conflictの警告文(Dashboard/Detailで共通)。値はいずれも最終運用値の形式(先頭0除去後)。
 export function conflictMessage(status: string | null | undefined, baseline: string | null | undefined, candidate: string | null | undefined, seconds: number): string {
   const duration = formatDuration(seconds);
-  if (status === "rate_exceeded") return `基準値 ${baseline ?? "--"} からの変化量が上限を超える読取 ${candidate ?? "--"} が${duration}続いています`;
-  return `基準値 ${baseline ?? "--"} より小さい読取 ${candidate ?? "--"} が${duration}続いています`;
+  if (status === "rate_exceeded") return `AI読取値 ${candidate ?? "--"} が、読取基準値 ${baseline ?? "--"} からの増加量の上限を超える状態が${duration}続いています`;
+  return `AI読取値 ${candidate ?? "--"} が、読取基準値 ${baseline ?? "--"} より小さい状態が${duration}続いています`;
 }

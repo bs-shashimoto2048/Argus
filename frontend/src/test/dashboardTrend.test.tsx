@@ -187,11 +187,11 @@ describe("グラフのイベント構造(ChartEvent)", () => {
       rec(4, 4, 11, "1"),
     ]);
     expect(events.map((e) => e.kind)).toEqual(["carried_forward", "baseline_conflict", "manual_corrected"]);
-    expect(events[0]).toEqual({ kind: "carried_forward", monitor_id: 2, time: Date.parse(hour(8)), label: "前回確定値を保持" });
+    expect(events[0]).toEqual({ kind: "carried_forward", monitor_id: 2, time: Date.parse(hour(8)), label: "直前の正式値を継続使用" });
     expect(events.map((e) => e.monitor_id)).toEqual([2, 3, 4]);
   });
 
-  it("既定のrendererは前回値保持・手動修正の印を描く(基準値競合は未描画)", async () => {
+  it("既定のrendererは前回値保持・手動修正の印を描く(読取基準値との不一致は未描画)", async () => {
     standardMocks([recordsFor([...sampleRecords, rec(11, 4, 11, "3", { baseline_conflict: true })])]);
     renderApp("/");
     await waitFor(() => expect(document.querySelector(".trend-event")).not.toBeNull());
@@ -200,7 +200,7 @@ describe("グラフのイベント構造(ChartEvent)", () => {
     expect(document.querySelectorAll(".trend-event.event-baseline_conflict")).toHaveLength(0);
   });
 
-  it("renderEvent hookで印の描画を差し替えられる(将来の基準値競合の印用)", async () => {
+  it("renderEvent hookで印の描画を差し替えられる(将来の読取基準値との不一致の印用)", async () => {
     const seen: ChartEvent[] = [];
     standardMocks([recordsFor([rec(1, 2, 8, "4"), rec(2, 2, 9, "5", { baseline_conflict: true })])]);
     render(<TrendChart monitors={threeMonitors as Monitor[]} filter={{ monitorIds: [], period: { mode: "today", startDate: "", endDate: "" } }} renderEvent={(event, pos) => { seen.push(event); return <rect data-testid="custom-marker" x={pos.x} y={pos.y} width={4} height={4} />; }} />);
@@ -436,7 +436,7 @@ describe("Monitorカード: 画像(約70%)と 現在値・信頼度・更新(縦
 });
 
 describe("値無し(null)の表示: 赤い×と、左下の警告文(値無しがある時だけ)", () => {
-  const WARNING = "値無しの記録があります。該当記録を補正すると、プロットとグラフが正しく表示されます。";
+  const WARNING = "正式値のない記録があります。該当記録を確認・修正すると、プロットとグラフが正しく表示されます。";
   const rows = [rec(1, 3, 8, "5", { value: "100" }), rec(2, 3, 9, null, { value: "105" }), rec(3, 3, 10, "4", { value: "109" })];
   const crosses = () => [...document.querySelectorAll(".trend-svg .trend-missing")];
 
@@ -452,7 +452,7 @@ describe("値無し(null)の表示: 赤い×と、左下の警告文(値無し�
     expect(note).toHaveTextContent(WARNING);
     expect(value(".trend-body .trend-missing-note", "bottom")).toMatch(/px$/); // 左下寄り
     expect(value(".trend-body .trend-missing-note", "left")).toMatch(/px$/);
-    expect(within(screen.getByRole("list", { name: "凡例" })).getByText("値無し")).toBeInTheDocument();
+    expect(within(screen.getByRole("list", { name: "凡例" })).getByText("正式値なし")).toBeInTheDocument();
   });
 
   it("値無しなし → 赤×も警告文も出ない", async () => {
@@ -461,7 +461,7 @@ describe("値無し(null)の表示: 赤い×と、左下の警告文(値無し�
     await waitFor(() => expect(document.querySelector(".trend-svg")).not.toBeNull());
     expect(crosses()).toHaveLength(0);
     expect(document.querySelector(".trend-missing-note")).toBeNull();
-    expect(within(screen.getByRole("list", { name: "凡例" })).queryByText("値無し")).toBeNull();
+    expect(within(screen.getByRole("list", { name: "凡例" })).queryByText("正式値なし")).toBeNull();
   });
 
   it("タブ切替: 指標ごとに、そのデータに値無しがある時だけ表示する(使用量=あり / 実値・累積増加量=なし)", async () => {

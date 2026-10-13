@@ -7,7 +7,7 @@ import type { Call } from "./helpers";
 
 const rec = (status: string) => record({ id: 96, monitor_id: 4, monitor_name: "食堂前機械室内メータ用", value: "372457.6", raw_value: "37245.7", value_source: "carried_forward", validation_status: status, correctable: true });
 const baseline = get("/api/monitors/4/reading/baseline", { monitor_id: 4, baseline: null, conflict: null });
-const rawButton = () => screen.getByRole("button", { name: /最新推論値 37245\.7 を入力/ });
+const rawButton = () => screen.getByRole("button", { name: /最新のAI読取値 37245\.7 を入力/ });
 const fill = (value: string) => {
   fireEvent.change(screen.getByLabelText(/修正後の値/), { target: { value } });
   fireEvent.change(screen.getByLabelText(/修正理由/), { target: { value: "画像で確認" } });
@@ -19,7 +19,7 @@ describe("最新推論値の自動入力(形式が成立していないRawはワ
     mockFetch([baseline]);
     render(<CorrectionDialog record={rec(status)} onClose={() => {}} onCorrected={() => {}} />);
     expect(rawButton()).toBeDisabled();
-    expect(screen.getByText("このRawは桁数・形式判定で不採用のため、自動入力できません。画像を確認して正式値を入力してください。")).toBeInTheDocument();
+    expect(screen.getByText("最新のAI読取値は、設定された表示桁数・小数部の形式と一致しないため自動入力できません。画像を確認して正式値を入力してください。")).toBeInTheDocument();
     fireEvent.click(rawButton());
     expect((screen.getByLabelText(/修正後の値/) as HTMLInputElement).value).toBe(""); // 入力欄は埋まらない
   });
@@ -29,7 +29,7 @@ describe("最新推論値の自動入力(形式が成立していないRawはワ
     const user = userEvent.setup();
     render(<CorrectionDialog record={rec(status)} onClose={() => {}} onCorrected={() => {}} />);
     expect(rawButton()).toBeEnabled();
-    expect(screen.getByText("この値は基準値または変化率判定で不採用です。画像確認後に使用してください。")).toBeInTheDocument();
+    expect(screen.getByText("この値は読取基準値または増加量の判定で採用されませんでした。画像を確認してから使用してください。")).toBeInTheDocument();
     expect(screen.queryByText(/自動入力できません/)).toBeNull();
     await user.click(rawButton());
     expect((screen.getByLabelText(/修正後の値/) as HTMLInputElement).value).toBe("37245.7");

@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { ApiError, api } from "../api/client";
 import type { BaselineStatus, CorrectionDeviation, CorrectionResult, ReadingRecord } from "../types";
-import { formatConfidence, formatRecordDateTimeFull, formatValue, limitImageUpscale, valueSourceLabels } from "../utils/records";
+import { formatConfidence, formatRecordDateTimeFull, formatValue, limitImageUpscale } from "../utils/records";
+import { AI_VALUE_AUTOFILL_ALLOWED, AI_VALUE_AUTOFILL_BLOCKED_MESSAGE, AI_VALUE_AUTOFILL_WARNING, AI_VALUE_AUTOFILL_WARNING_MESSAGE, AI_VALUE_HELP, BASELINE_MISMATCH_HELP, BASELINE_MISMATCH_LABEL, VALUE_SOURCE_TITLE, userErrorMessage, validationStatusDescription, validationStatusLabel, valueSourceLabel } from "../utils/readingLabels";
 import { stripLeadingZeros } from "../utils/readingFormat";
 
 const OPERATOR_KEY = "argus.baseline.operator"; // 基準値の操作と同じ(自己申告の操作者名を覚えておく)
@@ -10,10 +11,8 @@ const saveOperator = (value: string) => { try { window.localStorage.setItem(OPER
 
 type Props = { record: ReadingRecord; onClose: () => void; onCorrected: (result: CorrectionResult) => void };
 
-// 「最新推論値を入力」を使える読取判定。値の形式そのものが成立していないRaw(invalid_format / no_reading / pending等)はワンクリックで正式値にできない
-// (例: 桁数不一致で不採用の 37245.7 を、372457.6 の正式値として誤採用した事例)。decrease_detected / rate_exceeded は形式は正常なので警告つきで許可する。
-const RAW_AUTOFILL_ALLOWED = new Set(["confirmed", "low_confidence", "decrease_detected", "rate_exceeded"]);
-const RAW_AUTOFILL_WARNING = new Set(["decrease_detected", "rate_exceeded"]);
+// 「最新のAI読取値を入力」を使える読取結果(許可リストは readingLabels.ts)。値の形式そのものが成立していない読取値はワンクリックで正式値にできない
+// (例: 桁数不一致で不採用の 37245.7 を、372457.6 の正式値として誤採用した事例)。形式は正常なまま不採用になった場合は、警告つきで許可する。
 
 // 読取値(正式値)の修正ダイアログ。carried_forward / 基準値競合中の記録だけに出る。
 // 保存した元画像・overlay(記録時の証跡)を見ながら、運用者が明示的に修正値を入力する(自動確定はしない)。
@@ -33,8 +32,9 @@ export function CorrectionDialog({ record, onClose, onCorrected }: Props) {
   useEffect(() => { api.readingBaseline(record.monitor_id).then(setBaseline).catch(() => setBaseline(null)); }, [record.monitor_id]);
 
   const rawCandidate = record.raw_value ? stripLeadingZeros(record.raw_value) : null;
-  const rawAutofill = rawCandidate != null && RAW_AUTOFILL_ALLOWED.has(record.validation_status ?? "");
-  const rawAutofillWarning = rawAutofill && RAW_AUTOFILL_WARNING.has(record.validation_status ?? "");
+  const rawAutofill = rawCandidate != null && AI_VALUE_AUTOFILL_ALLOWED.has(record.validation_status ?? "");
+  const rawAutofillWarning = rawAutofill && AI_VALUE_AUTOFILL_WARNING.has(record.validation_status ?? "");
+  const statusExplanation = validationStatusDescription(record.validation_status, record.raw_value, baseline?.baseline?.value);
   const ready = value.trim() !== "" && reason.trim() !== "" && operator.trim() !== "" && (deviation === null || deviationChecked);
   const changeValue = (next: string) => { setValue(next); setDeviation(null); setDeviationChecked(false); }; // 値を変えたら、確認し直す
   const liveConflict = baseline?.conflict?.active ?? false;
@@ -51,7 +51,7 @@ export function CorrectionDialog({ record, onClose, onCorrected }: Props) {
       const detail = reasonError instanceof ApiError ? (reasonError.detail as { code?: string; details?: CorrectionDeviation } | null) : null;
       if (reasonError instanceof ApiError && detail?.code === "CORRECTION_FORCE_REQUIRED" && detail.details) {
         setDeviation(detail.details); setDeviationChecked(false); // 保存せず、確認を求める(エラーとしては表示しない)
-      } else setError(reasonError instanceof Error ? reasonError.message : String(reasonError));
+      } else setError(userErrorMessage(reasonError));
     } finally {
       setBusy(false);
     }
@@ -60,35 +60,36 @@ export function CorrectionDialog({ record, onClose, onCorrected }: Props) {
   return <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="読取値の修正" style={{ zIndex: 60 }}>
     <div className="modal correction-modal">
       <div className="modal-head"><h2>読取値を修正</h2><button type="button" className="icon-button" onClick={onClose} aria-label="閉じる">×</button></div>
-      <p className="muted">保存したoverlay画像で実際の値を確認してから、修正後の値を入力してください。修正しても、最新推論値・信頼度・読取判定・画像などの元の証跡は変わらず、修正の履歴が監査記録として残ります。</p>
+      <p className="muted">保存した画像で実際の値を確認してから、修正後の正式値を入力してください。修正しても、AI読取値・信頼度・読取結果・画像などの記録時の証跡は変わらず、修正の履歴が監査記録として残ります。</p>
       <div className="correction-grid">
         <div className="correction-image">
-          {overlayAvailable ? <img src={api.recordImage(record.id, "overlay")} alt="記録時の推論結果画像" onLoad={(e) => limitImageUpscale(e.currentTarget)} /> : <div className="image-empty">記録画像なし</div>}
+          {overlayAvailable ? <img src={api.recordImage(record.id, "overlay")} alt="記録時のAI読取結果画像" onLoad={(e) => limitImageUpscale(e.currentTarget)} /> : <div className="image-empty">記録画像なし</div>}
         </div>
         <dl className="correction-facts">
           <div><dt>記録日時</dt><dd>{formatRecordDateTimeFull(record.recorded_at)}</dd></div>
           <div><dt>モニター</dt><dd>{record.monitor_name.trim()}</dd></div>
           <div><dt>現在の正式値</dt><dd className="strong">{formatValue(record.value)}</dd></div>
-          <div><dt>最新推論値（Raw）</dt><dd>{formatValue(record.raw_value)}</dd></div>
-          <div><dt>最新推論値の信頼度</dt><dd>{formatConfidence(record.raw_confidence)}</dd></div>
-          <div><dt>読取判定</dt><dd><code>{formatValue(record.validation_status)}</code></dd></div>
-          <div><dt>値の由来</dt><dd>{valueSourceLabels[record.value_source] ?? record.value_source}</dd></div>
+          <div><dt title={AI_VALUE_HELP}>最新のAI読取値</dt><dd>{formatValue(record.raw_value)}</dd></div>
+          <div><dt>AI読取値の信頼度</dt><dd>{formatConfidence(record.raw_confidence)}</dd></div>
+          <div><dt>AI読取結果</dt><dd>{validationStatusLabel(record.validation_status)}</dd></div>
+          <div><dt>{VALUE_SOURCE_TITLE}</dt><dd>{valueSourceLabel(record.value_source, record.is_corrected)}</dd></div>
           <div><dt>現在の読取基準値</dt><dd>{baseline?.baseline?.value ?? "--"}</dd></div>
-          <div><dt>基準値競合</dt><dd>{liveConflict ? `あり（競合する読取 ${baseline?.conflict?.candidate ?? "--"}）` : record.baseline_conflict ? "記録時にあり" : "なし"}</dd></div>
+          <div><dt title={BASELINE_MISMATCH_HELP}>{BASELINE_MISMATCH_LABEL}</dt><dd>{liveConflict ? `あり（不一致のAI読取値 ${baseline?.conflict?.candidate ?? "--"}）` : record.baseline_conflict ? "記録時にあり" : "なし"}</dd></div>
         </dl>
       </div>
+      {statusExplanation && <p className="muted tiny status-explain" role="note">{statusExplanation}</p>}
       <div className="correction-form">
         <label>修正後の値（正式値）
           <input value={value} onChange={(e) => changeValue(e.target.value)} placeholder="例: 215850 / 372414.3" inputMode="decimal" />
           <small className="muted same-value-note">現在の正式値と同じ値でも、画像確認済みとして補正履歴を残せます。</small>
         </label>
-        {rawCandidate && <button type="button" className="secondary small-button use-raw" disabled={!rawAutofill} onClick={() => changeValue(rawCandidate)}>最新推論値 {rawCandidate} を入力</button>}
-        {rawCandidate && !rawAutofill && <p className="muted tiny raw-blocked" role="note">このRawは桁数・形式判定で不採用のため、自動入力できません。画像を確認して正式値を入力してください。</p>}
-        {rawAutofillWarning && <p className="tiny raw-warning" role="note">この値は基準値または変化率判定で不採用です。画像確認後に使用してください。</p>}
+        {rawCandidate && <button type="button" className="secondary small-button use-raw" disabled={!rawAutofill} onClick={() => changeValue(rawCandidate)}>最新のAI読取値 {rawCandidate} を入力</button>}
+        {rawCandidate && !rawAutofill && <p className="muted tiny raw-blocked" role="note">{AI_VALUE_AUTOFILL_BLOCKED_MESSAGE}</p>}
+        {rawAutofillWarning && <p className="tiny raw-warning" role="note">{AI_VALUE_AUTOFILL_WARNING_MESSAGE}</p>}
         <label>修正理由（必須）<input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="例: 画像で桁を確認し、読取の棄却中だったため" /></label>
         <label>操作者（必須・自己申告）<input value={operator} onChange={(e) => setOperator(e.target.value)} placeholder="氏名など" /></label>
         {(liveConflict || record.baseline_conflict) && <label className="check rebase-option">
-          <input type="checkbox" checked={rebase} onChange={(e) => setRebase(e.target.checked)} /> 現在の読取基準値もこの値へ再設定する（既定はOFF。基準値の操作として、別の監査履歴も残ります）
+          <input type="checkbox" checked={rebase} onChange={(e) => setRebase(e.target.checked)} /> 読取基準値もこの値へ変更する（正式値だけを修正する場合はOFFのままにしてください。読取基準値の変更として、別の監査履歴も残ります）
         </label>}
         {deviation && <div className="alert warning deviation-confirm" role="alert">
           <strong>前後の正式値から大きく乖離しています。桁落ち・小数点位置を確認してください。</strong>

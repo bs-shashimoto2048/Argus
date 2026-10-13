@@ -14,9 +14,9 @@ export type ChartEvent = {
 };
 
 export const chartEventLabels: Record<ChartEventKind, string> = {
-  carried_forward: "前回確定値を保持",
-  baseline_conflict: "基準値競合",
-  manual_corrected: "手動修正",
+  carried_forward: "直前の正式値を継続使用",
+  baseline_conflict: "読取基準値との不一致",
+  manual_corrected: "運用者が確認・修正",
 };
 
 /** 計測枠の時刻(epoch ms)。hour_bucketはoffset付きISO。 */

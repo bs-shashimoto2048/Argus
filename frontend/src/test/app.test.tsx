@@ -56,15 +56,16 @@ describe("Dashboard", () => {
     expect(within(cards[1] as HTMLElement).getByText("エネセン内ガスメータ用１")).toBeInTheDocument(); // 末尾のタブは表示に出さない
   });
 
-  it("最新の記録が carried_forward のMonitorカードに「前回確定値を保持」と棄却Rawを補助表示する", async () => {
+  it("最新の記録が carried_forward のMonitorカードに「直前の正式値を継続使用」と棄却Rawを補助表示する", async () => {
     const carried = record({ id: 9, monitor_id: 3, value: "215858", raw_value: "0215850", value_source: "carried_forward", validation_status: "decrease_detected", recorded_at: "2026-10-08T23:00:20" });
     standardMocks([get("/api/records", { items: [carried], total: 1, limit: 100, offset: 0 })]);
     renderApp("/");
-    await screen.findAllByText("前回確定値を保持");
+    await screen.findAllByText("直前の正式値を継続使用");
     const badge = document.querySelector(".monitor-card .carried-badge") as HTMLElement;
-    expect(badge).toHaveTextContent("前回確定値を保持");
-    expect(badge).toHaveTextContent("Raw 0215850");
-    expect(badge).toHaveTextContent("decrease_detected");
+    expect(badge).toHaveTextContent("直前の正式値を継続使用");
+    expect(badge).toHaveTextContent("AI読取値 215850");
+    expect(badge).toHaveTextContent("読取基準値より小さいため不採用");
+    expect(badge).not.toHaveTextContent("decrease_detected");
     expect(document.querySelectorAll(".monitor-card .carried-badge")).toHaveLength(1);
   });
 

@@ -4,6 +4,7 @@ import { VideoPreview } from "./VideoPreview";
 import { ReadingBaselinePanel } from "./ReadingBaselinePanel";
 import { formatDateTimeJst } from "../utils/datetime";
 import { inferenceErrorText } from "../utils/monitorDetail";
+import { baselineStateLabel, internalName, validationStatusLabel } from "../utils/readingLabels";
 import type { Lightbox } from "./MonitoringTab";
 
 type Props = {
@@ -65,12 +66,12 @@ export function DiagnosticsTab({ monitor, readingDiagnostics, runtimeDiagnostics
         </tbody></table>
       </section>
 
-      {/* 中段: 読取判定 / 読取基準値 / 基準値競合 */}
+      {/* 中段: AI読取結果 / 読取基準値 / 読取基準値との不一致 */}
       <section className="diag-card" aria-label="読取判定">
         <h3>読取判定</h3>
         <table className="diag-table"><tbody>
-          <Row label="最新推論値（Raw）">{confirmed?.raw_value ?? dash}{confirmed?.raw_confidence != null && `（信頼度 ${(confirmed.raw_confidence * 100).toFixed(0)}%）`}</Row>
-          <Row label="読取判定"><code>{confirmed?.validation_status ?? dash}</code></Row>
+          <Row label="最新のAI読取値">{confirmed?.raw_value ?? dash}{confirmed?.raw_confidence != null && `（信頼度 ${(confirmed.raw_confidence * 100).toFixed(0)}%）`}</Row>
+          <Row label="AI読取結果">{confirmed?.validation_status ? internalName(validationStatusLabel(confirmed.validation_status), confirmed.validation_status) : dash}</Row>
           <Row label="一致回数">{confirmed ? `${confirmed.agreement_count} / ${confirmed.raw_count}` : dash}{reading && reading.consecutive_failures > 0 && `（連続失敗 ${reading.consecutive_failures}）`}</Row>
           <Row label="合意候補">{reading?.candidate ? `${reading.candidate.value}（一致 ${reading.candidate.agreement_count}）` : dash}</Row>
         </tbody></table>
@@ -79,19 +80,19 @@ export function DiagnosticsTab({ monitor, readingDiagnostics, runtimeDiagnostics
       <section className="diag-card" aria-label="読取基準値">
         <h3>読取基準値</h3>
         <table className="diag-table"><tbody>
-          <Row label="基準値">{baseline?.value ?? monitor.reading_baseline?.value ?? dash}</Row>
+          <Row label="読取基準値">{baseline?.value ?? monitor.reading_baseline?.value ?? dash}</Row>
           <Row label="確定日時">{baseline?.confirmed_at ? formatDateTimeJst(baseline.confirmed_at) : dash}</Row>
-          <Row label="世代（epoch）">{baseline?.epoch ?? dash}</Row>
-          <Row label="状態">{monitor.reading_baseline ? (monitor.reading_baseline.state === "pending_reset" ? "リセット済み" : "有効") : dash}</Row>
+          <Row label="基準値世代（内部管理番号）">{baseline?.epoch ?? dash}</Row>
+          <Row label="状態">{monitor.reading_baseline ? baselineStateLabel(monitor.reading_baseline.state) : dash}</Row>
         </tbody></table>
       </section>
 
-      <section className="diag-card" aria-label="基準値競合">
-        <h3>基準値競合</h3>
+      <section className="diag-card" aria-label="読取基準値との不一致">
+        <h3>読取基準値との不一致</h3>
         <table className="diag-table"><tbody>
-          <Row label="競合">{conflict?.active ? "あり" : "なし"}</Row>
-          <Row label="判定"><code>{conflict ? conflict.status : dash}</code></Row>
-          <Row label="競合する読取">{conflict ? conflict.candidate : dash}</Row>
+          <Row label="不一致">{conflict?.active ? "あり" : "なし"}</Row>
+          <Row label="判定">{conflict ? internalName(validationStatusLabel(conflict.status), conflict.status) : dash}</Row>
+          <Row label="不一致のAI読取値">{conflict ? conflict.candidate : dash}</Row>
           <Row label="継続">{conflict ? `${conflict.count}回` : dash}</Row>
         </tbody></table>
       </section>

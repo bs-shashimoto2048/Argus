@@ -1055,3 +1055,23 @@ body { overflow-x: hidden; }
 .correction-form .use-raw:disabled { opacity: .5; cursor: not-allowed; }
 .deviation-confirm { margin: 8px 0; }
 .deviation-confirm ul { margin: 4px 0; padding-left: 18px; font-size: 12.5px; }
+
+/* 読取基準値の変更・未設定化 / 利用者向け説明 */
+.rs-baseline-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.baseline-dialog { width: min(560px, 96vw); }
+.baseline-dialog-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 4px 14px; margin: 8px 0; }
+.baseline-dialog-facts > div { display: flex; flex-direction: column; }
+.baseline-dialog-facts dt { color: var(--color-text-secondary); font-size: 11.5px; }
+.baseline-dialog-facts dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+.far-confirm { margin: 8px 0; }
+.carried-note, .corrected-note { white-space: pre-line; }
+.carried-note p, .corrected-note p { margin: 3px 0 0; font-weight: 400; }
+.corrected-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 14px; margin: 4px 0; }
+.corrected-facts > div { display: flex; gap: 6px; }
+.corrected-facts dt { color: var(--color-text-secondary); }
+.corrected-facts dd { margin: 0; font-variant-numeric: tabular-nums; }
+.drawer-value-help { display: block; }
+.status-explain { white-space: pre-line; line-height: 1.5; margin: 4px 0 8px; }
+.carried-note > strong, .corrected-note > strong { display: block; font-size: 13px; line-height: 1.4; }
+.corrected-facts { grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); }
+.corrected-facts dt { white-space: nowrap; }

@@ -258,16 +258,16 @@ describe("Monitor Detail: タブ(日本語表記)", () => {
     expect(screen.getByText(/Monitor ID: 3/)).toBeInTheDocument();
   });
 
-  it("監視: 主要な項目名が日本語で、live image・確定値・Raw・信頼度・状態・推論エンジン・モデル・最終更新・読取基準値・基準値競合を表示し、危険な操作は置かない", async () => {
+  it("監視: 主要な項目名が日本語で、live image・確定値・Raw・信頼度・状態・推論エンジン・モデル・最終更新・読取基準値・読取基準値との不一致を表示し、危険な操作は置かない", async () => {
     detailMocks();
     renderApp("/monitors/3");
     const panel = await screen.findByRole("tabpanel");
-    expect(await within(panel).findByText("現在値（確定）")).toBeInTheDocument();
+    expect(await within(panel).findByText("現在の正式値")).toBeInTheDocument();
     for (const label of ["信頼度", "状態", "前回値", "前回の信頼度", "確定日時", "差分"]) expect(within(panel).getAllByText(label).length).toBeGreaterThan(0);
     expect(within(panel).getAllByText("215852").length).toBeGreaterThan(0);
     expect(within(panel).getByText("91.6%")).toBeInTheDocument();
     const summary = within(panel).getByLabelText("読取の詳細");
-    for (const label of ["最新推論値（未確定）", "推論エンジン", "モデル", "最終更新", "読取基準値", "基準値競合"]) expect(within(summary).getByText(label)).toBeInTheDocument();
+    for (const label of ["最新のAI読取値（未採用を含む）", "推論エンジン", "モデル", "最終更新", "読取基準値", "読取基準値との不一致"]) expect(within(summary).getByText(label)).toBeInTheDocument();
     expect(within(summary).getByText("0215852")).toBeInTheDocument(); // 内部値は原文のまま
     expect(within(summary).getByText("cpp_onnx")).toBeInTheDocument();
     expect(within(summary).getByText("digital_production_v1.onnx")).toBeInTheDocument();
@@ -276,7 +276,7 @@ describe("Monitor Detail: タブ(日本語表記)", () => {
     expect(panel.querySelector("img.video-image")).not.toBeNull(); // live image
     // 英語の項目名(Raw / engine / model / baseline / conflict 等)をUIの見出しとして出さない
     for (const english of ["engine", "model", "baseline", "conflict", "confidence", "Raw（最新・未確定）"]) expect(within(summary).queryByText(english)).not.toBeInTheDocument();
-    for (const text of ["このモニターを削除", "基準値を指定して再設定", "設定を保存"]) expect(within(panel).queryByText(text)).not.toBeInTheDocument();
+    for (const text of ["このモニターを削除", "読取基準値を変更", "設定を保存"]) expect(within(panel).queryByText(text)).not.toBeInTheDocument();
   });
 
   it("監視: 映像枠にcompactなレイアウトクラスが付き、タブ切替・画像切替でも枠の構造は変わらない", async () => {
@@ -329,9 +329,9 @@ describe("Monitor Detail: タブ(日本語表記)", () => {
     await user.click(within(row).getByRole("button", { name: /詳細/ }));
     const drawer = await screen.findByRole("dialog", { name: "計測記録の詳細" });
     expect(within(drawer).getByRole("img", { name: "記録時の元画像" })).toHaveAttribute("src", "/api/records/5/image/original");
-    for (const label of ["読取判定", "値の由来", "表示状態", "基準値競合", "推論エンジン", "モデル", "最新推論値（Raw）"]) expect(within(drawer).getByText(label)).toBeInTheDocument();
-    expect(within(drawer).getByText("decrease_detected")).toBeInTheDocument(); // 内部値は原文
-    expect(within(drawer).getByText("前回確定値を保持(carried_forward)")).toBeInTheDocument();
+    for (const label of ["読取結果", "正式値の決まり方", "モニター状態", "読取基準値との不一致", "AI読取方式", "使用モデル", "最新のAI読取値"]) expect(within(drawer).getByText(label)).toBeInTheDocument();
+    expect(within(drawer).getByText("読取基準値より小さいため不採用")).toBeInTheDocument(); // 内部名(decrease_detected)は通常UIに出さない
+    expect(within(drawer).getAllByText("直前の正式値を継続使用").length).toBeGreaterThan(0);
     for (const english of ["validation_status", "value_source", "display_status", "baseline_conflict", "engine", "model_id"]) expect(within(drawer).queryByText(english)).not.toBeInTheDocument();
   });
 
@@ -351,16 +351,16 @@ describe("Monitor Detail: タブ(日本語表記)", () => {
     expect(within(panel).getByRole("button", { name: "設定を保存" })).toBeInTheDocument();
     expect(within(panel).getByRole("button", { name: "基本情報を保存" })).toBeInTheDocument();
     expect(within(panel).getByDisplayValue("gas_1")).toBeInTheDocument();
-    expect(within(panel).queryByText("基準値を指定して再設定")).not.toBeInTheDocument(); // 基準値の管理操作は通常の設定に置かない
+    expect(within(panel).queryByText("読取基準値を変更")).not.toBeInTheDocument(); // 基準値の管理操作は通常の設定に置かない
   });
 
-  it("診断: 項目名が日本語(稼働状態・推論エンジン / モデル・推論の状態・読取判定・読取基準値・基準値競合・推論入力画像・推論オーバーレイ)で、内部値は原文のまま", async () => {
+  it("診断: 項目名が日本語(稼働状態・推論エンジン / モデル・推論の状態・読取判定・読取基準値・読取基準値との不一致・推論入力画像・推論オーバーレイ)で、内部値は原文のまま", async () => {
     detailMocks();
     const user = userEvent.setup();
     renderApp("/monitors/3");
     await user.click(await screen.findByRole("tab", { name: "診断" }));
     const panel = screen.getByRole("tabpanel");
-    for (const name of ["稼働状態", "推論エンジン / モデル", "推論の状態", "読取判定", "読取基準値", "基準値競合", "推論入力画像", "推論オーバーレイ"]) expect(await within(panel).findByLabelText(name)).toBeInTheDocument();
+    for (const name of ["稼働状態", "推論エンジン / モデル", "推論の状態", "読取判定", "読取基準値", "読取基準値との不一致", "推論入力画像", "推論オーバーレイ"]) expect(await within(panel).findByLabelText(name)).toBeInTheDocument();
     const runtimeCard = within(panel).getByLabelText("稼働状態");
     expect(within(runtimeCard).getByText("running")).toBeInTheDocument();
     expect(within(runtimeCard).getByText(/4\.9 fps \/ 最新フレーム 0\.2秒前/)).toBeInTheDocument();
@@ -372,8 +372,8 @@ describe("Monitor Detail: タブ(日本語表記)", () => {
     expect(within(stateCard).getByText("推論処理時間")).toBeInTheDocument();
     const reading = within(panel).getByLabelText("読取判定");
     expect(within(reading).getByText("0215852", { exact: false })).toBeInTheDocument();
-    expect(within(reading).getByText("confirmed")).toBeInTheDocument(); // 読取判定の内部値
-    expect(within(panel).getByLabelText("基準値競合")).toHaveTextContent("decrease_detected");
+    expect(within(reading).getByText("採用（confirmed）")).toBeInTheDocument(); // 診断タブは内部名を括弧で併記
+    expect(within(panel).getByLabelText("読取基準値との不一致")).toHaveTextContent("decrease_detected"); // 診断タブは内部名を括弧で併記
     for (const english of ["Runtime", "Engine / Model", "Inference input", "Overlay", "validation status", "Raw値:"]) expect(within(panel).queryByText(english)).not.toBeInTheDocument();
   });
 
@@ -387,8 +387,8 @@ describe("Monitor Detail: タブ(日本語表記)", () => {
     expect(document.querySelector("details.diag-accordion")).not.toBeNull();
     await user.click(within(admin).getByText("管理操作（読取基準値の再設定・リセット）"));
     expect((admin as HTMLDetailsElement).open).toBe(true);
-    expect(await within(admin).findByText("基準値を指定して再設定")).toBeInTheDocument();
-    expect(within(admin).getByText("基準値をリセット")).toBeInTheDocument();
+    expect(await within(admin).findByText("読取基準値を変更")).toBeInTheDocument();
+    expect(within(admin).getByText("読取基準値を未設定に戻す")).toBeInTheDocument();
   });
 
   it("診断: 画像の枠にサイズ制約(16:9・最大高さ・object-fit)がある。grid/カード構成のCSSがある", () => {
@@ -454,19 +454,19 @@ describe("基準値の管理操作(reset / rebase)", () => {
     renderApp("/monitors/3?tab=diagnostics");
     const admin = await screen.findByLabelText("管理操作");
     await user.click(within(admin).getByText("管理操作（読取基準値の再設定・リセット）")); // アコーディオンを開く
-    await within(admin).findByText("基準値を指定して再設定");
+    await within(admin).findByText("読取基準値を変更");
     return { mocks, user, admin };
   };
 
-  it("rebase: 現baseline・最新Raw・合意候補・入力値・理由を確認するダイアログを経て、確認後にのみ実行する", async () => {
+  it("読取基準値の変更: 現在の読取基準値・最新のAI読取値・採用候補・入力値・理由を確認するダイアログを経て、確認後にのみ実行する", async () => {
     const { mocks, user, admin } = await open();
-    const rebaseButton = within(admin).getByRole("button", { name: "基準値を指定して再設定" });
+    const rebaseButton = within(admin).getByRole("button", { name: "読取基準値を変更" });
     expect(rebaseButton).toBeDisabled(); // 理由・操作者が空の間は押せない
     await user.type(within(admin).getByLabelText(/実メーターで確認した値/), "215852");
     await user.type(within(admin).getByLabelText(/理由/), "実表示を確認");
     await user.type(within(admin).getByLabelText(/操作者/), "tester");
     await user.click(rebaseButton);
-    const dialog = await screen.findByRole("alertdialog", { name: "基準値の再設定の確認" });
+    const dialog = await screen.findByRole("alertdialog", { name: "読取基準値の変更の確認" });
     expect(within(dialog).getByText("215858")).toBeInTheDocument(); // 現baseline
     expect(within(dialog).getByText("0215852")).toBeInTheDocument(); // 最新Raw
     expect(within(dialog).getByText("215852（一致 5）")).toBeInTheDocument(); // 合意候補
@@ -483,9 +483,9 @@ describe("基準値の管理操作(reset / rebase)", () => {
     await user.type(within(admin).getByLabelText(/実メーターで確認した値/), "215852");
     await user.type(within(admin).getByLabelText(/理由/), "実表示を確認");
     await user.type(within(admin).getByLabelText(/操作者/), "tester");
-    await user.click(within(admin).getByRole("button", { name: "基準値を指定して再設定" }));
-    await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "この値で再設定" }));
-    expect(await within(admin).findByText(/基準値を再設定しました/)).toBeInTheDocument();
+    await user.click(within(admin).getByRole("button", { name: "読取基準値を変更" }));
+    await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "この値へ変更" }));
+    expect(await within(admin).findByText(/読取基準値を変更しました/)).toBeInTheDocument();
     const call = mocks.calls.find((c) => c.url.endsWith("/rebase"))!;
     expect(call.body).toEqual({ value: "215852", reason: "実表示を確認", operator: "tester", force: false });
   });
@@ -496,10 +496,10 @@ describe("基準値の管理操作(reset / rebase)", () => {
     await user.type(within(admin).getByLabelText(/実メーターで確認した値/), "300000");
     await user.type(within(admin).getByLabelText(/理由/), "確認");
     await user.type(within(admin).getByLabelText(/操作者/), "tester");
-    await user.click(within(admin).getByRole("button", { name: "基準値を指定して再設定" }));
-    await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "この値で再設定" }));
-    expect(await within(admin).findByText(/大きく異なります/)).toBeInTheDocument();
-    expect(within(admin).getByRole("button", { name: "基準値を指定して再設定" })).toBeDisabled(); // 強制確認のチェックが必要
+    await user.click(within(admin).getByRole("button", { name: "読取基準値を変更" }));
+    await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "この値へ変更" }));
+    expect(await within(admin).findByText(/大きく離れています/)).toBeInTheDocument();
+    expect(within(admin).getByRole("button", { name: "読取基準値を変更" })).toBeDisabled(); // 強制確認のチェックが必要
   });
 
   it("reset: 確認(window.confirm)後にPOSTする", async () => {
@@ -508,7 +508,7 @@ describe("基準値の管理操作(reset / rebase)", () => {
     vi.stubGlobal("confirm", vi.fn(() => true));
     await user.type(within(admin).getByLabelText(/理由/), "メーター交換");
     await user.type(within(admin).getByLabelText(/操作者/), "tester");
-    await user.click(within(admin).getByRole("button", { name: "基準値をリセット" }));
+    await user.click(within(admin).getByRole("button", { name: "読取基準値を未設定に戻す" }));
     await waitFor(() => expect(mocks.calls.some((c) => c.url.endsWith("/reset"))).toBe(true));
     expect(mocks.calls.find((c) => c.url.endsWith("/reset"))!.body).toEqual({ reason: "メーター交換", operator: "tester" });
   });
