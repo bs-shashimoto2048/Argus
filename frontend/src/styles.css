@@ -1048,3 +1048,10 @@ body { overflow-x: hidden; }
   .reading-settings-grid.cols-2, .reading-settings-grid.cols-3, .reading-settings-grid.cols-4 { grid-template-columns: minmax(0, 1fr); }
   .rs-status-card { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* 読取値修正: 最新推論値の自動入力の制限・大幅乖離の確認 */
+.correction-form .raw-blocked { margin: 2px 0 6px; line-height: 1.45; }
+.correction-form .raw-warning { margin: 2px 0 6px; color: #b45309; line-height: 1.45; }
+.correction-form .use-raw:disabled { opacity: .5; cursor: not-allowed; }
+.deviation-confirm { margin: 8px 0; }
+.deviation-confirm ul { margin: 4px 0; padding-left: 18px; font-size: 12.5px; }

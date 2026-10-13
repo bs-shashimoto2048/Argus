@@ -23,6 +23,7 @@ from reading.models import ReadingSettings
 
 from ..models import Monitor, ReadingRecord, ReadingRecordCorrection
 from . import reading_baseline_service as baseline_service
+from .correction_safety import assess_correction
 from .reading_record_service import _decimal, _iso, _naive_utc, evaluate_usage, correctable_reason, neighbor_record
 
 logger = logging.getLogger("argus.record_corrections")
@@ -33,10 +34,11 @@ MAX_TEXT = 500
 class CorrectionError(ValueError):
     """修正リクエストの不正。codeはAPI層でHTTPステータスへ変換する。"""
 
-    def __init__(self, code: str, message: str, status: int = 422) -> None:
+    def __init__(self, code: str, message: str, status: int = 422, details: dict | None = None) -> None:
         super().__init__(message)
         self.code = code
         self.status = status
+        self.details = details
 
 
 def _clean(text: str | None, name: str) -> str:
@@ -81,7 +83,7 @@ def _recompute_usage(db: Session, record: ReadingRecord, monitor_created_at: dat
     return usage
 
 
-def correct_record(db: Session, record_id: int, value: str, reason: str, operator: str, client_host: str = "", rebase_current_baseline: bool = False) -> dict:
+def correct_record(db: Session, record_id: int, value: str, reason: str, operator: str, client_host: str = "", rebase_current_baseline: bool = False, force: bool = False) -> dict:
     record = db.get(ReadingRecord, record_id)
     if record is None:
         raise CorrectionError("RECORD_NOT_FOUND", "計測記録が見つかりません", 404)
@@ -97,6 +99,11 @@ def correct_record(db: Session, record_id: int, value: str, reason: str, operato
     except ValueError as exc:
         raise CorrectionError("INVALID_VALUE", str(exc)) from exc
     # 修正後の値が現在の正式値と同じでもよい: 「画像等で確認し、保持している正式値が正しい」と運用者が明示的に確認した監査記録になる。
+    # 値を変える補正は、前後の正式値・現在の読取基準値・最大変化率から極端に乖離している(桁落ち・小数点位置の誤りなど)場合、2段階確認(force)を要求する。
+    safety_reasons = assess_correction(db, record, new_numeric, settings, monitor) if new_value != record.value else []
+    if safety_reasons and not force:
+        raise CorrectionError("CORRECTION_FORCE_REQUIRED", "前後の正式値から大きく乖離しています。桁落ち・小数点位置を確認してください", 409,
+                              {"value": new_value, "current_value": record.value, "reasons": safety_reasons})
 
     # 現在の読取基準値(runtimeのbaseline)は、履歴の修正では変更しない。明示的に指定されたときだけ、既存のrebase処理を呼ぶ。
     rebase_info: dict = {"requested": bool(rebase_current_baseline), "performed": False}
@@ -151,7 +158,8 @@ def correct_record(db: Session, record_id: int, value: str, reason: str, operato
             original_image_path=record.original_image_path, overlay_image_path=record.overlay_image_path, client_host=(client_host or "")[:64],
             context={"reason_type": why, "hour_bucket": record.hour_bucket, "recorded_at": _iso(record.recorded_at), "inference_at": _iso(record.inference_at),
                      "display_status": record.display_status, "engine": record.engine, "model_id": record.model_id, "next_record": next_info, "recomputed_records": affected, "rebase": rebase_info,
-                     "correction_count": record.correction_count},
+                     "correction_count": record.correction_count,
+                     "safety": {"deviation_confirmed": bool(safety_reasons), "reasons": safety_reasons}},
         )
         db.add(row)
         db.commit()

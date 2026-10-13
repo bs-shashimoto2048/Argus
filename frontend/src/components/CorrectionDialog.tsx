@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { api } from "../api/client";
-import type { BaselineStatus, CorrectionResult, ReadingRecord } from "../types";
+import { ApiError, api } from "../api/client";
+import type { BaselineStatus, CorrectionDeviation, CorrectionResult, ReadingRecord } from "../types";
 import { formatConfidence, formatRecordDateTimeFull, formatValue, limitImageUpscale, valueSourceLabels } from "../utils/records";
 import { stripLeadingZeros } from "../utils/readingFormat";
 
@@ -9,6 +9,11 @@ const loadOperator = () => { try { return window.localStorage.getItem(OPERATOR_K
 const saveOperator = (value: string) => { try { window.localStorage.setItem(OPERATOR_KEY, value); } catch { /* 保存できなくても動作に影響しない */ } };
 
 type Props = { record: ReadingRecord; onClose: () => void; onCorrected: (result: CorrectionResult) => void };
+
+// 「最新推論値を入力」を使える読取判定。値の形式そのものが成立していないRaw(invalid_format / no_reading / pending等)はワンクリックで正式値にできない
+// (例: 桁数不一致で不採用の 37245.7 を、372457.6 の正式値として誤採用した事例)。decrease_detected / rate_exceeded は形式は正常なので警告つきで許可する。
+const RAW_AUTOFILL_ALLOWED = new Set(["confirmed", "low_confidence", "decrease_detected", "rate_exceeded"]);
+const RAW_AUTOFILL_WARNING = new Set(["decrease_detected", "rate_exceeded"]);
 
 // 読取値(正式値)の修正ダイアログ。carried_forward / 基準値競合中の記録だけに出る。
 // 保存した元画像・overlay(記録時の証跡)を見ながら、運用者が明示的に修正値を入力する(自動確定はしない)。
@@ -21,12 +26,17 @@ export function CorrectionDialog({ record, onClose, onCorrected }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [baseline, setBaseline] = useState<BaselineStatus | null>(null);
+  const [deviation, setDeviation] = useState<CorrectionDeviation | null>(null); // 前後の正式値などから大きく乖離している場合の確認要求
+  const [deviationChecked, setDeviationChecked] = useState(false);
 
   // 現在の読取基準値と、基準値と矛盾している読取(競合候補)。取得できなくても修正は行える。
   useEffect(() => { api.readingBaseline(record.monitor_id).then(setBaseline).catch(() => setBaseline(null)); }, [record.monitor_id]);
 
   const rawCandidate = record.raw_value ? stripLeadingZeros(record.raw_value) : null;
-  const ready = value.trim() !== "" && reason.trim() !== "" && operator.trim() !== "";
+  const rawAutofill = rawCandidate != null && RAW_AUTOFILL_ALLOWED.has(record.validation_status ?? "");
+  const rawAutofillWarning = rawAutofill && RAW_AUTOFILL_WARNING.has(record.validation_status ?? "");
+  const ready = value.trim() !== "" && reason.trim() !== "" && operator.trim() !== "" && (deviation === null || deviationChecked);
+  const changeValue = (next: string) => { setValue(next); setDeviation(null); setDeviationChecked(false); }; // 値を変えたら、確認し直す
   const liveConflict = baseline?.conflict?.active ?? false;
   const overlayAvailable = record.image_status === "ok" && !!record.overlay_image_path;
 
@@ -34,10 +44,14 @@ export function CorrectionDialog({ record, onClose, onCorrected }: Props) {
     setBusy(true); setError("");
     try {
       saveOperator(operator.trim());
-      const result = await api.correctRecord(record.id, { value: value.trim(), reason: reason.trim(), operator: operator.trim(), rebase_current_baseline: rebase });
+      const confirmed = deviation !== null && deviationChecked; // 乖離の確認(2段階目)を済ませた場合だけforceを送る
+      const result = await api.correctRecord(record.id, { value: value.trim(), reason: reason.trim(), operator: operator.trim(), rebase_current_baseline: rebase, ...(confirmed ? { force: true } : {}) });
       onCorrected(result);
     } catch (reasonError) {
-      setError(reasonError instanceof Error ? reasonError.message : String(reasonError));
+      const detail = reasonError instanceof ApiError ? (reasonError.detail as { code?: string; details?: CorrectionDeviation } | null) : null;
+      if (reasonError instanceof ApiError && detail?.code === "CORRECTION_FORCE_REQUIRED" && detail.details) {
+        setDeviation(detail.details); setDeviationChecked(false); // 保存せず、確認を求める(エラーとしては表示しない)
+      } else setError(reasonError instanceof Error ? reasonError.message : String(reasonError));
     } finally {
       setBusy(false);
     }
@@ -65,20 +79,28 @@ export function CorrectionDialog({ record, onClose, onCorrected }: Props) {
       </div>
       <div className="correction-form">
         <label>修正後の値（正式値）
-          <input value={value} onChange={(e) => setValue(e.target.value)} placeholder="例: 215850 / 372414.3" inputMode="decimal" />
+          <input value={value} onChange={(e) => changeValue(e.target.value)} placeholder="例: 215850 / 372414.3" inputMode="decimal" />
           <small className="muted same-value-note">現在の正式値と同じ値でも、画像確認済みとして補正履歴を残せます。</small>
         </label>
-        {rawCandidate && <button type="button" className="secondary small-button use-raw" onClick={() => setValue(rawCandidate)}>最新推論値 {rawCandidate} を入力</button>}
+        {rawCandidate && <button type="button" className="secondary small-button use-raw" disabled={!rawAutofill} onClick={() => changeValue(rawCandidate)}>最新推論値 {rawCandidate} を入力</button>}
+        {rawCandidate && !rawAutofill && <p className="muted tiny raw-blocked" role="note">このRawは桁数・形式判定で不採用のため、自動入力できません。画像を確認して正式値を入力してください。</p>}
+        {rawAutofillWarning && <p className="tiny raw-warning" role="note">この値は基準値または変化率判定で不採用です。画像確認後に使用してください。</p>}
         <label>修正理由（必須）<input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="例: 画像で桁を確認し、読取の棄却中だったため" /></label>
         <label>操作者（必須・自己申告）<input value={operator} onChange={(e) => setOperator(e.target.value)} placeholder="氏名など" /></label>
         {(liveConflict || record.baseline_conflict) && <label className="check rebase-option">
           <input type="checkbox" checked={rebase} onChange={(e) => setRebase(e.target.checked)} /> 現在の読取基準値もこの値へ再設定する（既定はOFF。基準値の操作として、別の監査履歴も残ります）
         </label>}
+        {deviation && <div className="alert warning deviation-confirm" role="alert">
+          <strong>前後の正式値から大きく乖離しています。桁落ち・小数点位置を確認してください。</strong>
+          <div>入力値 {deviation.value}{deviation.current_value ? `（現在の正式値 ${deviation.current_value}）` : ""}</div>
+          <ul>{deviation.reasons.map((r, i) => <li key={i}>{r.message}</li>)}</ul>
+          <label className="check"><input type="checkbox" checked={deviationChecked} onChange={(e) => setDeviationChecked(e.target.checked)} /> 画像で桁数・小数点位置を確認しました。この値で保存します（監査履歴に残ります）</label>
+        </div>}
         {error && <div className="alert error" role="alert">{error}</div>}
       </div>
       <div className="modal-actions">
         <button type="button" className="secondary" onClick={onClose}>キャンセル</button>
-        <button type="button" onClick={() => void submit()} disabled={!ready || busy}>{busy ? "修正中…" : "この内容で修正する"}</button>
+        <button type="button" onClick={() => void submit()} disabled={!ready || busy}>{busy ? "修正中…" : deviation ? "確認のうえ修正する" : "この内容で修正する"}</button>
       </div>
     </div>
   </div>;

@@ -29,6 +29,7 @@ class CorrectionInput(BaseModel):
     reason: str = Field(max_length=2000)
     operator: str = Field(max_length=200)
     rebase_current_baseline: bool = False
+    force: bool = False  # 前後の正式値などから極端に乖離した補正値(桁落ち等の疑い)を確認したうえで保存する(2段階確認)
 
 
 class RecordSettingsInput(BaseModel):
@@ -140,9 +141,9 @@ def export_excel(body: ExcelExportInput, db: Session = Depends(get_db)):
 def correct_record(record_id: int, body: CorrectionInput, request: Request, db: Session = Depends(get_db)):
     """carried_forward / 基準値競合中の記録の正式値を、運用者が修正する(監査履歴を残す)。元証跡(Raw・画像・判定)は変更しない。"""
     try:
-        result = corrections.correct_record(db, record_id, body.value, body.reason, body.operator, request.client.host if request.client else "", body.rebase_current_baseline)
+        result = corrections.correct_record(db, record_id, body.value, body.reason, body.operator, request.client.host if request.client else "", body.rebase_current_baseline, body.force)
     except corrections.CorrectionError as exc:
-        raise HTTPException(exc.status, {"code": exc.code, "message": str(exc)}) from exc
+        raise HTTPException(exc.status, {"code": exc.code, "message": str(exc), **({"details": exc.details} if exc.details else {})}) from exc
     record = svc.get_record(db, record_id)
     return {**result, "record": svc.serialize(record)}
 

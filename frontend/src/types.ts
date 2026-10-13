@@ -132,7 +132,9 @@ export type RecordCorrection = {
   raw_value:string|null;raw_confidence:number|null;validation_status:string|null;value_source:string|null;baseline_value:string|null;baseline_conflict:boolean;
   original_image_path:string|null;overlay_image_path:string|null;client_host:string;context:Record<string,unknown>|null;
 };
-export type CorrectionRequest = {value:string;reason:string;operator:string;rebase_current_baseline:boolean};
+export type CorrectionRequest = {value:string;reason:string;operator:string;rebase_current_baseline:boolean;force?:boolean};
+/** 補正値が前後の正式値・読取基準値・最大変化率から極端に乖離している場合の確認要求(409 CORRECTION_FORCE_REQUIRED)の内容。 */
+export type CorrectionDeviation = {value:string;current_value:string|null;reasons:{kind:"scale"|"rate"|string;reference:string;reference_value:string;message:string;digit_shift?:boolean}[]};
 export type RecomputedRecord = {record_id:number;hour_bucket:string;value:string|null;value_source:string;old_usage:string|null;new_usage:string|null};
 export type CorrectionResult = {record_id:number;correction:RecordCorrection;next_record:RecomputedRecord|null;recomputed_records?:RecomputedRecord[];rebase:{requested:boolean;performed:boolean;old_baseline?:string|null;new_baseline?:string|null};record:ReadingRecord};
 export type RecordsPage = {items:ReadingRecord[];total:number;limit:number;offset:number};
