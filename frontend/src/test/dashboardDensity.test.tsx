@@ -37,20 +37,26 @@ describe("Dashboard密度調整: 最終値ブロック", () => {
     expect(rules(".dashboard-page .records-area.compact")).toHaveLength(1);
   });
 
-  it("Monitor映像: 高さ上限は viewport比 clamp(165px, 23vh, 262px)、16:9、contain、幅は残り幅+数値と単位の最小幅(約25%)", () => {
-    expect(value(".dashboard-page .monitor-card .card-body .preview-wrap", "max-height")).toBe("clamp(165px, 23vh, 262px)");
+  it("Monitor映像: 高さ上限は viewport比 clamp(175px, 25vh, 285px)、16:9、contain、幅は残り幅+現在値が折り返さない数値列(約24%)", () => {
+    expect(value(".dashboard-page .monitor-card .card-body .preview-wrap", "max-height")).toBe("clamp(175px, 25vh, 285px)");
     expect(value(".dashboard-page .monitor-card .card-body .preview-wrap", "aspect-ratio")).toBe("16 / 9");
     expect(value(".monitor-card .card-body .video-image", "object-fit")).toBe("contain");
-    expect(value(".dashboard-page .monitor-card .card-body", "grid-template-columns")).toBe("minmax(0, 1fr) clamp(132px, 25%, 180px)");
+    expect(value(".dashboard-page .monitor-card .card-body", "grid-template-columns")).toBe("minmax(0, 1fr) clamp(130px, 24%, 175px)");
   });
 
-  it("文字サイズ: 情報階層ごとに整理(Monitor名14 / badge10.5 / 信頼度14〜15 / 更新11〜12 / 取得状態10.5 / 履歴11.5〜12)。現在値は24〜28pxのまま", () => {
-    expect(px(".dashboard-page .monitor-card .card-title", "font-size")).toBe(14);
-    expect(px(".dashboard-page .monitor-card .status-badge", "font-size")).toBe(10.5);
-    expect(value(".dashboard-page .monitor-card .card-body .card-value-primary strong", "font-size")).toBe("clamp(24px, 1.5vw, 28px)");
-    expect(value(".dashboard-page .monitor-card .card-body .card-value-confidence strong", "font-size")).toBe("clamp(14px, 1vw, 15px)");
-    expect(value(".dashboard-page .monitor-card .card-body .card-value-updated strong", "font-size")).toBe("clamp(11px, .8vw, 12px)");
-    expect(px(".dashboard-page .monitor-card .card-meta", "font-size")).toBe(10.5);
+  it("文字サイズ: Monitorカードは遠目でも読める大きさ(Monitor名16〜17 / badge12 / 現在値28〜34 / 単位14.5 / 信頼度16〜17 / 更新13〜14 / ラベル12 / 取得状態12)。履歴は11.5〜12のまま", () => {
+    expect(value(".dashboard-page .monitor-card .card-title", "font-size")).toBe("clamp(16px, 1vw, 17px)");
+    expect(value(".dashboard-page .monitor-card .card-title", "font-weight")).toBe("700");
+    expect(px(".dashboard-page .monitor-card .status-badge", "font-size")).toBe(12);
+    expect(value(".dashboard-page .monitor-card .card-body .card-value-primary strong", "font-size")).toBe("clamp(28px, 1.9vw, 34px)"); // 1600で約30px・1920で34px・1366で28px
+    expect(px(".dashboard-page .current-value-unit", "font-size")).toBe(14.5);
+    expect(value(".dashboard-page .monitor-card .card-body .card-value-confidence strong", "font-size")).toBe("clamp(16px, 1.05vw, 17px)");
+    expect(value(".dashboard-page .monitor-card .card-body .card-value-updated strong", "font-size")).toBe("clamp(13px, .85vw, 14px)");
+    expect(px(".dashboard-page .monitor-card .card-body .card-values small", "font-size")).toBe(12); // 現在値・信頼度・更新のラベル
+    expect(px(".dashboard-page .monitor-card .card-meta", "font-size")).toBe(12); // 取得状態
+    // #65(縮めすぎ)より必ず大きい
+    expect(Math.min(...[1366, 1600, 1920].map((w) => Math.min(34, Math.max(28, 0.019 * w))))).toBeGreaterThanOrEqual(28);
+    expect(Math.round(0.019 * 1600)).toBe(30);
     expect(px(".dashboard-page .summary-chip .chip-label", "font-size")).toBeGreaterThanOrEqual(12);
     expect(px(".dashboard-page .action-button, .dashboard-page .monitoring-control".split(",")[0], "font-size")).toBeLessThanOrEqual(13);
     expect(px(".dashboard-page .trend-legend", "font-size")).toBe(11.5);
@@ -63,8 +69,8 @@ describe("Dashboard密度調整: 最終値ブロック", () => {
     expect(px(".dashboard-page .history-table .small-button", "font-size")).toBe(11.5);
   });
 
-  it("余白: card-headは上下4〜6px、card-metaは上下2〜3px、通知なし(:empty)は高さを使わない、gapは5〜8px", () => {
-    expect(value(".dashboard-page .monitor-card .card-head", "padding")).toBe("4px 10px");
+  it("余白: card-headは上下5px、card-metaは上下2〜3px、通知なし(:empty)は高さを使わない、gapは5〜8px", () => {
+    expect(value(".dashboard-page .monitor-card .card-head", "padding")).toBe("5px 10px");
     expect(value(".dashboard-page .monitor-card .card-meta", "padding")).toBe("2px 10px 3px");
     expect(value(".monitor-card .card-notices:empty", "padding")).toBe("0");
     expect(value(".dashboard-page .monitor-card .card-notices:empty", "padding")).toBe("0"); // 通常状態(通知なし)は高さ0

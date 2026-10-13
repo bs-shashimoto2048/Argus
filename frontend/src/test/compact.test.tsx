@@ -315,7 +315,7 @@ describe("Dashboard全体をviewport内に収め、計測履歴の表が残り�
     expect(value(".monitor-card .card-notices", "min-height")).toBe("0"); // 警告が無い正常時は余白を作らない(カード高さは同じ行のカードに揃う)
     expect(value(".monitor-grid", "align-items")).toBe("stretch"); // 3枚の高さを揃える
     expect(value(".monitor-card", "align-self")).toBe("stretch");
-    expect(value(".dashboard-page .monitor-card .card-body .preview-wrap", "max-height")).toBe("clamp(165px, 23vh, 262px)"); // Dashboardは映像を優先(固定pxにしない。幅に応じた16:9で、高さの上限だけviewport比)
+    expect(value(".dashboard-page .monitor-card .card-body .preview-wrap", "max-height")).toBe("clamp(175px, 25vh, 285px)"); // Dashboardは映像を優先(固定pxにしない。幅に応じた16:9で、高さの上限だけviewport比)
     expect(value(".video-image", "object-fit")).toBe("contain"); // 画像はaspect-ratioを維持
   });
 
