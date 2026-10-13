@@ -130,13 +130,13 @@ describe("Dashboard: 現在値の単位", () => {
     expect(value(".dashboard-page .current-value-head", "min-width")).toBe("0"); // 単位は「現在値」ラベルの行(数値の幅を奪わない)
   });
 
-  it("見た目: 単位は数値(28〜34px)より小さい14〜15px・太さ600・補助色で、「現在値」ラベルの行に置く", () => {
-    expect(parseFloat(value(".dashboard-page .current-value-unit", "font-size")!)).toBeGreaterThanOrEqual(14);
-    expect(parseFloat(value(".dashboard-page .current-value-unit", "font-size")!)).toBeLessThanOrEqual(15);
+  it("見た目: 単位は数値(32〜38px)より小さい15〜16px・太さ600・補助色で、「現在値」ラベルの行に置く", () => {
+    expect(parseFloat(value(".dashboard-page .current-value-unit", "font-size")!)).toBeGreaterThanOrEqual(15);
+    expect(parseFloat(value(".dashboard-page .current-value-unit", "font-size")!)).toBeLessThanOrEqual(16);
     expect(value(".dashboard-page .current-value-unit", "font-weight")).toBe("600");
     expect(value(".dashboard-page .current-value-unit", "color")).toBe("var(--color-text-secondary)");
     expect(value(".dashboard-page .current-value-head", "align-items")).toBe("baseline");
-    expect(value(".dashboard-page .monitor-card .card-body .card-value-primary strong", "font-size")).toBe("clamp(28px, 1.9vw, 34px)");
+    expect(value(".dashboard-page .monitor-card .card-body .card-value-primary strong", "font-size")).toBe("clamp(32px, 2.1vw, 38px)");
   });
 
   it("Dashboardに単位を出しても、履歴の表の列・セルには単位を追加しない(今回の範囲外)", async () => {

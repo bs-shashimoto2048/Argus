@@ -41,22 +41,22 @@ describe("Dashboard密度調整: 最終値ブロック", () => {
     expect(value(".dashboard-page .monitor-card .card-body .preview-wrap", "max-height")).toBe("clamp(175px, 25vh, 285px)");
     expect(value(".dashboard-page .monitor-card .card-body .preview-wrap", "aspect-ratio")).toBe("16 / 9");
     expect(value(".monitor-card .card-body .video-image", "object-fit")).toBe("contain");
-    expect(value(".dashboard-page .monitor-card .card-body", "grid-template-columns")).toBe("minmax(0, 1fr) clamp(130px, 24%, 175px)");
+    expect(value(".dashboard-page .monitor-card .card-body", "grid-template-columns")).toBe("minmax(0, 1fr) clamp(144px, 26%, 190px)");
   });
 
   it("文字サイズ: Monitorカードは遠目でも読める大きさ(Monitor名16〜17 / badge12 / 現在値28〜34 / 単位14.5 / 信頼度16〜17 / 更新13〜14 / ラベル12 / 取得状態12)。履歴は11.5〜12のまま", () => {
-    expect(value(".dashboard-page .monitor-card .card-title", "font-size")).toBe("clamp(16px, 1vw, 17px)");
+    expect(value(".dashboard-page .monitor-card .card-title", "font-size")).toBe("clamp(17px, 1.1vw, 19px)");
     expect(value(".dashboard-page .monitor-card .card-title", "font-weight")).toBe("700");
-    expect(px(".dashboard-page .monitor-card .status-badge", "font-size")).toBe(12);
-    expect(value(".dashboard-page .monitor-card .card-body .card-value-primary strong", "font-size")).toBe("clamp(28px, 1.9vw, 34px)"); // 1600で約30px・1920で34px・1366で28px
-    expect(px(".dashboard-page .current-value-unit", "font-size")).toBe(14.5);
-    expect(value(".dashboard-page .monitor-card .card-body .card-value-confidence strong", "font-size")).toBe("clamp(16px, 1.05vw, 17px)");
-    expect(value(".dashboard-page .monitor-card .card-body .card-value-updated strong", "font-size")).toBe("clamp(13px, .85vw, 14px)");
-    expect(px(".dashboard-page .monitor-card .card-body .card-values small", "font-size")).toBe(12); // 現在値・信頼度・更新のラベル
-    expect(px(".dashboard-page .monitor-card .card-meta", "font-size")).toBe(12); // 取得状態
+    expect(px(".dashboard-page .monitor-card .status-badge", "font-size")).toBe(13);
+    expect(value(".dashboard-page .monitor-card .card-body .card-value-primary strong", "font-size")).toBe("clamp(32px, 2.1vw, 38px)"); // 1600で約34px・1920で38px・1366で32px
+    expect(px(".dashboard-page .current-value-unit", "font-size")).toBe(16);
+    expect(value(".dashboard-page .monitor-card .card-body .card-value-confidence strong", "font-size")).toBe("clamp(18px, 1.15vw, 19px)");
+    expect(value(".dashboard-page .monitor-card .card-body .card-value-updated strong", "font-size")).toBe("clamp(14px, .95vw, 15px)");
+    expect(px(".dashboard-page .monitor-card .card-body .card-values small", "font-size")).toBe(13); // 現在値・信頼度・更新のラベル
+    expect(px(".dashboard-page .monitor-card .card-meta", "font-size")).toBe(13); // 取得状態
     // #65(縮めすぎ)より必ず大きい
-    expect(Math.min(...[1366, 1600, 1920].map((w) => Math.min(34, Math.max(28, 0.019 * w))))).toBeGreaterThanOrEqual(28);
-    expect(Math.round(0.019 * 1600)).toBe(30);
+    expect(Math.min(...[1366, 1600, 1920].map((w) => Math.min(38, Math.max(32, 0.021 * w))))).toBeGreaterThanOrEqual(32);
+    expect(Math.round(0.021 * 1600)).toBe(34);
     expect(px(".dashboard-page .summary-chip .chip-label", "font-size")).toBeGreaterThanOrEqual(12);
     expect(px(".dashboard-page .action-button, .dashboard-page .monitoring-control".split(",")[0], "font-size")).toBeLessThanOrEqual(13);
     expect(px(".dashboard-page .trend-legend", "font-size")).toBe(11.5);
