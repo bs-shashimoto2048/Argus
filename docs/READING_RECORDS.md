@@ -21,20 +21,25 @@
 | `value` | 正式記録値（先頭0除去後）。映像が稼働中なら**直前の正常Confirmed値**（「直近の最高値」ではない）。映像が稼働していない（通信異常・停止中・接続中）間、または確定値が一度も無い場合は `null` |
 | `value_source` | `confirmed`: 記録時点の最新候補が正常に確定した値 / `carried_forward`: 最新Rawは棄却中（pending・invalid_format・decrease_detected・rate_exceeded・no_reading等。桁の回転途中・見切れ中を含む）だが、直前の正常Confirmed値を保持した / `none`: 正式に記録できるConfirmed値が無い |
 | `raw_value` | 記録時点の最新Raw（先頭0を含む元の桁列）。runtime稼働中のみ。`carried_forward`のときは`value`と一致しないことがある |
-| `previous_value` | 前回（1時間前の枠）の定時計測値。前回の記録が存在しない、または値なしなら `null`（前回recordが無いこと自体はエラーではない。画面は「--」、Excelは空欄） |
+| `previous_value` | 前回（1時間前の枠）の定時計測値。差分の基準にできる前回値が無い場合（前回recordが存在しない・値なし・信頼できない・連続性が切れた）は、今回が信頼できれば `null`（再開点。エラーではない。画面は「--」、Excelは空欄） |
 | `usage` | 今回 − 前回の定時計測値（Decimalの文字列）。下記の場合は `null` |
 | `confidence` / `validation_status` / `display_status` | 信頼度、検証status、記録時点の表示状態（正常/要確認/読取不能/通信異常 等） |
 | `baseline_conflict` | 記録時点でbaseline conflictの警告中か |
 | `engine` / `model_id` / `monitor_name` | 記録時点のengine、model、Monitor表示名のスナップショット |
 | 画像列 | `original_image_path` / `overlay_image_path`（画像保存先からの相対パス）/ `image_status` / `image_error`（下記「記録画像」） |
 
-### 使用量（usage）が `0` になる場合（連続計測区間の開始点）
-直前1時間の定時計測**recordそのものが存在しない**場合（計測開始・長時間停止後の再開・期間内の最初の記録）で、今回が信頼できる正式値のとき `usage=0`、`previous_value=null`。
-読取失敗ではないため、Dashboardグラフは赤い×・値無し警告を出さず、Y=0の通常のプロットにする。再開時は停止前の記録まで遡って差分を取らない。
-今回が信頼できない（未修正のcarried_forward等）場合は、前回が無くても `null`。前回recordが**存在するのに**信頼できない場合も `null`（下記）。
+### 使用量（usage）が `0` になる場合（連続計測区間の開始点・再開点）
+今回が信頼できる正式値で、**使用量の差分の基準にできる直前値が無い**とき、`usage=0`、`previous_value=null`（新しい連続計測区間の最初の点）。
+基準にできない直前値とは: 直前1時間のrecordが存在しない（計測開始・長時間停止後の再開・期間内の最初の記録） / 直前recordが値なし /
+直前が信頼できない（未修正のcarried_forward・read_error・baseline conflict等） / 直前以降にbaselineの運用者のreset・別値へのrebaseがあり連続性が切れた。
+信頼できない記録の正式値は`previous_value`として表示しない（差分の基準にしていないため）。以前の記録へは遡らない。
+読取失敗ではないため、Dashboardグラフは赤い×・値無し警告を出さず、Y=0の通常のプロットから新しい折れ線区間を始める。
+例: 09:00 未修正carried_forward(invalid_format) → `usage=null`（untrusted自身は0にしない） / 10:00 Confirmed → `previous_value=null, usage=0` /
+11:00 Confirmed → 通常の差分（`previous_value`=10:00の値）。
+今回が信頼できない場合は、直前が無くても `null`。値が減少した場合は再開点ではなく異常として `null`（`previous_value`は直前の値）。
 
 ### 使用量（usage）が `null` になる場合
-今回の値なし／前回recordが存在するが値なし・信頼できない／値が減少／どちらかの`display_status`が正常・要確認以外／どちらかが
+今回の値なし／今回が信頼できない（未修正のcarried_forward等）／値が減少／どちらかの`display_status`が正常・要確認以外／どちらかが
 baseline conflict／前回の記録以降にbaselineのreset・rebase・自動クリアがあった（正常な連続データではない）。
 値が変わらない場合は `0`（欠損ではない）。
 

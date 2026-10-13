@@ -52,11 +52,16 @@ describe("履歴・データ: 取得とフィルタ", () => {
     const mocks = standardMocks([recordsHandler()]);
     renderApp("/history");
     await userEvent.setup().click(await screen.findByRole("button", { name: "任意期間" }));
-    const before = mocks.calls.filter((c) => c.url.startsWith("/api/records?")).length;
-    fireEvent.change(screen.getByLabelText("開始日"), { target: { value: "2026-10-09" } });
+    const customFetched = () => mocks.calls.some((c) => c.url.startsWith("/api/records?") && c.url.includes("2026-09-09"));
+    await waitFor(() => expect(customFetched()).toBe(true)); // 任意期間の初期値(1か月前〜今日)で取得される
+    const count = () => mocks.calls.filter((c) => c.url.startsWith("/api/records?")).length;
+    const initial = count();
+    fireEvent.change(screen.getByLabelText("開始日"), { target: { value: "2026-10-09" } }); // 有効な範囲(開始日=終了日)なので取得される
+    await waitFor(() => expect(count()).toBeGreaterThan(initial));
+    const before = count();
     fireEvent.change(screen.getByLabelText("終了日"), { target: { value: "2026-10-01" } });
     expect(await screen.findByRole("alert")).toHaveTextContent("開始日は終了日以前");
-    expect(mocks.calls.filter((c) => c.url.startsWith("/api/records?")).length).toBe(before);
+    expect(count()).toBe(before);
   });
 
   it("Monitorはプルダウンで選ぶと即時に履歴を再取得する(適用ボタンなし)。「すべてのモニター」で解除", async () => {

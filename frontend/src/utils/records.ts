@@ -35,6 +35,29 @@ export function addDays(date: string, days: number): string {
   return result.toISOString().slice(0, 10);
 }
 
+/** 暦上の1か月前(YYYY-MM-DD)。30日前ではなく月を1つ戻し、その月に同じ日が無ければ最終日へ丸める(3/31→2/28、うるう年は2/29)。 */
+export function oneMonthBefore(date: string): string {
+  const [y, m, d] = date.split("-").map(Number);
+  const year = m === 1 ? y - 1 : y;
+  const month = m === 1 ? 12 : m - 1;
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(Math.min(d, lastDay)).padStart(2, "0")}`;
+}
+
+/** 任意期間の初期値の開始日: 今日(JST)の暦上の1か月前。 */
+export function oneMonthAgoJst(now: Date = new Date()): string {
+  return oneMonthBefore(todayJst(now));
+}
+
+/**
+ * 履歴・グラフの期間の初期値。表示は「今日」だが、任意期間用の日付は「1か月前 〜 今日」を保持する(初めて「任意期間」を押した時に
+ * すぐその範囲が表示される。手動で日付を変えた後は、今日/過去7日へ切り替えても日付を上書きしない)。
+ * Dashboard・履歴・データ・Monitor Detailで共通。
+ */
+export function defaultRecordPeriod(now: Date = new Date()): Period {
+  return { mode: "today", startDate: oneMonthAgoJst(now), endDate: todayJst(now) };
+}
+
 export function startOfDayJst(date: string): string {
   return `${date}T00:00:00+09:00`;
 }
