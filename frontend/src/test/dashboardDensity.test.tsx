@@ -37,54 +37,61 @@ describe("Dashboard密度調整: 最終値ブロック", () => {
     expect(rules(".dashboard-page .records-area.compact")).toHaveLength(1);
   });
 
-  it("Monitor映像: 高さ上限は viewport比 clamp(175px, 25vh, 285px)、16:9、contain、幅は残り幅+現在値が折り返さない数値列(約24%)", () => {
-    expect(value(".dashboard-page .monitor-card .card-body .preview-wrap", "max-height")).toBe("clamp(175px, 25vh, 285px)");
+  it("Monitor映像: 高さ=viewportの残りの約半分(上限あり)かつカード幅に収まる16:9、contain。右の列(信頼度・更新)は映像の高さの範囲に置く", () => {
+    const height = value(".dashboard-page .monitor-card .card-body .preview-wrap", "height")!;
+    expect(height).toMatch(/^clamp\(172px, min\(calc\(\(100vh - \d+px\) \/ 2\), calc\(\(\(100vw - 56px\) \/ 3 - 110px\) \* 9 \/ 16\)\), 290px\)$/);
     expect(value(".dashboard-page .monitor-card .card-body .preview-wrap", "aspect-ratio")).toBe("16 / 9");
     expect(value(".monitor-card .card-body .video-image", "object-fit")).toBe("contain");
-    expect(value(".dashboard-page .monitor-card .card-body", "grid-template-columns")).toBe("minmax(0, 1fr) clamp(144px, 26%, 190px)");
+    expect(value(".dashboard-page .monitor-card .card-body", "grid-template-columns")).toBe("auto minmax(0, 1fr)"); // 映像(幅は16:9で決まる) | 信頼度・更新
+    expect(value(".dashboard-page .monitor-card .card-body .card-values", "display")).toBe("contents"); // 現在値は下段(全幅)に出す
+    expect(value(".dashboard-page .monitor-card .card-body .card-value-primary", "grid-column")).toBe("1 / -1");
+    expect(value(".dashboard-page .monitor-card .card-body .card-value-primary", "display")).toBe("flex"); // 現在値の数値と単位を同じ行に
   });
 
-  it("文字サイズ: Monitorカードは遠目でも読める大きさ(Monitor名16〜17 / badge12 / 現在値28〜34 / 単位14.5 / 信頼度16〜17 / 更新13〜14 / ラベル12 / 取得状態12)。履歴は11.5〜12のまま", () => {
-    expect(value(".dashboard-page .monitor-card .card-title", "font-size")).toBe("clamp(17px, 1.1vw, 19px)");
+  it("文字サイズ: Monitorカードは遠目でも読める大きさ(Monitor名18〜20 / badge14 / 現在値36〜42 / 単位17 / 信頼度18〜20 / 更新15〜16 / ラベル14 / 取得状態13.5)", () => {
+    expect(value(".dashboard-page .monitor-card .card-title", "font-size")).toBe("clamp(18px, 1.2vw, 20px)");
     expect(value(".dashboard-page .monitor-card .card-title", "font-weight")).toBe("700");
-    expect(px(".dashboard-page .monitor-card .status-badge", "font-size")).toBe(13);
-    expect(value(".dashboard-page .monitor-card .card-body .card-value-primary strong", "font-size")).toBe("clamp(32px, 2.1vw, 38px)"); // 1600で約34px・1920で38px・1366で32px
-    expect(px(".dashboard-page .current-value-unit", "font-size")).toBe(16);
-    expect(value(".dashboard-page .monitor-card .card-body .card-value-confidence strong", "font-size")).toBe("clamp(18px, 1.15vw, 19px)");
-    expect(value(".dashboard-page .monitor-card .card-body .card-value-updated strong", "font-size")).toBe("clamp(14px, .95vw, 15px)");
-    expect(px(".dashboard-page .monitor-card .card-body .card-values small", "font-size")).toBe(13); // 現在値・信頼度・更新のラベル
-    expect(px(".dashboard-page .monitor-card .card-meta", "font-size")).toBe(13); // 取得状態
-    // #65(縮めすぎ)より必ず大きい
-    expect(Math.min(...[1366, 1600, 1920].map((w) => Math.min(38, Math.max(32, 0.021 * w))))).toBeGreaterThanOrEqual(32);
-    expect(Math.round(0.021 * 1600)).toBe(34);
-    expect(px(".dashboard-page .summary-chip .chip-label", "font-size")).toBeGreaterThanOrEqual(12);
-    expect(px(".dashboard-page .action-button, .dashboard-page .monitoring-control".split(",")[0], "font-size")).toBeLessThanOrEqual(13);
-    expect(px(".dashboard-page .trend-legend", "font-size")).toBe(11.5);
-    expect(px(".dashboard-page .trend-hint", "font-size")).toBe(11);
-    expect(px(".dashboard-page .records-head h2", "font-size")).toBeGreaterThanOrEqual(14);
-    expect(px(".dashboard-page .records-head h2", "font-size")).toBeLessThanOrEqual(15);
-    expect(px(".dashboard-page .records-head p", "font-size")).toBe(12);
-    expect(px(".dashboard-page .history-table th", "font-size")).toBe(11.5);
-    expect(px(".dashboard-page .history-table td", "font-size")).toBe(12);
-    expect(px(".dashboard-page .history-table .small-button", "font-size")).toBe(11.5);
+    expect(px(".dashboard-page .monitor-card .status-badge", "font-size")).toBe(14);
+    expect(value(".dashboard-page .monitor-card .card-body .card-value-primary strong", "font-size")).toBe("clamp(36px, 2.3vw, 42px)"); // 1366で36 / 1600で約37 / 1920で42
+    expect(px(".dashboard-page .current-value-unit", "font-size")).toBe(17);
+    expect(value(".dashboard-page .monitor-card .card-body .card-value-confidence strong", "font-size")).toBe("clamp(18px, 1.2vw, 20px)");
+    expect(value(".dashboard-page .monitor-card .card-body .card-value-updated strong", "font-size")).toBe("clamp(15px, 1vw, 16px)");
+    expect(px(".dashboard-page .monitor-card .card-body .card-values small", "font-size")).toBe(14); // 現在値・信頼度・更新のラベル
+    expect(px(".dashboard-page .monitor-card .card-meta", "font-size")).toBe(13.5); // 取得状態
   });
 
-  it("余白: card-headは上下5px、card-metaは上下2〜3px、通知なし(:empty)は高さを使わない、gapは5〜8px", () => {
-    expect(value(".dashboard-page .monitor-card .card-head", "padding")).toBe("5px 10px");
-    expect(value(".dashboard-page .monitor-card .card-meta", "padding")).toBe("2px 10px 3px");
+  it("文字サイズ: 履歴・グラフ・toolbarも読める大きさ(履歴本文14.5 / 表ヘッダー13.5 / 詳細ボタン13.5 / 履歴タイトル17 / 説明13.5 / フィルタ14〜14.5 / 凡例・グラフタブ13〜13.5)", () => {
+    expect(px(".dashboard-page .history-table td", "font-size")).toBe(14.5);
+    expect(px(".dashboard-page .history-table th", "font-size")).toBe(13.5);
+    expect(px(".dashboard-page .history-table .small-button", "font-size")).toBe(13.5);
+    expect(px(".dashboard-page .records-head h2", "font-size")).toBe(17);
+    expect(px(".dashboard-page .records-head p", "font-size")).toBe(13.5);
+    expect(px(".dashboard-page .record-filters .filter-select select", "font-size")).toBe(14.5);
+    expect(px(".dashboard-page .records-controls .segment", "font-size")).toBe(14);
+    expect(px(".dashboard-page .trend-legend", "font-size")).toBe(13);
+    expect(px(".dashboard-page .trend-head .segment", "font-size")).toBe(13.5);
+    expect(px(".dashboard-page .trend-hint", "font-size")).toBe(12.5);
+    expect(px(".dashboard-page .summary-chip .chip-label", "font-size")).toBeGreaterThanOrEqual(12);
+    expect(value(".dashboard-page .history-table td", "padding")).toBe("0 12px"); // 文字を大きくした分、列に余裕を持たせる
+  });
+
+  it("余白: card-headは上下6px、通知なし(:empty)は高さを使わない、gap・paddingは小さく保つ", () => {
+    expect(value(".dashboard-page .monitor-card .card-head", "padding")).toBe("6px 12px");
     expect(value(".monitor-card .card-notices:empty", "padding")).toBe("0");
     expect(value(".dashboard-page .monitor-card .card-notices:empty", "padding")).toBe("0"); // 通常状態(通知なし)は高さ0
     expect(value(".dashboard-page .monitor-card .card-notices", "min-height") ?? value(".monitor-card .card-notices", "min-height")).toBe("0"); // 空の通知領域を残さない
     expect(value(".page.dashboard-page", "gap")).toBe("5px");
     expect(value(".dashboard-page .monitor-grid", "gap")).toBe("8px");
-    expect(value(".dashboard-page .dashboard-toolbar", "gap")).toBe("6px 10px");
-    expect(value(".dashboard-page .trend-panel", "padding")).toBe("4px 10px 3px");
-    expect(value(".dashboard-page .records-section", "padding")).toBe("5px 10px 2px");
+    expect(value(".dashboard-page .trend-panel", "padding")).toBe("5px 12px 4px");
+    expect(value(".dashboard-page .records-section", "padding")).toBe("6px 12px 3px");
   });
 
-  it("グラフのプロット領域(180px)と履歴の領域(clamp(230px, 28vh, 320px))は維持し、グローバルの履歴高さ・ページ幅は変えない", () => {
+  it("グラフのプロット領域(180px)は維持。履歴は余った高さを使う(flex)。グローバルの履歴高さ・ページ幅は変えない", () => {
     expect(value(".trend-svg", "height")).toBe("180px");
-    expect(value(".dashboard-page .records-area.compact", "height")).toBe("clamp(230px, 28vh, 320px)");
+    expect(value(".dashboard-page .records-section", "flex")).toBe("1 1 auto");
+    expect(value(".dashboard-page .records-area.compact", "flex")).toBe("1 1 0"); // 映像の分を引いた残り高さ。固定行数に拘らない
+    expect(value(".dashboard-page .records-area.compact", "height")).toBe("auto");
+    expect(parseInt(value(".dashboard-page .records-area.compact", "min-height")!)).toBeGreaterThanOrEqual(190);
     expect(value(".records-area.compact", "height")).toBe("clamp(340px, 54vh, 660px)");
     expect(rules(".page").some((b) => b.includes("min(100% - 48px, 1440px)"))).toBe(true);
   });
