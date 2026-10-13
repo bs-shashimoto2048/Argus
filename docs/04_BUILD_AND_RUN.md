@@ -26,7 +26,7 @@ Backend:
 .\scripts\start_backend_dev.ps1
 ```
 
-このスクリプトは既定8000から空きポートを探索し、`uvicorn app.main:app --reload --app-dir backend --port $port`を実行します。
+このスクリプトは既定8000から空きポートを探索し、`uvicorn app.main:app --reload --app-dir backend --port $port --loop app.event_loop:selector_loop_factory`を実行します（`-NoReload`では`--reload`なし。SelectorEventLoopを使う理由は`backend/app/event_loop.py`と Issue #67 を参照）。
 
 Frontend:
 
