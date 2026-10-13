@@ -12,23 +12,23 @@ const clampParts = (text: string) => /^clamp\((\d+)px,\s*(\d+)vh,\s*(\d+)px\)$/.
 // Dashboardは「Monitor映像・現在値 > 使用量推移 > 計測履歴」の優先順位。履歴を多く見せるために映像を小さくしない。
 describe("Dashboardの画面配分(映像優先)", () => {
   it("Monitor映像の高さは、従来(最大170px)より明確に大きく、固定値ではなくviewport比のclamp", () => {
-    for (const selector of [".dashboard-page .monitor-card .card-body .preview-wrap", ".dashboard-page .preview-wrap"]) {
-      const [min, vh, max] = clampParts(value(selector, "height")!);
-      expect([min, vh, max]).toEqual([150, 19, 220]);
-      expect(min).toBeGreaterThan(110); // 旧: clamp(110px, 15vh, 170px)
-      expect(max).toBeGreaterThan(170);
-      expect(max).toBeLessThan(260); // 固定220pxにはしない(上限のみ)
-    }
-    // 1600x1000相当(19vh)で約190px、1920x1080相当で約205px、1366x768相当は下限150px
-    expect(Math.min(220, Math.max(150, 0.19 * 1000))).toBe(190);
-    expect(Math.min(220, Math.max(150, 0.19 * 1080))).toBeCloseTo(205.2);
-    expect(Math.min(220, Math.max(150, 0.19 * 768))).toBe(150);
+    const [min, vh, max] = clampParts(value(".dashboard-page .monitor-card .card-body .preview-wrap", "max-height")!);
+    expect([min, vh, max]).toEqual([165, 23, 262]);
+    expect(min).toBeGreaterThan(110); // 旧: clamp(110px, 15vh, 170px) → #64: clamp(150px, 19vh, 220px)
+    expect(max).toBeGreaterThan(220);
+    expect(max).toBeLessThan(300); // 固定pxにはしない(上限のみ)
+    // 高さは幅に応じた16:9(contain表示で上下に空きを作らない)。上限はviewport比: 1600x1000で230px、1920x1080で248px、1366x768で177px
+    expect(value(".dashboard-page .monitor-card .card-body .preview-wrap", "aspect-ratio")).toBe("16 / 9");
+    expect(Math.min(max, Math.max(min, 0.23 * 1000))).toBe(230);
+    expect(Math.min(max, Math.max(min, 0.23 * 1080))).toBeCloseTo(248.4, 1);
+    expect(Math.min(max, Math.max(min, 0.23 * 768))).toBeCloseTo(176.64, 1);
   });
 
   it("映像は cropも引き伸ばしもせず(object-fit: contain)、画像70% / 数値30%の構成を維持する", () => {
     expect(value(".monitor-card .card-body .video-image", "object-fit")).toBe("contain");
     expect(value(".video-image", "object-fit")).toBe("contain");
-    expect(value(".monitor-card .card-body", "grid-template-columns")).toBe("minmax(0, 7fr) minmax(0, 3fr)");
+    expect(value(".monitor-card .card-body", "grid-template-columns")).toBe("minmax(0, 7fr) minmax(0, 3fr)"); // 旧(全体既定)。Dashboardは映像=残り幅、数値=折り返さない最小幅
+    expect(value(".dashboard-page .monitor-card .card-body", "grid-template-columns")).toBe("minmax(0, 1fr) clamp(132px, 25%, 180px)");
   });
 
   it("Dashboardだけ履歴を縮める: records-areaは約3〜4時間分のclamp高さ(viewport比、上限あり)で、旧「残り高さをすべて使う」ではない", () => {
@@ -55,14 +55,14 @@ describe("Dashboardの画面配分(映像優先)", () => {
     expect(min).toBeGreaterThan(240); // 旧: clamp(240px, 36vh, 420px)
     expect(vh).toBeGreaterThan(36);
     expect(max).toBeGreaterThan(420);
+    expect(vh * 10).toBeGreaterThan(300); // 1000px高でも、3台のカード(映像拡大後)が切れない上限
     expect(value(".dashboard-page .monitor-region", "overflow-y")).toBe("auto");
     expect(value(".dashboard-page .monitor-region", "overflow-x")).toBe("hidden");
   });
 
   it("カードの通知欄は映像の大きさに影響しない(映像は固定の高さ、カードはgridで高さが揃う)", () => {
     expect(value(".monitor-grid", "align-items")).toBe("stretch");
-    expect(value(".monitor-card .card-body .preview-wrap", "height")).toBeDefined();
-    expect(value(".dashboard-page .monitor-card .card-body .preview-wrap", "height")).toMatch(/^clamp\(/);
+    expect(value(".dashboard-page .monitor-card .card-body .preview-wrap", "max-height")).toMatch(/^clamp\(/);
   });
 
   it("使用量推移グラフのプロット領域(180px)は変えない", async () => {

@@ -25,13 +25,16 @@ Backend Routerの実装から確認できるAPIです。全Endpointは`/api`配�
 {
   "name": "meter_001",
   "display_name": "第1工場 ガスメーター",
-  "location": "第1工場"
+  "location": "第1工場",
+  "value_unit": "m³"
 }
 ```
 
+`value_unit`は測定値の単位(表示用メタデータ。最大16文字、前後空白はtrim、省略・空文字=単位なし)。MonitorResponseにも`value_unit`(必ず文字列)が含まれます。
+
 ### MonitorUpdate
 
-`display_name`、`location`、`enabled`、`source`、`inference`を任意で含めます。
+`display_name`、`location`、`value_unit`、`enabled`、`source`、`inference`を任意で含めます。`value_unit`だけの変更(基本情報のみのPATCH)はRuntime・推論設定・読取基準値に影響しません。
 `inference.reading`で時系列安定化設定（`enabled`/`mode`/`window_size`/`required_matches`/`min_confidence`/`expected_digits`/`decimal_position`/`monotonic`/`max_rate_per_minute`/`max_consecutive_failures`/`allow_rollover`/`rollover_max`）を指定できます。
 
 ## Sources

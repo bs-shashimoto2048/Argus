@@ -59,6 +59,7 @@ async def lifespan(_app: FastAPI):
                 ("system_settings", "storage_stop_free_gb", "FLOAT DEFAULT 5"),
                 ("reading_records", "value_source", "VARCHAR(16) DEFAULT 'none'"),
                 ("monitors", "display_order", "INTEGER"),
+                ("monitors", "value_unit", "VARCHAR(16) DEFAULT ''"),
                 ("reading_records", "raw_confidence", "FLOAT"),
                 ("reading_records", "inference_at", "DATETIME"),
                 ("reading_records", "original_value", "VARCHAR(128)"),

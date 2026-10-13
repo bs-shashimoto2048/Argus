@@ -1,12 +1,28 @@
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from .video_source import VideoSourceInput, VideoSourceResponse
 from .inference import InferenceSettingsInput, InferenceSettingsResponse, Roi
+
+def _strip_unit(value: str | None) -> str | None:
+    """測定単位の前後空白を除く(空文字=単位なし)。長さの上限(16文字)はtrim後にも適用する。"""
+    if value is None:
+        return None
+    stripped = value.strip()
+    if len(stripped) > 16:
+        raise ValueError("測定単位は16文字以内で入力してください")
+    return stripped
+
 
 class MonitorCreate(BaseModel):
     name: str = Field(min_length=1, max_length=80, pattern=r"^[A-Za-z0-9_-]+$")
     display_name: str = Field(min_length=1, max_length=160)
     location: str = Field(default="", max_length=160)
+    value_unit: str = Field(default="", max_length=16)
+
+    @field_validator("value_unit")
+    @classmethod
+    def _trim_unit(cls, value: str) -> str:
+        return _strip_unit(value) or ""
 
 class MonitorUpdate(BaseModel):
     # Issue #25: nameを編集可能にする。実行時の識別には常にMonitor ID(id)が使われ、
@@ -16,9 +32,15 @@ class MonitorUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=80, pattern=r"^[A-Za-z0-9_-]+$")
     display_name: str | None = Field(default=None, min_length=1, max_length=160)
     location: str | None = Field(default=None, max_length=160)
+    value_unit: str | None = Field(default=None, max_length=16)
     enabled: bool | None = None
     source: VideoSourceInput | None = None
     inference: InferenceSettingsInput | None = None
+
+    @field_validator("value_unit")
+    @classmethod
+    def _trim_unit(cls, value: str | None) -> str | None:
+        return _strip_unit(value)
 
 class ReadingBaselineSummary(BaseModel):
     """Monitor応答に載せるbaseline(monotonic基準値)の要約(Issue #40)。詳細は/reading/baseline。"""
@@ -45,6 +67,7 @@ class MonitorResponse(BaseModel):
     display_name: str
     display_order: int | None = None
     location: str
+    value_unit: str = ""
     enabled: bool
     status: str
     created_at: datetime

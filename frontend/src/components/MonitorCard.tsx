@@ -26,6 +26,8 @@ export function MonitorCard({ monitor, onClick, displayFps, latestRecord }: Prop
   // Issue #29: monitor.status(映像Runtime接続状態)とmonitor.inference_status(読取・推論状態)は
   // 互いに独立した値のため、バッジ表示用に1つへ合成する(Dashboard/Detail共通のルール)。
   const displayStatus = combinedMonitorStatus(monitor);
+  // 測定単位(表示用メタデータ)。未設定(空)なら数値だけ。数値と単位は別要素にして、数値を最優先に見せる。
+  const unit = (monitor.value_unit ?? "").trim();
 
   return (
     <button className="monitor-card" onClick={onClick} ref={cardRef}>
@@ -46,7 +48,7 @@ export function MonitorCard({ monitor, onClick, displayFps, latestRecord }: Prop
           明瞭に)。status判定ロジック自体は変更せず、合成済みのdisplayStatusを
           表示色の切替にのみ使う。 */}
       <div className="card-values">
-        <div className="card-value-primary"><small>現在値</small><strong>{monitor.current_value ?? "--"}</strong></div>
+        <div className="card-value-primary"><small>現在値</small><div className="current-value-line"><strong className="current-value-number">{monitor.current_value ?? "--"}</strong>{unit && <span className="current-value-unit" title={unit}>{unit}</span>}</div></div>
         <div className={`card-value-confidence status-${displayStatus}`}><small>信頼度</small><strong>{monitor.confidence == null ? "--" : `${(monitor.confidence * 100).toFixed(1)}%`}</strong></div>
         <div className="card-value-updated"><small>更新</small><strong>{formatTimeJst(monitor.last_updated)}</strong></div>
       </div>

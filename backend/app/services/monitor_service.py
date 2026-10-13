@@ -69,7 +69,7 @@ def _to_response(monitor: Monitor):
     source = None
     if monitor.source:
         source = {"source_type": monitor.source.source_type, "device_id": monitor.source.device_id, "url": monitor.source.url, "username": monitor.source.username, "has_password": bool(monitor.source.encrypted_password)}
-    return MonitorResponse(id=monitor.id, name=monitor.name, display_name=monitor.display_name, display_order=monitor.display_order, location=monitor.location, enabled=monitor.enabled, status=monitor.status, created_at=monitor.created_at, updated_at=monitor.updated_at, source=source, inference=monitor.inference, current_value=monitor.latest_result.value if monitor.latest_result else None, previous_value=monitor.latest_result.previous_value if monitor.latest_result else None, confidence=monitor.latest_result.confidence if monitor.latest_result else None, last_updated=monitor.latest_result.timestamp if monitor.latest_result else None, previous_confidence=monitor.latest_result.previous_confidence if monitor.latest_result else None, previous_confirmed_at=monitor.latest_result.previous_confirmed_at if monitor.latest_result else None, inference_status=monitor.latest_result.status if monitor.latest_result else "disabled", last_inference_error=monitor.latest_result.last_error if monitor.latest_result else None, current_inference_error=monitor.latest_result.current_error if monitor.latest_result else None, reading_baseline=summarize_baseline(monitor.reading_baseline))
+    return MonitorResponse(id=monitor.id, name=monitor.name, display_name=monitor.display_name, display_order=monitor.display_order, location=monitor.location, value_unit=monitor.value_unit or "", enabled=monitor.enabled, status=monitor.status, created_at=monitor.created_at, updated_at=monitor.updated_at, source=source, inference=monitor.inference, current_value=monitor.latest_result.value if monitor.latest_result else None, previous_value=monitor.latest_result.previous_value if monitor.latest_result else None, confidence=monitor.latest_result.confidence if monitor.latest_result else None, last_updated=monitor.latest_result.timestamp if monitor.latest_result else None, previous_confidence=monitor.latest_result.previous_confidence if monitor.latest_result else None, previous_confirmed_at=monitor.latest_result.previous_confirmed_at if monitor.latest_result else None, inference_status=monitor.latest_result.status if monitor.latest_result else "disabled", last_inference_error=monitor.latest_result.last_error if monitor.latest_result else None, current_inference_error=monitor.latest_result.current_error if monitor.latest_result else None, reading_baseline=summarize_baseline(monitor.reading_baseline))
 
 
 def _normalize_engine(method: str, engine: str) -> str:
@@ -207,7 +207,7 @@ def create_monitor(db: Session, req):
         raise ValueError("モニター名は既に使用されています")
     # 新規Monitorは表示順の末尾(現在の最大display_order + 1)へ追加する。欠番は詰め直さない。
     next_order = (db.scalar(select(func.max(Monitor.display_order))) or -1) + 1
-    monitor = Monitor(name=req.name, display_name=req.display_name, location=req.location, display_order=next_order)
+    monitor = Monitor(name=req.name, display_name=req.display_name, location=req.location, value_unit=req.value_unit, display_order=next_order)
     monitor.inference = InferenceSettings()
     monitor.latest_result = LatestResult()
     db.add(monitor)
@@ -226,6 +226,8 @@ def update_monitor(db: Session, monitor_id: int, req):
     if "name" in data and data["name"] != monitor.name:
         if db.scalar(select(Monitor).where(Monitor.name == data["name"], Monitor.id != monitor_id)):
             raise ValueError("モニター名は既に使用されています")
+    if data.get("value_unit", "") is None:
+        data.pop("value_unit")  # NULLにはしない(単位なしは空文字)
     for key, value in data.items():
         setattr(monitor, key, value)
     if source_data is not None:

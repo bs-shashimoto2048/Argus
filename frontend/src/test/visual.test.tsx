@@ -382,16 +382,16 @@ describe("Monitor Detail「設定」タブ: 2カラム・セクション整理�
     expect(value(".settings-tab .panel select", "height")).toBe("30px"); // inputの高さを揃える
     expect(rules(".settings-tab .source-body").some((b) => propertyValue(b, "grid-template-columns") === "repeat(2, minmax(0, 1fr))")).toBe(true);
     expect(rules(".settings-tab .inference-body").some((b) => propertyValue(b, "grid-template-columns") === "repeat(2, minmax(0, 1fr))")).toBe(true);
-    expect(rules(".settings-tab .basic-grid").some((b) => propertyValue(b, "grid-template-columns") === "repeat(3, minmax(0, 1fr))")).toBe(true);
+    expect(rules(".settings-tab .basic-grid").some((b) => propertyValue(b, "grid-template-columns") === "repeat(2, minmax(0, 1fr))")).toBe(true); // 内部名|表示名 / 設置場所|測定単位
     expect(declared(".section-summary", "text-overflow")).toBe(true); // 概要は1行で省略(横に伸びない)
     expect(value("body", "overflow-x")).toBe("hidden");
   });
 
-  it("基本情報は内部名・表示名・設置場所を1行(3列grid)に、長い説明は折りたたみ(内部名について)へ", async () => {
+  it("基本情報は内部名・表示名・設置場所・測定単位を2列gridに、長い説明は折りたたみ(内部名について)へ", async () => {
     detailMocks();
     renderApp("/monitors/3?tab=settings");
     await screen.findByRole("heading", { name: "基本情報" });
-    expect(document.querySelector(".basic-grid")!.children).toHaveLength(3);
+    expect(document.querySelector(".basic-grid")!.children).toHaveLength(4);
     const hint = document.querySelector("details.settings-hint") as HTMLDetailsElement;
     expect(hint.open).toBe(false);
     expect(within(hint).getByText("内部名について")).toBeInTheDocument();
