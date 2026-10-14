@@ -37,14 +37,47 @@ SAVE_TIMEOUT_SECONDS = 60.0
 XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 HEADERS = [
-    "計測日時", "Monitor ID", "Monitor名", "確定値", "前回値", "使用量", "Raw値", "信頼度",
-    "validation_status", "value_source", "display_status", "baseline_conflict", "engine", "model_id",
+    "計測日時", "モニターID", "モニター名", "確定値", "前回値", "使用量", "AI読取値", "信頼度",
+    "読取結果", "採用方法", "状態", "基準値不一致", "読取エンジン", "使用モデル",
     "元画像パス", "推論画像パス",
-    # 証跡と修正(末尾に追加): Raw信頼度=最新Raw側のconfidence(「信頼度」は正式値側)。修正済みでも、確定値は修正後の正式値で、元の正式値は「修正前値」に残る。
-    "Raw信頼度", "推論時刻", "修正済み", "修正回数", "最終修正日時", "修正前値",
+    # 証跡と修正(末尾に追加): AI信頼度=最新のAI読取値側のconfidence(「信頼度」は確定値側)。修正しても、確定値は修正後の値で、
+    # 最初の修正前の確定値は「初回値」に残る(途中の修正値はこの行には出さず、reading_record_correctionsに全履歴が残る)。
+    "AI信頼度", "AI読取時刻", "修正あり", "修正回数", "最終修正日時", "初回値",
 ]
-COLUMN_WIDTHS = [20, 11, 22, 14, 14, 12, 16, 10, 20, 15, 15, 17, 12, 30, 70, 70, 11, 20, 10, 10, 20, 14]
+COLUMN_WIDTHS = [20, 11, 22, 14, 14, 12, 16, 10, 44, 38, 12, 12, 13, 30, 70, 70, 11, 20, 10, 10, 20, 14]
 _COL_VALUE, _COL_PREVIOUS, _COL_USAGE, _COL_RAW, _COL_CONFIDENCE, _COL_ORIGINAL, _COL_OVERLAY = 3, 4, 5, 6, 7, 14, 15
+
+# 利用者向けの文言。UI(frontend/src/utils/readingLabels.ts・records.ts)と同じ表記で、Excel専用の独自表現は作らない
+# (backend/tests/test_excel_export.pyがUIの定義と一致することを確認する)。engine / model_idは技術情報のため内部値のまま。
+VALIDATION_STATUS_LABELS = {
+    "confirmed": "採用",
+    "low_confidence": "信頼度が低いため要確認",
+    "decrease_detected": "読取基準値より小さいため不採用",
+    "rate_exceeded": "増加量が設定上限を超えたため不採用",
+    "invalid_format": "表示桁数・小数部の形式が一致しないため不採用",
+    "no_reading": "読取値を取得できません",
+    "pending": "判定中",
+}
+VALUE_SOURCE_LABELS = {"confirmed": "今回のAI読取値を採用", "carried_forward": "直前の正式値を継続使用", "none": "正式値なし"}
+CORRECTED_SOURCE_LABEL = "運用者が確認・修正"
+DISPLAY_STATUS_LABELS = {
+    "normal": "正常", "warning": "要確認", "read_error": "読取不能", "error": "通信異常", "reconnecting": "再接続中", "connecting": "接続中", "stopped": "停止中",
+}
+FLAG_TRUE, FLAG_FALSE = "あり", "なし"
+
+
+def _label(labels: dict[str, str], value: str | None) -> str | None:
+    """内部値をUIと同じ日本語へ。未知の値は情報を失わないよう内部値のまま出す。"""
+    if value is None:
+        return None
+    return labels.get(value, value)
+
+
+def value_source_label(source: str | None, corrected: bool) -> str | None:
+    if corrected:  # UI(valueSourceLabel)と同じ: 修正済みの記録は「運用者が確認・修正」(継続使用からの修正はその旨も併記)
+        return f"{VALUE_SOURCE_LABELS['carried_forward']} → {CORRECTED_SOURCE_LABEL}" if source == "carried_forward" else CORRECTED_SOURCE_LABEL
+    return _label(VALUE_SOURCE_LABELS, source)
+
 
 _SHEET_FORBIDDEN = re.compile(r"[:\\/?*\[\]\x00-\x1f]")
 _RESERVED_SHEET = "history"
@@ -303,10 +336,12 @@ def _write_row(ws, row: int, record: ReadingRecord, fmt: dict, linker: ImageLink
         ws.write_string(row, _COL_RAW, record.raw_value, fmt["text"])  # 先頭0を保持するため、常に文字列
     if record.confidence is not None:
         ws.write_number(row, _COL_CONFIDENCE, record.confidence, fmt["confidence"])
-    for col, text in ((8, record.validation_status), (9, record.value_source), (10, record.display_status), (12, record.engine), (13, record.model_id)):
+    corrected = (record.correction_count or 0) > 0
+    for col, text in ((8, _label(VALIDATION_STATUS_LABELS, record.validation_status)), (9, value_source_label(record.value_source, corrected)),
+                      (10, _label(DISPLAY_STATUS_LABELS, record.display_status)), (12, record.engine), (13, record.model_id)):
         if text is not None:
             ws.write_string(row, col, text)
-    ws.write_boolean(row, 11, bool(record.baseline_conflict))
+    ws.write_string(row, 11, FLAG_TRUE if record.baseline_conflict else FLAG_FALSE)
     # 証跡と修正の列(元証跡のraw_confidence/inference_atは修正しても変わらない)
     if record.raw_confidence is not None:
         ws.write_number(row, 16, record.raw_confidence, fmt["confidence"])

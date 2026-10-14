@@ -29,15 +29,15 @@ function triggerDownload(blob: Blob, filename: string) {
 // 履歴ヘッダーの [ Export (XL) ]。現在のMonitor・期間に該当する全件(未読込の行を含む)を、常に.xlsxで出力する。
 // 保存先: showSaveFilePicker(File System Access API)があれば保存ダイアログ、無ければ通常のダウンロード。
 // ダイアログは、ユーザー操作(クリック)の直後でしか開けないため、サーバーへの出力依頼より先に開く。
+// 正常に出力できたときは成功メッセージを出さず、静かに完了する(失敗時のエラーだけ表示する)。
 export function ExportXlButton({ filter }: { filter: RecordFilterValue }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [done, setDone] = useState("");
   const range = periodToRange(filter.period);
 
   const run = async () => {
     if (!range) { setError("期間が正しくありません。開始日と終了日を確認してください"); return; }
-    setError(""); setDone("");
+    setError("");
     const suggestedName = suggestedExportName(range);
     const picker = (window as unknown as { showSaveFilePicker?: SavePicker }).showSaveFilePicker;
     let handle: SaveHandle | null = null;
@@ -60,7 +60,6 @@ export function ExportXlButton({ filter }: { filter: RecordFilterValue }) {
       } else {
         triggerDownload(result.blob, suggestedName);
       }
-      setDone(`${suggestedName}${result.totalRows != null ? `（${result.totalRows.toLocaleString("ja-JP")}行）` : ""}を出力しました`);
     } catch (reason) {
       setError(exportErrorMessage(reason));
     } finally {
@@ -71,6 +70,5 @@ export function ExportXlButton({ filter }: { filter: RecordFilterValue }) {
   return <>
     <button type="button" className="export-xl-button" onClick={run} disabled={busy || !range} aria-busy={busy} title="現在のモニター・期間の全件をExcel(.xlsx)で出力します">{busy ? "出力中…" : "Export (XL)"}</button>
     {error && <span className="export-xl-message error-text" role="alert">{error}</span>}
-    {done && <span className="export-xl-message muted" role="status">{done}</span>}
   </>;
 }
