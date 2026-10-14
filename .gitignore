@@ -40,3 +40,7 @@ cpp/build/
 # Digital/Drum production ONNX artifact（weight/ONNX binaryはcommitしない方針、
 # 既存.pt系legacy modelとは別。path/sha256はdata/models/registry.jsonで管理する）。
 data/models/*.onnx
+
+# 管理者パスワード等を記録するローカル運用メモ(Git管理しない。雛形は ADMIN_CREDENTIALS.local.md.example)
+ADMIN_CREDENTIALS.local.md
+*.local.md

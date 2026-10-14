@@ -239,15 +239,53 @@ ViteのFrontendポートは`5180`に固定しています(`strictPort: true`)。
 
 **セキュリティ上の注意**: 認証は下の「閲覧モード(VIEWER)と管理者ログイン(ADMIN)」の最小構成だけです。LANの第三者には、原則として閲覧専用(VIEWER)のURLだけを渡してください(管理者パスワードは管理担当者だけが使います)。Vite dev serverは全ネットワークに公開されるため、PoC以上の用途(多人数が常時アクセスする運用、信頼できない端末が同居するネットワーク)は推奨しません。
 
-### 閲覧モード(VIEWER)と管理者ログイン(ADMIN)
+### 閲覧モード(VIEWER)と管理者モード(ADMIN)
 
 LANの第三者へ安全に見せるため、**未ログイン=閲覧専用(VIEWER)**、**管理者(ADMIN)だけパスワードでログイン**する最小の権限制御があります(PoC向け。AD/SSO/OAuth/LDAPは対象外)。
 
-- VIEWER: Dashboard・映像・現在値・グラフ・計測履歴・保存画像・Monitor Detailの閲覧、Export (XL)のブラウザへのダウンロード。Monitor追加/編集/削除、ROI・前処理・推論設定、読取値修正、baseline操作、メモ編集、CSV/保存先設定、接続確認などの**書き込みAPIは、Backendが403で拒否**します(画面で隠すだけではありません)。`GET /api/monitors`ではURL・usernameを返さず、url-history・data-storage・csv-export・cameras・reading diagnosticsなどの内部情報のAPIもADMIN限定です。
-- ADMIN: 従来どおり全操作。画面右上の「管理者ログイン」から小さなダイアログでパスワードを入力します(「管理者」表示と「ログアウト」)。
-- 接続元IPでは判定しません(LANの利用者はVite proxy経由のため、Backendから見ると全員`127.0.0.1`)。sessionはBackendが発行するHttpOnly・SameSite=Strictのcookie(有効8時間、Backendのメモリ上で管理。logoutで失効、Backend再起動後は再ログイン)。ログイン失敗が続くと一時的にロックします。
-- **設定(環境変数。Backendを起動するユーザーの環境へ)**: `ARGUS_ADMIN_PASSWORD_HASH`(PBKDF2-SHA256。平文は保存しません)と`ARGUS_SESSION_SECRET`(cookie署名専用。`ARGUS_SECRET_KEY`とは別)。生成は `backend\.venv\Scripts\python.exe scripts\make_admin_password_hash.py`。**どちらかが未設定だと管理者ログインは無効になり、全員が閲覧専用(VIEWER)になります**(開発用の固定パスワードはありません)。HTTPS化したときは`ARGUS_COOKIE_SECURE=1`。
-- 通信はHTTP(平文)のため、ログインのパスワードはLAN上で盗聴され得ます(信頼できるLAN前提)。HTTPS・外部公開・多人数運用は対象外です。
+**運用の原則**
+- 通常アクセスはVIEWER(閲覧専用)です。未ログインのままDashboardを閲覧できます。VIEWERでは設定を変更できません。
+- 関係者(一般利用者)には、**VIEWERのURLだけ**を案内します: `http://<ArgusのPCのLAN IP>:5180/`(管理者ログイン不要)。Backend(8000)のURLは案内しません(127.0.0.1のみで、LANからは到達できません)。
+- 管理操作を行う管理担当者は、画面右上の「管理者ログイン」からログインします。ログアウトするとVIEWERへ戻ります。
+- Backend再起動後は、管理者の再ログインが必要です(sessionはBackendのメモリ上)。ADMIN sessionの有効期限は8時間です。
+
+**管理者ログイン**
+- 初期管理者パスワードは、システム管理担当者へ確認してください。
+- 管理者パスワードは一般利用者へ配布しないでください。
+
+| | VIEWER(未ログイン) | ADMIN(ログイン後) |
+|---|---|---|
+| Dashboard・映像・現在値・グラフ・計測履歴・保存画像・履歴・データ | 閲覧できる | 閲覧できる |
+| Monitor Detail | 「監視」「履歴」のみ | 「監視」「設定」「診断」「履歴」 |
+| Export (XL) | ブラウザへのダウンロードのみ | ダウンロード・サーバー保存 |
+| Monitor追加/編集/削除/並べ替え、ROI・前処理・推論設定、source変更・接続確認 | できない | できる |
+| 読取値の修正、baseline操作、メモ編集 | できない | できる |
+| システム設定(保存先・CSV出力)、モニター管理画面 | 入れない | できる |
+
+- VIEWERの書き込みは**Backendが403で拒否**します(画面で隠すだけではありません)。`GET /api/monitors`ではURL・usernameを返さず、url-history・data-storage・csv-export・cameras・reading diagnosticsなどの内部情報のAPIもADMIN限定です。
+- 接続元IPでは判定しません(LANの利用者はVite proxy経由のため、Backendから見ると全員`127.0.0.1`)。sessionはBackendが発行するHttpOnly・SameSite=Strictのcookieです。ログイン失敗が続くと一時的にロックします。
+
+**必要な環境変数(Backendを起動するユーザーの環境へ)**
+
+| 変数 | 用途 |
+|---|---|
+| `ARGUS_ADMIN_PASSWORD_HASH` | 管理者パスワードのhash(PBKDF2-SHA256。平文は保存しません) |
+| `ARGUS_SESSION_SECRET` | session cookieの署名専用(32文字以上) |
+
+- 生成は `backend\.venv\Scripts\python.exe scripts\make_admin_password_hash.py`(パスワードを対話入力し、2つの値を表示)。
+- **どちらかが未設定だと管理者ログインは無効になり、全員が閲覧専用(VIEWER)になります**(開発用の固定パスワードはありません)。
+- **`ARGUS_SECRET_KEY`(カメラ認証情報の暗号鍵)とは別の用途**です。共用しません。
+- HTTPS化したときは`ARGUS_COOKIE_SECURE=1`でcookieにSecure属性を付けます。
+
+**`ARGUS_SECRET_KEY`について**: 現在は未設定で、カメラ認証情報の暗号化に開発用の固定鍵を使っています(PoC scopeでは変更しません)。未設定のまま運用する間、保存済みのカメラ認証情報の保護は限定的です。**将来、正式運用へ移行する際に`ARGUS_SECRET_KEY`を設定する場合は、既存の保存済みcredentialを復号できなくなるため、カメラ認証情報の再登録またはmigrationを伴う計画的な変更が必要です。**
+
+**HTTP運用の注意**
+- 現在はHTTP(平文)です。管理者ログイン時のパスワードも暗号化されないため、**信頼できる社内LANに限定**して運用してください。
+- Internetへ公開しない・Public networkへ公開しない(Windows Firewallも、Frontendのポート`5180`だけをPrivate/Domainネットワークに限って許可)。
+- 管理者パスワードを社外へ配布しない。
+- 正式運用へ移行する際は、HTTPS / reverse proxy等を検討してください(PoCでは実装しません)。
+
+**管理者パスワードの記録**: パスワードの具体値は、READMEやdocsなどGit管理の文書に書きません。システム管理担当者がGit管理外のローカルメモで保管します(リポジトリ直下の`ADMIN_CREDENTIALS.local.md`。`.gitignore`済み。雛形は`ADMIN_CREDENTIALS.local.md.example`)。パスワードを変更したら、環境変数のhashとローカルメモの両方を更新してください。
 
 Internet公開・VPN越し公開・Reverse proxy/HTTPSの本格導入・AD/SSO等の認証基盤・本番サーバー化（Windows Service化等）は本構成の対象外です。
 
@@ -298,6 +336,6 @@ Internet公開・VPN越し公開・Reverse proxy/HTTPSの本格導入・AD/SSO�
 - `datetime.utcnow()`のdeprecation警告が残っている（DB層のdatetime列が全体的にnaive datetime前提のため、部分的なtimezone-aware化はnaive/aware比較エラーを誘発するリスクがあり、今回のscopeでは見送り）
 - カメラ一覧はOpenCVで0〜4番を探索
 - URL認証はOpenCVが受け付ける一時的なURL形式に変換して接続します。機器やOpenCVビルドによっては別途プロキシ等が必要です。
-- 暗号鍵未設定時は開発用固定キーのため、本番環境では必ず`ARGUS_SECRET_KEY`を設定してください。
+- `ARGUS_SECRET_KEY`未設定時は、カメラ認証情報の暗号化に開発用固定キーを使います。PoCでは現状のまま運用し、正式運用へ移行する際に設定する場合は、既存credentialの再登録またはmigrationを伴う計画的な変更が必要です(設定すると保存済みの認証情報を復号できなくなります。「閲覧モード(VIEWER)と管理者モード(ADMIN)」参照)。
 - Engine/Device切り替えは対象Monitorのruntime（映像取得含む）を再構成する方式のため、切り替え中は該当Monitorの映像に一瞬の断が生じる（他Monitorには影響しない）。
-- ユーザー認証・権限制御は未実装。LANアクセスを許可すると、到達可能な誰もが閲覧だけでなく設定変更まで行えるため注意が必要（詳細は「LAN内アクセス」参照、Issue #26）。
+- 認証はPoC向けの最小構成(未ログイン=VIEWER / ADMINのみパスワード)。HTTP平文・単一の管理者パスワードのため、信頼できる社内LAN限定で運用する(詳細は「LAN内アクセス」「閲覧モード(VIEWER)と管理者モード(ADMIN)」参照、Issue #26、PR #73)。
