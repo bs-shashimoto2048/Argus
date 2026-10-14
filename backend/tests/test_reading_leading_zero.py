@@ -107,3 +107,41 @@ def test_passthrough_mode_also_formats_value():
     confirmed = ReadingStabilizer(settings).update(InferenceResult(value="0372395", confidence=0.9, engine="mock", timestamp=BASE_TIME))
     assert confirmed.value == "37239.5"
     assert confirmed.persist_baseline is False
+
+
+# --- expected_digits判定は「先頭0除去後」ではなく「Raw/canonical(先頭0保持)」で行う回帰(実画面の事例) ---
+
+
+@pytest.mark.parametrize("raw,value", [
+    ("0026589", "26589"),    # 先頭0が2つ。除去後は5桁でも、Rawは7桁なので正常
+    ("0216025", "216025"),   # 除去後は6桁でも、Rawは7桁なので正常
+    ("0000000", "0"),
+])
+def test_seven_digit_raw_is_valid_even_if_stripped_value_is_shorter(raw, value):
+    settings = ReadingSettings(expected_digits=7, decimal_position=0)
+    _, confirmed = _confirm(settings, raw)
+    assert confirmed.validation_status == CandidateStatus.CONFIRMED
+    assert confirmed.value == value
+    assert confirmed.raw_value == raw
+    assert confirmed.numeric_value == int(value)
+
+
+def test_six_digit_raw_is_invalid_format_and_is_not_zero_padded():
+    # Rawが6桁なら、先頭0を補って7桁扱いにはしない(検出漏れとの区別がつかなくなるため)。
+    settings = ReadingSettings(expected_digits=7, decimal_position=0)
+    _, confirmed = _confirm(settings, "216025")
+    assert confirmed.validation_status == CandidateStatus.INVALID_FORMAT
+    assert confirmed.raw_value == "216025"
+    assert confirmed.value is None  # 直前のConfirmedが無いので採用値なし
+
+
+def test_invalid_format_is_decided_on_voted_candidate_not_latest_raw():
+    # 窓内の多数決が6桁(途中の0の検出漏れ)なら、最新Rawが7桁でも桁数不足として棄却される。
+    # raw_valueは最新の単発Rawのまま残る(「Raw7桁なのにinvalid_format」に見える実record事例の仕組み)。
+    settings = ReadingSettings(expected_digits=7, decimal_position=0)
+    stabilizer = ReadingStabilizer(settings)
+    confirmed = None
+    for index, raw in enumerate(["021625", "021625", "021625", "0216025", "0216025"]):
+        confirmed = stabilizer.update(InferenceResult(value=raw, confidence=0.9, engine="mock", timestamp=BASE_TIME + timedelta(seconds=index)))
+    assert confirmed.validation_status == CandidateStatus.INVALID_FORMAT
+    assert confirmed.raw_value == "0216025"
