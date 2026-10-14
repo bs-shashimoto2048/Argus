@@ -12,6 +12,7 @@ describe("ルーティングと共通レイアウト", () => {
     const user = userEvent.setup();
     renderApp("/");
     const nav = screen.getByRole("navigation", { name: "メインナビゲーション" });
+    await within(nav).findByRole("link", { name: "システム設定" }); // 管理者sessionの取得後
     expect(screen.getByRole("link", { name: "ARGUS 遠方監視システム" })).toBeInTheDocument();
     for (const label of ["ダッシュボード", "モニター管理", "履歴・データ", "システム設定"]) expect(within(nav).getByRole("link", { name: label })).toBeInTheDocument();
     // Phase 5: ページタイトル「ダッシュボード」は置かない(ナビゲーションに同名のリンクがあるため)。

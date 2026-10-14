@@ -8,11 +8,12 @@ import { StateBadge } from "./StateBadge";
 
 type Kind = "original" | "overlay";
 
-type Props = { record: ReadingRecord; onClose: () => void; onCorrected?: (result: CorrectionResult) => void };
+// canCorrect=false(閲覧モード)では「読取値を修正」を出さない。
+type Props = { record: ReadingRecord; onClose: () => void; onCorrected?: (result: CorrectionResult) => void; canCorrect?: boolean };
 
 // 記録の詳細(右Drawer)。画像は「記録時に保存した画像」(GET /api/records/{id}/image/...)だけを表示し、現在のlive映像は使わない。
 // 正式値の信頼度と最新推論値(Raw)の信頼度は別の値(前回確定値を保持した記録では別のtick)なので、分けて表示する。
-export function RecordDrawer({ record, onClose, onCorrected }: Props) {
+export function RecordDrawer({ record, onClose, onCorrected, canCorrect = true }: Props) {
   const [kind, setKind] = useState<Kind>("original");
   const [loadFailed, setLoadFailed] = useState(false);
   const [correcting, setCorrecting] = useState(false);
@@ -75,7 +76,7 @@ export function RecordDrawer({ record, onClose, onCorrected }: Props) {
           </dl>
           <p>AI読取値・信頼度・画像などの記録時証跡は変更されていません。</p>
         </div>}
-        {record.correctable && onCorrected && <button type="button" className="secondary correct-button" onClick={() => setCorrecting(true)}>読取値を修正</button>}
+        {record.correctable && onCorrected && canCorrect && <button type="button" className="secondary correct-button" onClick={() => setCorrecting(true)}>読取値を修正</button>}
       </div>
       <div className="drawer-tabs" role="tablist" aria-label="記録画像の種類">
         <button type="button" role="tab" aria-selected={kind === "original"} className={kind === "original" ? "active" : ""} onClick={() => setKind("original")}>元画像</button>

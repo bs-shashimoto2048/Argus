@@ -237,7 +237,17 @@ ViteのFrontendポートは`5180`に固定しています(`strictPort: true`)。
 2. 別PCのブラウザで `http://<ArgusPCのLAN IP>:<Frontendポート>` を開く。
 3. Windows Firewallの受信規則で、**Frontendのポート（TCP）だけ**をPrivate/Domainネットワークに限定して許可する。**Publicネットワークでは許可しないこと。** なお、Private/Domainプロファイル自体が無効化されている環境では、そもそも受信規則が無くても到達できてしまうため、社内ネットワークの実際のFirewallプロファイル状態を事前に確認すること（`Get-NetConnectionProfile` / `Get-NetFirewallProfile`）。
 
-**セキュリティ上の注意（未実装の認証について）**: Argusには現時点でユーザー認証・権限制御が実装されていません。LANアクセスを許可すると、同一LAN上でFrontendのURLへ到達できる誰もが、閲覧だけでなくMonitorの追加・削除、ROI/推論/CSV出力設定の変更まで行える状態になります。多人数が常時アクセスする運用や、信頼できない端末が同居するネットワークでの利用は推奨しません。閲覧専用モードや簡易認証の追加は別Issueとして検討してください。
+**セキュリティ上の注意**: 認証は下の「閲覧モード(VIEWER)と管理者ログイン(ADMIN)」の最小構成だけです。LANの第三者には、原則として閲覧専用(VIEWER)のURLだけを渡してください(管理者パスワードは管理担当者だけが使います)。Vite dev serverは全ネットワークに公開されるため、PoC以上の用途(多人数が常時アクセスする運用、信頼できない端末が同居するネットワーク)は推奨しません。
+
+### 閲覧モード(VIEWER)と管理者ログイン(ADMIN)
+
+LANの第三者へ安全に見せるため、**未ログイン=閲覧専用(VIEWER)**、**管理者(ADMIN)だけパスワードでログイン**する最小の権限制御があります(PoC向け。AD/SSO/OAuth/LDAPは対象外)。
+
+- VIEWER: Dashboard・映像・現在値・グラフ・計測履歴・保存画像・Monitor Detailの閲覧、Export (XL)のブラウザへのダウンロード。Monitor追加/編集/削除、ROI・前処理・推論設定、読取値修正、baseline操作、メモ編集、CSV/保存先設定、接続確認などの**書き込みAPIは、Backendが403で拒否**します(画面で隠すだけではありません)。`GET /api/monitors`ではURL・usernameを返さず、url-history・data-storage・csv-export・cameras・reading diagnosticsなどの内部情報のAPIもADMIN限定です。
+- ADMIN: 従来どおり全操作。画面右上の「管理者ログイン」から小さなダイアログでパスワードを入力します(「管理者」表示と「ログアウト」)。
+- 接続元IPでは判定しません(LANの利用者はVite proxy経由のため、Backendから見ると全員`127.0.0.1`)。sessionはBackendが発行するHttpOnly・SameSite=Strictのcookie(有効8時間、Backendのメモリ上で管理。logoutで失効、Backend再起動後は再ログイン)。ログイン失敗が続くと一時的にロックします。
+- **設定(環境変数。Backendを起動するユーザーの環境へ)**: `ARGUS_ADMIN_PASSWORD_HASH`(PBKDF2-SHA256。平文は保存しません)と`ARGUS_SESSION_SECRET`(cookie署名専用。`ARGUS_SECRET_KEY`とは別)。生成は `backend\.venv\Scripts\python.exe scripts\make_admin_password_hash.py`。**どちらかが未設定だと管理者ログインは無効になり、全員が閲覧専用(VIEWER)になります**(開発用の固定パスワードはありません)。HTTPS化したときは`ARGUS_COOKIE_SECURE=1`。
+- 通信はHTTP(平文)のため、ログインのパスワードはLAN上で盗聴され得ます(信頼できるLAN前提)。HTTPS・外部公開・多人数運用は対象外です。
 
 Internet公開・VPN越し公開・Reverse proxy/HTTPSの本格導入・AD/SSO等の認証基盤・本番サーバー化（Windows Service化等）は本構成の対象外です。
 

@@ -27,8 +27,9 @@ describe("常時リアルタイム時計(共通トップナビ)", () => {
     vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-09T04:08:42Z"));
     standardMocks();
     const { unmount } = renderApp("/history");
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); }); // 管理者sessionの取得を待つ(fake timers中)
     const header = screen.getByRole("banner");
-    expect([...header.children].map((c) => c.className.split(" ")[0])).toEqual(["app-nav-brand", "app-nav-clock", "app-nav-links"]); // [ロゴ][時計][メニュー(右)]
+    expect([...header.children].map((c) => c.className.split(" ")[0])).toEqual(["app-nav-brand", "app-nav-clock", "app-nav-links", "auth-box"]); // [ロゴ][時計][メニュー(右)][権限表示]
     expect(within(header).getByLabelText("現在時刻（JST）")).toBeInTheDocument();
     expect(within(header).getAllByRole("link").map((a) => a.textContent)).toEqual(["ARGUS遠方監視システム", "ダッシュボード", "モニター管理", "履歴・データ", "システム設定"]);
     unmount();

@@ -14,6 +14,7 @@ from reading.models import RawReading
 
 from runtime.runtime_manager import runtime_manager
 
+from ..core.auth import ADMIN_ONLY
 router = APIRouter(prefix="/api/monitors", tags=["reading"])
 
 
@@ -28,7 +29,7 @@ def _serialize_raw(reading: RawReading) -> dict:
     }
 
 
-@router.get("/{monitor_id}/reading/diagnostics")
+@router.get("/{monitor_id}/reading/diagnostics", dependencies=ADMIN_ONLY)
 def reading_diagnostics(monitor_id: int):
     """Raw Reading -> Confirmed Readingの安定化状態を確認するためのDebug API。
 
@@ -120,7 +121,7 @@ def get_baseline(monitor_id: int, db: Session = Depends(get_db)):
     return baseline_service.get_status(db, _monitor_or_404(db, monitor_id))
 
 
-@router.post("/{monitor_id}/reading/baseline/reset")
+@router.post("/{monitor_id}/reading/baseline/reset", dependencies=ADMIN_ONLY)
 def reset_baseline(monitor_id: int, body: ResetRequest, request: Request, db: Session = Depends(get_db)):
     """baselineをクリアする。次に正常にCONFIRMEDされた値が新しいbaselineになる(表示値は直接変更しない)。"""
     reason, operator = body.cleaned()
@@ -128,7 +129,7 @@ def reset_baseline(monitor_id: int, body: ResetRequest, request: Request, db: Se
     return _run_baseline_action(lambda: baseline_service.reset_baseline(db, monitor, reason, operator, _client_host(request)))
 
 
-@router.post("/{monitor_id}/reading/baseline/rebase")
+@router.post("/{monitor_id}/reading/baseline/rebase", dependencies=ADMIN_ONLY)
 def rebase_baseline(monitor_id: int, body: RebaseRequest, request: Request, db: Session = Depends(get_db)):
     """baselineを、運用者が実メーターで確認した値へ置き換える(表示値は直接変更しない)。"""
     reason, operator = body.cleaned()
@@ -142,7 +143,7 @@ def baseline_events(monitor_id: int, limit: int = Query(50, ge=1, le=200), db: S
     return {"events": baseline_service.list_events(db, monitor_id, limit)}
 
 
-@router.post("/{monitor_id}/reading/capture")
+@router.post("/{monitor_id}/reading/capture", dependencies=ADMIN_ONLY)
 def capture_dataset_candidate(monitor_id: int):
     """現在フレームをDataset候補として保存する開発者向け機能(Issue #56-58)。
 

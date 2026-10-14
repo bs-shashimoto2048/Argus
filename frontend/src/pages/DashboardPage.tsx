@@ -8,6 +8,7 @@ import { RecordsSection } from "../components/RecordsSection";
 import { TrendChart } from "../components/TrendChart";
 import type { RecordFilterValue } from "../components/RecordFilters";
 import { DashboardSettingsModal } from "../components/DashboardSettingsModal";
+import { useAuth } from "../auth/AuthContext";
 import { useAutoReload } from "../hooks/useAutoReload";
 import { useDashboardSettings } from "../hooks/useDashboardSettings";
 import { combinedMonitorStatus } from "../utils/monitorStatus";
@@ -35,6 +36,7 @@ export function DashboardPage() {
   const [recordsBusy, setRecordsBusy] = useState(false); // 計測履歴のメモ編集中・詳細/修正ダイアログ表示中
   const navigate = useNavigate();
   const { settings, update } = useDashboardSettings();
+  const { isAdmin } = useAuth();
 
   // 画面の自動リロード(長時間の常時表示向けの予防措置。映像取得失敗の根本修正ではなく、Runtimeの異常も隠さない)。
   // 設定ダイアログ・メモ編集・修正ダイアログの表示中は実行しない。
@@ -93,7 +95,7 @@ export function DashboardPage() {
       {monitors.length > 3 && <span className="card-count-hint" aria-live="polite" title="カード領域を縦にスクロールすると、残りのモニターを表示します">{visibleCards} / {monitors.length}台表示<small>（スクロールで続きを表示）</small></span>}
       {/* [モニター追加] と Monitoring表示は同じ操作グループ(同じ高さ・角丸・枠線のトーン)として横並びにする。 */}
       <div className="action-group" role="group" aria-label="ダッシュボード操作">
-        <button className="action-button" onClick={() => navigate("/monitors/new")}><span className="btn-plus">＋</span> モニター追加</button>
+        {isAdmin && <button className="action-button" onClick={() => navigate("/monitors/new")}><span className="btn-plus">＋</span> モニター追加</button>}
         <div className="monitoring-control" aria-label="Monitoring">
           <span className={`monitoring-status${running > 0 ? " live" : ""}`} title={`稼働中 ${running} / ${monitors.length}`}><i aria-hidden="true">●</i>Monitoring</span>
           <span className="monitoring-fps" title="Dashboardのプレビュー表示FPS(video_fps/inference_fpsとは無関係)">{settings.displayFps} FPS</span>
@@ -106,7 +108,7 @@ export function DashboardPage() {
     <div className="monitor-region" ref={regionRef} onScroll={updateVisible} data-testid="monitor-region">
     <div className="monitor-grid">
       {monitors.map((monitor) => <MonitorCard key={monitor.id} monitor={monitor} displayFps={settings.displayFps} dimmed={filter.monitorIds.length === 1 && !filter.monitorIds.includes(monitor.id)} latestRecord={latestRecords[monitor.id]} onClick={() => navigate(`/monitors/${monitor.id}`)} />)}
-      {monitors.length === 0 && <div className="empty"><h2>モニターがありません</h2><p>最初のモニターを追加してください。</p><button onClick={() => navigate("/monitors/new")}>モニター追加</button></div>}
+      {monitors.length === 0 && <div className="empty"><h2>モニターがありません</h2>{isAdmin ? <><p>最初のモニターを追加してください。</p><button onClick={() => navigate("/monitors/new")}>モニター追加</button></> : <p>管理者がモニターを追加すると表示されます。</p>}</div>}
     </div>
     </div>
     <TrendChart monitors={monitors} filter={filter} refreshMs={60000} reloadToken={trendReload} />

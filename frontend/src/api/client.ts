@@ -1,9 +1,17 @@
 import type {BaselineEvent,BaselineStatus,History,Monitor,Source,Inference,SystemInference,ReadingDiagnostics,ModelCatalogEntry,RuntimeDiagnostics,CsvExportStatus,CsvExportRunOutcome,RecordsPage,RecordsQuery,ReadingRecord,RecordCorrection,CorrectionRequest,CorrectionResult,ExcelExportRequest,ExcelExportSaved,DataStorageSettings,DataStorageInput,DataStorageStatus,StorageTestResult} from "../types";
-const request=async<T>(url:string,init?:RequestInit):Promise<T>=>{const r=await fetch(url,{headers:{"Content-Type":"application/json",...(init?.headers||{})},...init});if(!r.ok){const body=await r.json().catch(()=>({}));throw new Error(body.detail||`HTTP ${r.status}`)}return r.status===204?undefined as T:r.json()};
+export const ADMIN_REQUIRED_EVENT="argus:admin-required";
+const notifyAdminRequired=(status:number,detail:unknown)=>{if(status===403&&detail&&typeof detail==="object"&&(detail as {code?:unknown}).code==="ADMIN_REQUIRED")window.dispatchEvent(new Event(ADMIN_REQUIRED_EVENT))};
+const request=async<T>(url:string,init?:RequestInit):Promise<T>=>{const r=await fetch(url,{headers:{"Content-Type":"application/json",...(init?.headers||{})},...init});if(!r.ok){const body=await r.json().catch(()=>({}));notifyAdminRequired(r.status,body.detail);const d=body.detail;throw new Error(typeof d==='string'?d:(d&&typeof d==='object'&&'message' in d?String((d as {message:unknown}).message):`HTTP ${r.status}`))}return r.status===204?undefined as T:r.json()};
 // baseline操作用: 409(FORCE_REQUIRED/READING_DISABLED)等のdetailがオブジェクトのため、statusとdetailを保持する。
 export class ApiError extends Error{status:number;detail:unknown;constructor(status:number,detail:unknown){super(typeof detail==="string"?detail:(detail&&typeof detail==="object"&&"message" in detail?String((detail as {message:unknown}).message):`HTTP ${status}`));this.status=status;this.detail=detail}}
-const baselineRequest=async<T>(url:string,init?:RequestInit):Promise<T>=>{const r=await fetch(url,{headers:{"Content-Type":"application/json"},...init});if(!r.ok){const body=await r.json().catch(()=>({}));const detail=Array.isArray(body.detail)?body.detail.map((d:{msg?:string})=>d.msg).join(" / "):body.detail;throw new ApiError(r.status,detail)}return r.json()};
+const baselineRequest=async<T>(url:string,init?:RequestInit):Promise<T>=>{const r=await fetch(url,{headers:{"Content-Type":"application/json"},...init});if(!r.ok){const body=await r.json().catch(()=>({}));const detail=Array.isArray(body.detail)?body.detail.map((d:{msg?:string})=>d.msg).join(" / "):body.detail;notifyAdminRequired(r.status,detail);throw new ApiError(r.status,detail)}return r.json()};
+export type AuthRole="ADMIN"|"VIEWER";
+export type AuthSession={role:AuthRole;admin_login_available:boolean};
 export const api={
+ // --- 認証(未ログイン=VIEWER。ADMINだけパスワードでcookie sessionを得る) ---
+ session:()=>baselineRequest<AuthSession>('/api/auth/session'),
+ login:(password:string)=>baselineRequest<AuthSession>('/api/auth/login',{method:'POST',body:JSON.stringify({password})}),
+ logout:()=>baselineRequest<AuthSession>('/api/auth/logout',{method:'POST'}),
  monitors:()=>request<{monitors:Monitor[]}>('/api/monitors'),
  monitor:(id:number)=>request<Monitor>(`/api/monitors/${id}`),
  // Dashboard/モニター管理の表示順(全MonitorのIDを表示したい順に指定。1 transactionで更新される)
@@ -47,7 +55,7 @@ export const api={
  exportExcelSave:(body:ExcelExportRequest)=>baselineRequest<ExcelExportSaved>('/api/records/export/excel',{method:'POST',body:JSON.stringify(body)}),
  exportExcelDownload:async(body:ExcelExportRequest):Promise<{blob:Blob;filename:string;totalRows:number|null}>=>{
   const r=await fetch('/api/records/export/excel',{method:'POST',headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-  if(!r.ok){const b=await r.json().catch(()=>({}));const detail=Array.isArray(b.detail)?b.detail.map((d:{msg?:string})=>d.msg).join(" / "):b.detail;throw new ApiError(r.status,detail)}
+  if(!r.ok){const b=await r.json().catch(()=>({}));const detail=Array.isArray(b.detail)?b.detail.map((d:{msg?:string})=>d.msg).join(" / "):b.detail;notifyAdminRequired(r.status,detail);throw new ApiError(r.status,detail)}
   const m=/filename="?([^";]+)"?/.exec(r.headers.get("content-disposition")||"");const rows=r.headers.get("x-argus-total-rows");
   return {blob:await r.blob(),filename:m?m[1]:"Argus_MeterRecords.xlsx",totalRows:rows?Number(rows):null}},
  dataStorage:()=>baselineRequest<DataStorageSettings>('/api/system/data-storage'),

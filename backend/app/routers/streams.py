@@ -5,6 +5,7 @@ from fastapi.responses import Response, StreamingResponse
 
 from runtime.runtime_manager import runtime_manager
 
+from ..core.auth import ADMIN_ONLY
 router = APIRouter(prefix="/api/monitors", tags=["streams"])
 
 
@@ -43,7 +44,7 @@ def overlay(monitor_id: int):
     return _snapshot_response(monitor_id)
 
 
-@router.get("/{monitor_id}/inference-input.jpg")
+@router.get("/{monitor_id}/inference-input.jpg", dependencies=ADMIN_ONLY)
 def inference_input(monitor_id: int):
     """実際にInferenceEngineへ渡した最終推論入力画像そのものを返す(Issue #16)。
 

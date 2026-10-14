@@ -26,12 +26,12 @@ export function MemoCell({ recordLabel, memo, onSave, onEditingChange }: Props) 
   useEffect(() => () => onEditingChange?.(false), []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (editing) inputRef.current?.focus(); }, [editing, saving]);
 
-  if (!onSave) return <span className="memo-text" title={current || undefined}>{current || "—"}</span>;
+  if (!onSave && !editing) return <span className="memo-text" title={current || undefined}>{current || "—"}</span>;
 
   const start = () => { setDraft(current); setError(""); setEditing(true); };
   const cancel = () => { busy.current = true; setEditing(false); setError(""); queueMicrotask(() => { busy.current = false; }); };
   const commit = async () => {
-    if (busy.current) return;
+    if (busy.current || !onSave) return; // 管理者ログインが切れている間は保存しない(入力は残す)
     if (draft.trim() === current) { setEditing(false); setError(""); return; }
     busy.current = true; setSaving(true); setError("");
     try {
@@ -53,6 +53,7 @@ export function MemoCell({ recordLabel, memo, onSave, onEditingChange }: Props) 
     <input ref={inputRef} type="text" value={draft} maxLength={MEMO_MAX_LENGTH} disabled={saving} aria-label={`${recordLabel} のメモ`} aria-invalid={error ? true : undefined}
       onChange={(event) => setDraft(event.target.value)} onBlur={() => void commit()}
       onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void commit(); } else if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); cancel(); } }} />
+    {!onSave && <small className="memo-error" role="status">管理者ログインが切れました。再ログインすると保存できます（Escで破棄）</small>}
     {saving && <small className="muted memo-state" role="status">保存中…</small>}
     {error && <small className="memo-error" role="alert">{error}</small>}
   </span>;

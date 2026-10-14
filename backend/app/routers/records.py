@@ -19,6 +19,8 @@ from ..services.record_image_service import resolve_image_path
 from ..services.storage_settings_service import StorageTimeout, excel_output_folder, load_config
 from runtime.hourly_record_worker import hourly_record_worker
 
+from ..core import auth as auth_core
+from ..core.auth import ADMIN_ONLY
 router = APIRouter(prefix="/api/records", tags=["records"])
 
 
@@ -78,7 +80,7 @@ def list_records(
     return {"items": [svc.serialize(row) for row in rows], "total": total, "limit": limit, "offset": offset}
 
 
-@router.get("/status")
+@router.get("/status", dependencies=ADMIN_ONLY)
 def records_status(db: Session = Depends(get_db)):
     """計測記録の有効/無効と、Workerの状態。"""
     return {
@@ -89,7 +91,7 @@ def records_status(db: Session = Depends(get_db)):
     }
 
 
-@router.put("/settings")
+@router.put("/settings", dependencies=ADMIN_ONLY)
 def update_records_settings(body: RecordSettingsInput, db: Session = Depends(get_db)):
     svc.set_hourly_records_enabled(db, body.enabled)
     return {"enabled": svc.hourly_records_enabled(db)}
@@ -100,12 +102,14 @@ def _remove_dir(path: str) -> None:
 
 
 @router.post("/export/excel")
-def export_excel(body: ExcelExportInput, db: Session = Depends(get_db)):
+def export_excel(body: ExcelExportInput, db: Session = Depends(get_db), role: str = Depends(auth_core.current_role)):
     """reading_recordsからExcel(.xlsx)を出力する(1 Monitor 1 worksheet)。
 
     save_to_server=false: .xlsxをダウンロード / true: 設定のExcel保存先へ保存し、保存先を返す。
     このAPIの失敗は他の機能(映像・推論・Reading・定時記録・画像保存)へ影響しない。
     """
+    if body.save_to_server:
+        auth_core.require_admin(role)  # サーバーのフォルダへ保存するのはADMINだけ。ブラウザへのダウンロード(false)はVIEWERも可
     start, end = _period(body.start, "from"), _period(body.end, "to")
     try:
         start, end = excel.resolve_period(body.period, start, end)
@@ -144,7 +148,7 @@ def export_excel(body: ExcelExportInput, db: Session = Depends(get_db)):
             shutil.rmtree(work_dir, ignore_errors=True)
 
 
-@router.post("/{record_id}/correct")
+@router.post("/{record_id}/correct", dependencies=ADMIN_ONLY)
 def correct_record(record_id: int, body: CorrectionInput, request: Request, db: Session = Depends(get_db)):
     """carried_forward / 基準値競合中の記録の正式値を、運用者が修正する(監査履歴を残す)。元証跡(Raw・画像・判定)は変更しない。"""
     try:
@@ -155,7 +159,7 @@ def correct_record(record_id: int, body: CorrectionInput, request: Request, db: 
     return {**result, "record": svc.serialize(record)}
 
 
-@router.patch("/{record_id}/memo")
+@router.patch("/{record_id}/memo", dependencies=ADMIN_ONLY)
 def update_record_memo(record_id: int, body: MemoInput, db: Session = Depends(get_db)):
     """メモだけを更新する(他のフィールドは一切変更しない)。"""
     record = svc.get_record(db, record_id)
@@ -168,11 +172,13 @@ def update_record_memo(record_id: int, body: MemoInput, db: Session = Depends(ge
 
 
 @router.get("/{record_id}/corrections")
-def list_record_corrections(record_id: int, db: Session = Depends(get_db)):
+def list_record_corrections(record_id: int, db: Session = Depends(get_db), role: str = Depends(auth_core.current_role)):
     """記録の修正履歴(新しい順)。old/new・理由・操作者・コンテキスト。"""
     rows = corrections.list_corrections(db, record_id)
     if rows is None:
         raise HTTPException(404, "計測記録が見つかりません")
+    if role != auth_core.ADMIN:
+        rows = [{k: v for k, v in row.items() if k != "client_host"} for row in rows]  # 操作端末の接続元はADMINだけ
     return {"record_id": record_id, "corrections": rows}
 
 

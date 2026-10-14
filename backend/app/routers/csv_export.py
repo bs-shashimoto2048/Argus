@@ -8,7 +8,8 @@ from ..services import csv_export_service as svc
 from ..services.monitor_service import MONITOR_ORDER
 from runtime.csv_export_worker import csv_export_worker
 
-router = APIRouter(prefix="/api/system/csv-export", tags=["csv-export"])
+from ..core.auth import ADMIN_ONLY
+router = APIRouter(prefix="/api/system/csv-export", tags=["csv-export"], dependencies=ADMIN_ONLY)
 
 
 @router.get("", response_model=CsvExportStatusResponse)

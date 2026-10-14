@@ -19,14 +19,16 @@ describe("上部ナビゲーション: ロゴは左、メニューは右", () =>
   it("ヘッダーの子要素は ロゴ(左) → メニュー(右) の順で、メニューが4項目ある", async () => {
     standardMocks();
     renderApp("/");
+    await screen.findByRole("link", { name: "システム設定" }); // 管理者sessionの取得後(閲覧モードでは管理系のリンクを出さない)
     const header = screen.getByRole("banner");
-    const [brand, clock, nav] = [...header.children];
+    const [brand, clock, nav, authBox] = [...header.children];
     expect(brand).toHaveClass("app-nav-brand");
     expect(brand).toHaveTextContent("ARGUS");
     expect(brand).toHaveTextContent("遠方監視システム");
     expect(clock).toHaveClass("app-nav-clock"); // 時計はロゴの右隣
     expect(nav).toHaveClass("app-nav-links");
-    expect(header.children).toHaveLength(3);
+    expect(authBox).toHaveClass("auth-box"); // 右端: 権限表示(管理者 + ログアウト / 閲覧モード + 管理者ログイン)
+    expect(header.children).toHaveLength(4);
     expect(within(nav as HTMLElement).getAllByRole("link").map((a) => a.textContent)).toEqual(["ダッシュボード", "モニター管理", "履歴・データ", "システム設定"]);
   });
 
@@ -35,6 +37,7 @@ describe("上部ナビゲーション: ロゴは左、メニューは右", () =>
     const user = userEvent.setup();
     renderApp("/");
     const nav = screen.getByRole("navigation", { name: "メインナビゲーション" });
+    await within(nav).findByRole("link", { name: "モニター管理" });
     expect(within(nav).getByRole("link", { name: "ダッシュボード" })).toHaveClass("active");
     expect(within(nav).getByRole("link", { name: "モニター管理" })).not.toHaveClass("active");
     await user.click(within(nav).getByRole("link", { name: "履歴・データ" }));

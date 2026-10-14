@@ -24,6 +24,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import runtime.csv_export_worker as csv_export_worker_module
+from app.core import auth as auth_core
 from app.core.database import Base, get_db
 from app.models import CsvExportLog, InferenceSettings, LatestResult, Monitor, SystemSettings
 from app.routers import csv_export as csv_export_router_module
@@ -121,6 +122,7 @@ def client(isolated_session_factory, monkeypatch):
     mini_app = FastAPI()
     mini_app.include_router(csv_export_router_module.router)
     mini_app.dependency_overrides[get_db] = override_get_db
+    mini_app.dependency_overrides[auth_core.current_role] = lambda: auth_core.ADMIN  # このAPIはADMIN専用。ここではADMINとして呼ぶ(権限自体はtest_auth_routes.pyで検証)
     with TestClient(mini_app) as test_client:
         yield test_client
 

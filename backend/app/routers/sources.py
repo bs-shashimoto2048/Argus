@@ -4,7 +4,8 @@ from ..core.database import get_db
 from ..schemas.video_source import SourceTestResponse, VideoSourceInput
 from ..schemas.result import ConnectionCheckResponse
 from ..services import monitor_service, video_service, source_service
-router = APIRouter(prefix="/api", tags=["sources"])
+from ..core.auth import ADMIN_ONLY
+router = APIRouter(prefix="/api", tags=["sources"], dependencies=ADMIN_ONLY)
 
 @router.post("/sources/check", response_model=ConnectionCheckResponse)
 def check_source(source: VideoSourceInput, db: Session = Depends(get_db)):
