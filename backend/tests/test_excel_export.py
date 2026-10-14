@@ -23,9 +23,9 @@ from runtime.hourly_record_worker import hourly_record_worker
 
 pytestmark = pytest.mark.integration
 
-HEADER = ["計測日時", "Monitor ID", "Monitor名", "確定値", "前回値", "使用量", "Raw値", "信頼度", "validation_status", "value_source",
-          "display_status", "baseline_conflict", "engine", "model_id", "元画像パス", "推論画像パス",
-          "Raw信頼度", "推論時刻", "修正済み", "修正回数", "最終修正日時", "修正前値"]
+HEADER = ["計測日時", "モニターID", "モニター名", "確定値", "前回値", "使用量", "AI読取値", "信頼度", "読取結果", "採用方法",
+          "状態", "基準値不一致", "読取エンジン", "使用モデル", "元画像パス", "推論画像パス",
+          "AI信頼度", "AI読取時刻", "修正あり", "修正回数", "最終修正日時", "初回値"]
 
 
 def jst(hour: int, day: int = 8, minute: int = 0) -> datetime:
@@ -265,7 +265,7 @@ def test_carried_forward_keeps_earlier_confirmed_value_with_rejected_raw(client,
     add_record(db, m, 8, value="215858", numeric_value="215858", raw_value="0215850", previous_value="215836", usage="22",
                value_source="carried_forward", validation_status="decrease_detected")
     row = rows_of(open_book(export(client, [m.id]))["保持"])[1]
-    assert (row[3], row[4], row[5], row[6], row[8], row[9]) == (215858, 215836, 22, "0215850", "decrease_detected", "carried_forward")
+    assert (row[3], row[4], row[5], row[6], row[8], row[9]) == (215858, 215836, 22, "0215850", "読取基準値より小さいため不採用", "直前の正式値を継続使用")
 
 
 def test_datetime_is_jst_and_formatted(client, db):
@@ -284,8 +284,10 @@ def test_status_columns_and_carried_forward_and_null_row(client, db):
     add_record(db, m, 19, value=None, numeric_value=None, raw_value=None, value_source="none", confidence=None,
                validation_status=None, display_status="stopped", engine=None, model_id=None)
     first, second = rows_of(open_book(export(client, [m.id]))["状態"])
-    assert first[8:12] == ("rejected_not_monotonic", "carried_forward", "read_error", True)
-    assert second[3] is None and second[6] is None and second[7] is None and second[9] == "none"
+    # 未知のvalidation_statusは情報を失わず内部値のまま。他はUIと同じ日本語
+    assert first[8:12] == ("rejected_not_monotonic", "直前の正式値を継続使用", "読取不能", "あり")
+    assert second[3] is None and second[6] is None and second[7] is None and second[9] == "正式値なし"
+    assert second[8] is None and second[10] == "停止中" and second[11] == "なし"
     assert second[12] is None and second[13] is None
 
 
@@ -460,3 +462,69 @@ def test_export_includes_all_rows_beyond_api_list_limit_and_has_no_row_cap(clien
     book = open_book(res)
     assert book.sheetnames == ["多数行"]
     assert len(rows_of(book["多数行"])) == 1205
+
+
+# --- 見出し・セル値の日本語化(利用者向け) ---
+
+def test_headers_are_short_japanese_and_keep_order_and_count():
+    assert excel.HEADERS == HEADER and len(excel.HEADERS) == 22 == len(excel.COLUMN_WIDTHS)
+    assert "確定値" in excel.HEADERS  # 「確定値」はそのまま
+    assert not any(h in excel.HEADERS for h in ("validation_status", "value_source", "display_status", "baseline_conflict", "engine", "model_id", "Raw値", "修正前値"))
+
+
+def test_status_cells_use_the_same_japanese_wording_as_the_ui(client, db):
+    m = make_monitor(db, "日本語セル")
+    cases = [("confirmed", "confirmed", "normal", False), ("low_confidence", "confirmed", "warning", False), ("invalid_format", "carried_forward", "normal", True),
+             ("decrease_detected", "carried_forward", "normal", False), ("no_reading", "none", "read_error", False), ("pending", "none", "connecting", False)]
+    for hour, (validation, source, display, conflict) in enumerate(cases, start=1):
+        add_record(db, m, hour, validation_status=validation, value_source=source, display_status=display, baseline_conflict=conflict)
+    rows = rows_of(open_book(export(client, [m.id]))["日本語セル"])
+    assert [r[8] for r in rows] == ["採用", "信頼度が低いため要確認", "表示桁数・小数部の形式が一致しないため不採用", "読取基準値より小さいため不採用", "読取値を取得できません", "判定中"]
+    assert [r[9] for r in rows] == ["今回のAI読取値を採用", "今回のAI読取値を採用", "直前の正式値を継続使用", "直前の正式値を継続使用", "正式値なし", "正式値なし"]
+    assert [r[10] for r in rows] == ["正常", "要確認", "正常", "正常", "読取不能", "接続中"]
+    assert [r[11] for r in rows] == ["なし", "なし", "あり", "なし", "なし", "なし"]
+    assert rows[0][12] == "cpp_onnx" and rows[0][13] == "digital.onnx"  # 技術情報は内部値のまま
+    assert [r[18] for r in rows] == [False] * 6  # 修正あり(未修正)
+
+
+def _ts_dict(source: str, name: str) -> dict[str, str]:
+    import re
+    body = re.search(name + r"[^=]*=\s*\{(.*?)\};", source, re.S).group(1)
+    return dict(re.findall(r'(\w+):\s*"([^"]*)"', body))
+
+
+def test_labels_match_the_frontend_definitions():
+    """Excelの文言がUI(readingLabels.ts / records.ts)と同じであること(Excel専用の独自表現を作らない)。"""
+    root = Path(__file__).resolve().parents[2] / "frontend" / "src" / "utils"
+    labels, records = (root / "readingLabels.ts").read_text(encoding="utf-8"), (root / "records.ts").read_text(encoding="utf-8")
+    assert _ts_dict(labels, "STATUS_LABELS") == excel.VALIDATION_STATUS_LABELS
+    assert _ts_dict(labels, "SOURCE_LABELS") == excel.VALUE_SOURCE_LABELS
+    assert _ts_dict(records, "displayStatusLabels") == excel.DISPLAY_STATUS_LABELS
+    assert f'CORRECTED_SOURCE_LABEL = "{excel.CORRECTED_SOURCE_LABEL}"' in labels
+
+
+def test_corrected_record_source_label_matches_the_ui():
+    assert excel.value_source_label("carried_forward", True) == "直前の正式値を継続使用 → 運用者が確認・修正"
+    assert excel.value_source_label("confirmed", True) == "運用者が確認・修正"
+    assert excel.value_source_label("confirmed", False) == "今回のAI読取値を採用"
+    assert excel.value_source_label(None, False) is None
+
+
+# --- 期間(UIのfrom/toと同じ条件で、当日固定にならない) ---
+
+def test_today_last7_and_custom_periods_return_different_ranges_from_the_ui_bodies(client, db):
+    m = make_monitor(db, "期間")
+    for day in (1, 8, 12, 13, 14):  # 10/1(任意期間のみ)・10/8(過去7日の初日)・10/12・10/13・10/14(今日)
+        add_record(db, m, 9, day=day)
+    # Frontendのtoday / last7 / custom(1か月前〜今日)が送るfrom/to(toは排他的)
+    bodies = {"today": ("2026-10-14T00:00:00+09:00", "2026-10-15T00:00:00+09:00", [14]),
+              "last7": ("2026-10-08T00:00:00+09:00", "2026-10-15T00:00:00+09:00", [8, 12, 13, 14]),
+              "custom": ("2026-09-14T00:00:00+09:00", "2026-10-15T00:00:00+09:00", [1, 8, 12, 13, 14])}
+    for name, (start, end, days) in bodies.items():
+        res = export(client, [m.id], **{"from": start, "to": end})
+        assert res.status_code == 200, name
+        assert res.headers["x-argus-total-rows"] == str(len(days)), name
+        assert [r[0].day for r in rows_of(open_book(res)["期間"])] == days, name
+    # サーバー側の期間指定(last_7_days)も、JSTの暦日で同じ範囲になる
+    start, end = excel.resolve_period("last_7_days", None, None, now=datetime(2026, 10, 14, 10, 0, tzinfo=JST))
+    assert (start, end) == (datetime(2026, 10, 8, tzinfo=JST), datetime(2026, 10, 15, tzinfo=JST))

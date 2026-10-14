@@ -20,7 +20,7 @@
 - **使用量推移グラフ**（`TrendChart`、SVG手描き・外部ライブラリなし、高さ180px）: 既定は使用量、[使用量][累積値]（累積値=正式値`value`の系列）で切替。Monitorごとに1本の折れ線（色分け・凡例・ホバーで値）。使用量がnullの点は線を途切れさせます（補間しない）。データは`GET /api/records`（履歴と同じMonitor・期間、limit=1000でページを進めて期間内の全件、最大20,000件）。
 - **条件の共有**: Monitor・期間のコントロールは計測履歴ヘッダーに1組だけあり、グラフも同じ条件（`DashboardPage`が状態を保持）で描画します。
 - **イベント構造**: `ChartEvent`（`kind`: `carried_forward` / `baseline_conflict` / `manual_corrected`、`monitor_id`、`time`、`label`）を記録のフィールドから抽出し（`utils/trend.ts`）、`TrendChart`の`renderEvent`で印を描画します。既定は前回値保持（ひし形）・手動修正（二重丸）のみで、基準値競合は構造だけ用意（未描画）です。
-- **[Export (XL)]**（計測履歴ヘッダー、期間コントロールの右隣）: 現在のMonitor・期間に該当する**全件**（段階読み込み前の行を含む）を、常に.xlsxで出力します（`POST /api/records/export/excel`、`save_to_server=false`。1ブック・Monitorごとに1シート、シート名=モニター名（31文字・禁止文字置換・重複はMonitor ID付与）、`display_order`順）。保存先はブラウザの`showSaveFilePicker`（File System Access API）が使えれば保存ダイアログ（提案名`argus_records_YYYYMMDD_YYYYMMDD.xlsx`）、無ければ通常のダウンロードです。ダイアログのキャンセルは何も表示せず、失敗はエラー表示します。行数の上限はAPI側にありません（Excelの1シート上限1,048,576行のみ）。
+- **[Export (XL)]**（計測履歴ヘッダー、期間コントロールの右隣）: 現在のMonitor・期間に該当する**全件**（段階読み込み前の行を含む）を、常に.xlsxで出力します（`POST /api/records/export/excel`、`save_to_server=false`。1ブック・Monitorごとに1シート、シート名=モニター名（31文字・禁止文字置換・重複はMonitor ID付与）、`display_order`順）。保存先はブラウザの`showSaveFilePicker`（File System Access API）が使えれば保存ダイアログ（提案名`argus_records_YYYYMMDD_YYYYMMDD.xlsx`）、無ければ通常のダウンロードです。ダイアログのキャンセルは何も表示せず、正常に出力できたときも成功メッセージは出さず（静かに完了）、失敗だけエラー表示します。行数の上限はAPI側にありません（Excelの1シート上限1,048,576行のみ）。
 
 ## 画面揺れ防止
 

@@ -287,7 +287,18 @@ describe("Export (XL)", () => {
     expect(posted).toHaveLength(1);
     expect(posted[0].body).toEqual({ monitor_ids: [3], from: "2026-10-03T00:00:00+09:00", to: "2026-10-10T00:00:00+09:00", save_to_server: false });
     expect(mocks.calls.filter((c) => c.method === "POST")).toHaveLength(1);
-    await waitFor(() => expect(document.querySelector(".export-xl-message")).toHaveTextContent("1,234行"));
+    // 成功しても成功メッセージは出さない(静かに完了)。ボタンは通常状態へ戻り、もう一度押せる
+    const button = screen.getByRole("button", { name: "Export (XL)" });
+    await waitFor(() => expect(button).toBeEnabled());
+    expect(button).toHaveAttribute("aria-busy", "false");
+    expect(document.querySelector(".export-xl-message")).toBeNull();
+    expect(document.body.textContent).not.toMatch(/出力しました|行）/);
+    expect(document.querySelectorAll(".records-section [role='status'], .records-head [role='status']")).toHaveLength(0);
+    await user.click(button);
+    await waitFor(() => expect(written).toHaveLength(2));
+    expect(posted).toHaveLength(2);
+    await waitFor(() => expect(button).toBeEnabled());
+    expect(document.querySelector(".export-xl-message")).toBeNull();
   });
 
   it("showSaveFilePickerが無ければ、通常のダウンロード(<a download>)へフォールバックする", async () => {
@@ -301,6 +312,8 @@ describe("Export (XL)", () => {
     await user.click(await screen.findByRole("button", { name: "Export (XL)" }));
     await waitFor(() => expect(clicks).toEqual(["argus_records_20261009_20261009.xlsx"]));
     expect(create).toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Export (XL)" })).toBeEnabled());
+    expect(document.querySelector(".export-xl-message")).toBeNull(); // ダウンロード成功時もメッセージなし
     click.mockRestore();
   });
 
@@ -322,6 +335,25 @@ describe("Export (XL)", () => {
     renderApp("/");
     await user.click(await screen.findByRole("button", { name: "Export (XL)" }));
     await waitFor(() => expect(document.querySelector(".export-xl-message")).toHaveTextContent("記録がありません"));
+  });
+
+  it("期間ごとのPOST body: 今日=当日のみ / 過去7日=7暦日 / 任意期間(既定は1か月前〜今日)=当日固定にならない", async () => {
+    const posted: Call[] = [];
+    standardMocks([recordsFor(sampleRecords), exportHandler(posted)]);
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: vi.fn(() => "blob:mock"), revokeObjectURL: vi.fn() }));
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    const user = userEvent.setup();
+    renderApp("/");
+    for (const [label, from, to] of [["今日", "2026-10-09", "2026-10-10"], ["過去7日", "2026-10-03", "2026-10-10"], ["任意期間", "2026-09-09", "2026-10-10"]]) {
+      await user.click(await screen.findByRole("button", { name: label }));
+      const button = screen.getByRole("button", { name: "Export (XL)" });
+      await user.click(button);
+      await waitFor(() => expect(button).toBeEnabled());
+      const body = posted[posted.length - 1].body as { from: string; to: string };
+      expect([body.from, body.to]).toEqual([`${from}T00:00:00+09:00`, `${to}T00:00:00+09:00`]);
+    }
+    expect(posted).toHaveLength(3);
+    click.mockRestore();
   });
 
   it("提案ファイル名: argus_records_開始日_終了日.xlsx(toは排他的なので前日まで)", () => {

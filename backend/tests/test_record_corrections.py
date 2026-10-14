@@ -343,9 +343,10 @@ def test_excel_exports_the_corrected_value_and_keeps_the_evidence(client, db):
     rows = {r[0].value.hour: [c.value for c in r] for r in ws.iter_rows(min_row=2)}
     row = rows[8]
     assert row[3] == 215850 and row[5] == 14  # 確定値・使用量は修正後の値
-    assert row[6] == "0215850" and row[9] == "carried_forward" and row[8] == "decrease_detected"  # 元証跡(Raw・判定・由来)は変わらない
+    assert row[6] == "0215850" and row[8] == "読取基準値より小さいため不採用"  # 元証跡(AI読取値・読取結果)は変わらない
+    assert row[9] == "直前の正式値を継続使用 → 運用者が確認・修正"  # 採用方法: UIと同じ(由来を残したまま、運用者が修正したことを示す)
     assert row[16] == 0.881  # Raw信頼度
-    assert row[18] is True and row[19] == 1 and row[21] == 215858  # 修正済み / 修正回数 / 修正前値
+    assert row[18] is True and row[19] == 1 and row[21] == 215858  # 修正あり / 修正回数 / 初回値
     assert row[20] is not None  # 最終修正日時
     assert rows[9][5] == 15  # 次の記録のusageも再計算後の値
     assert rows[7][18] is False and rows[7][19] == 0 and rows[7][21] is None  # 未修正の記録
@@ -355,3 +356,26 @@ def test_correction_error_contract(db):
     with pytest.raises(corrections.CorrectionError) as info:
         corrections.correct_record(db, 99999999, "1", "r", "o")
     assert info.value.status == 404
+
+
+def test_excel_of_multiple_corrections_shows_final_value_count_last_time_and_first_value_only(client, db):
+    """100→105→107→106 と同じ流れ(ここでは 215858→215850→215852→215851)。Excelの行には最終の確定値・回数・最終修正日時・初回値だけを出し、
+    途中の値は行に出さない。全履歴はreading_record_correctionsに残る。"""
+    monitor, _r7, r8, _r9 = carried_scenario(db)
+    for value, reason in (("215850", "1回目"), ("215852", "2回目"), ("215851", "3回目")):
+        assert correct(client, r8.id, value=value, reason=reason, operator="a").status_code == 200
+    db.expire_all()
+    history = db.scalars(select(ReadingRecordCorrection).where(ReadingRecordCorrection.record_id == r8.id).order_by(ReadingRecordCorrection.id)).all()
+    assert [(h.old_value, h.new_value) for h in history] == [("215858", "215850"), ("215850", "215852"), ("215852", "215851")]  # 全履歴が残る
+    res = client.post("/api/records/export/excel", json={"monitor_ids": [monitor.id], "from": "2026-10-09T00:00:00+09:00", "to": "2026-10-10T00:00:00+09:00"})
+    ws = load_workbook(io.BytesIO(res.content)).worksheets[0]
+    row = {r[0].value.hour: [c.value for c in r] for r in ws.iter_rows(min_row=2)}[8]
+    assert row[3] == 215851  # 確定値 = 最後の修正値
+    assert row[19] == 3 and row[18] is True  # 修正回数 = 3 / 修正あり
+    last = history[-1].corrected_at
+    last = last.replace(tzinfo=timezone.utc) if last.tzinfo is None else last
+    expected = last.astimezone(JST).replace(tzinfo=None)
+    assert abs((row[20] - expected).total_seconds()) < 1  # 最終修正日時 = 3回目の修正日時(JST。Excelは秒未満を丸める)
+    assert row[21] == 215858  # 初回値 = 最初の修正前の確定値
+    cells = [c for c in row if isinstance(c, (int, float)) and not isinstance(c, bool)]
+    assert 215850 not in cells and 215852 not in cells  # 途中の修正値(1回目・2回目)は行に出さない
