@@ -26,8 +26,11 @@ export default defineConfig(({ mode }) => {
       // given) and is never exposed to the LAN directly; all /api/** calls from
       // the browser are relative and proxied server-side to the Backend below,
       // so a LAN client only ever needs this single Frontend URL/port.
-      // There is no authentication anywhere in Argus, so anyone who can reach
-      // this port on the LAN can also change settings, not just view them.
+      // Anyone who can reach this port on the LAN is a read-only VIEWER; only
+      // the ADMIN (password login, HttpOnly session cookie issued by the Backend)
+      // can change settings, and the Backend rejects writes from VIEWERs with 403
+      // (see README "閲覧モード"). The Backend sees every proxied request as
+      // 127.0.0.1, so it never decides the role from the client address.
       host: true,
       proxy: {
         "/api": {

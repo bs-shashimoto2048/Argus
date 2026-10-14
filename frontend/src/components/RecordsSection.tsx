@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
+import { useAuth } from "../auth/AuthContext";
 import type { CorrectionResult, ReadingRecord } from "../types";
 import { compareRecordOrder, defaultRecordPeriod, periodError, periodToRange } from "../utils/records";
 import { ExcelExportPanel } from "./ExcelExportPanel";
@@ -46,6 +47,7 @@ export function RecordsSection({ monitors, title, description, showExport = fals
   const [error, setError] = useState("");
   const [loadingMore, setLoadingMore] = useState(false);
   const [selected, setSelected] = useState<ReadingRecord | null>(null);
+  const { isAdmin } = useAuth();
   const [memoEditing, setMemoEditing] = useState(false);
   const generation = useRef(0); // フィルタ変更のたびに増やし、古い応答を捨てる
   const loadingRef = useRef(false);
@@ -173,12 +175,12 @@ export function RecordsSection({ monitors, title, description, showExport = fals
     {error && <div className="alert error" role="alert">{error}</div>}
     {/* 表のエリアは常に同じ高さ(読込中・0件・多数件でも変わらない)。表の中だけがスクロールする。 */}
     <div className={`records-area ${size}`} aria-busy={items === null && !error}>
-      {!invalid && items && items.length > 0 && <RecordsTable items={items} onOpen={setSelected} selectedId={selected?.id} hasMore={loaded < total} loadingMore={loadingMore} onNearEnd={loadMore} groupByTime={filter.monitorIds.length === 0} hideMonitor={filter.monitorIds.length === 1} onSaveMemo={saveMemo} onMemoEditingChange={setMemoEditing} />}
+      {!invalid && items && items.length > 0 && <RecordsTable items={items} onOpen={setSelected} selectedId={selected?.id} hasMore={loaded < total} loadingMore={loadingMore} onNearEnd={loadMore} groupByTime={filter.monitorIds.length === 0} hideMonitor={filter.monitorIds.length === 1} onSaveMemo={isAdmin ? saveMemo : undefined} onMemoEditingChange={setMemoEditing} />}
       {!invalid && items && items.length === 0 && !error && <div className="records-empty">この条件に該当する計測記録はありません。</div>}
       {!invalid && !items && !error && <div className="records-empty">読み込み中…</div>}
       {invalid && <div className="records-empty">期間を指定してください。</div>}
     </div>
     <div className="records-count" aria-live="polite">{countText}</div>
-    {selected && <RecordDrawer record={selected} onClose={() => setSelected(null)} onCorrected={handleCorrected} />}
+    {selected && <RecordDrawer record={selected} canCorrect={isAdmin} onClose={() => setSelected(null)} onCorrected={handleCorrected} />}
   </section>;
 }

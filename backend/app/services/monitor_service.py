@@ -7,7 +7,7 @@ from ..core.config import settings as app_settings
 from ..inference.device import resolve_device
 from ..inference.model_catalog import get_model_entry
 from ..models import InferenceSettings, LatestResult, Monitor, UrlHistory, VideoSource
-from ..schemas.video_source import VideoSourceInput
+from ..schemas.video_source import VideoSourceInput, VideoSourceResponse
 from .reading_baseline_service import summarize as summarize_baseline
 from .secret_store import decrypt, encrypt
 from .video_service import reader_config
@@ -160,6 +160,14 @@ def restart_inference_only(monitor: Monitor, db: Session) -> None:
     inference_settings = _build_inference_settings(monitor.inference)
     if not runtime_manager.update_inference_settings(monitor.id, fps, inference_settings):
         restart_runtime(monitor, db)
+
+
+def viewer_projection(response):
+    """VIEWER向けのMonitor応答。接続先の内部情報(URL・username・device_id・パスワード有無)を除き、Dashboard表示に必要な項目は残す。
+    ADMINの応答(_to_responseそのまま)は変えない。"""
+    if response.source is None:
+        return response
+    return response.model_copy(update={"source": VideoSourceResponse(source_type=response.source.source_type, device_id=None, url=None, username=None, has_password=False)})
 
 
 def list_monitors(db: Session):

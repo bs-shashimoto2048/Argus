@@ -3,7 +3,8 @@ import cv2
 
 from runtime.runtime_manager import runtime_manager
 
-router = APIRouter(prefix="/api/cameras", tags=["cameras"])
+from ..core.auth import ADMIN_ONLY
+router = APIRouter(prefix="/api/cameras", tags=["cameras"], dependencies=ADMIN_ONLY)
 
 
 @router.get("")

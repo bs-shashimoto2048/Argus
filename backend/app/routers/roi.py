@@ -5,6 +5,7 @@ from ..core.database import get_db
 from ..schemas.inference import Roi, RoiUpdateRequest, RoiUpdateResponse
 from ..services import monitor_service
 
+from ..core.auth import ADMIN_ONLY
 router = APIRouter(prefix="/api/monitors", tags=["roi"])
 
 
@@ -18,7 +19,7 @@ def get_roi(monitor_id: int, db: Session = Depends(get_db)):
     return RoiUpdateResponse(**roi.model_dump(), roi_mode=monitor.inference.roi_mode, context_margin=monitor.inference.context_margin)
 
 
-@router.put("/{monitor_id}/roi", response_model=RoiUpdateResponse)
+@router.put("/{monitor_id}/roi", response_model=RoiUpdateResponse, dependencies=ADMIN_ONLY)
 def update_roi(monitor_id: int, payload: RoiUpdateRequest, db: Session = Depends(get_db)):
     try:
         monitor = monitor_service.get_monitor(db, monitor_id)

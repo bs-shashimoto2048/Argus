@@ -7,7 +7,8 @@ from ..services import storage_settings_service as svc
 from ..services.record_image_service import space_state
 from runtime.record_writer import record_writer
 
-router = APIRouter(prefix="/api/system/data-storage", tags=["data-storage"])
+from ..core.auth import ADMIN_ONLY
+router = APIRouter(prefix="/api/system/data-storage", tags=["data-storage"], dependencies=ADMIN_ONLY)
 
 
 class DataStorageInput(BaseModel):

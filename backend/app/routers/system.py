@@ -7,7 +7,8 @@ from ..core.config import settings
 from ..inference.diagnostics import system_diagnostics
 from ..inference.model_catalog import load_registry
 
-router = APIRouter(prefix="/api/system", tags=["system"])
+from ..core.auth import ADMIN_ONLY
+router = APIRouter(prefix="/api/system", tags=["system"], dependencies=ADMIN_ONLY)
 
 
 @router.get("/inference")

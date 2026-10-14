@@ -25,3 +25,17 @@ def _ensure_test_db_schema():
     import app.models  # noqa: F401  モデルをmetadataへ登録する
     Base.metadata.create_all(engine)
     yield
+
+
+@pytest.fixture(autouse=True)
+def _admin_role_for_existing_tests(request):
+    """既存のBackendテスト(書き込みAPIを認証なしで呼ぶ)は、ADMINとして扱う。認証そのもののテスト(pytestmark = real_auth)だけ、実際のcookie sessionを使う。
+    本番コードに「認証を切る」スイッチは無く、テストのdependency_overridesだけで切り替える。"""
+    if request.node.get_closest_marker("real_auth"):
+        yield
+        return
+    from app.core import auth
+    from app.main import app
+    app.dependency_overrides[auth.current_role] = lambda: auth.ADMIN
+    yield
+    app.dependency_overrides.pop(auth.current_role, None)

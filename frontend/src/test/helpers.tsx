@@ -40,7 +40,9 @@ export const json = (body: unknown, status = 200, headers: Record<string, string
 /** fetchをモックする。後から登録したhandlerが優先。呼び出し履歴(calls)を返す。 */
 export function mockFetch(handlers: Handler[] = []) {
   const calls: Call[] = [];
-  const all = [...handlers];
+  // 既定は管理者(ADMIN)のsession。閲覧モード(VIEWER)を検証するテストは、後からsessionのhandlerを登録して上書きする。
+  const defaultSession: Handler = { test: (url, method) => method === "GET" && url.split("?")[0] === "/api/auth/session", respond: () => json({ role: "ADMIN", admin_login_available: true }) };
+  const all = [defaultSession, ...handlers];
   const fn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = (init?.method ?? "GET").toUpperCase();

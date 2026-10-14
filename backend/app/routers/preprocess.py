@@ -8,7 +8,8 @@ from ..schemas.preprocess import PreprocessPreviewRequest
 from ..services import preprocess_service
 from runtime.runtime_manager import runtime_manager
 
-router = APIRouter(prefix="/api/monitors", tags=["preprocess"])
+from ..core.auth import ADMIN_ONLY
+router = APIRouter(prefix="/api/monitors", tags=["preprocess"], dependencies=ADMIN_ONLY)
 
 
 @router.post("/{monitor_id}/preprocess/preview")

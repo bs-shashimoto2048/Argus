@@ -6,7 +6,7 @@ from .core.config import settings
 from .core.database import Base, SessionLocal, engine
 from sqlalchemy import text
 from .models import Monitor
-from .routers import cameras, csv_export, data_storage, health, monitors, preprocess, reading, records, roi, sources, streams, system
+from .routers import auth, cameras, csv_export, data_storage, health, monitors, preprocess, reading, records, roi, sources, streams, system
 from runtime.runtime_manager import runtime_manager
 from runtime.csv_export_worker import csv_export_worker
 from runtime.hourly_record_worker import hourly_record_worker
@@ -105,6 +105,7 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(title=settings.app_name, version=settings.version, lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_origin_regex=settings.cors_origin_regex, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 app.include_router(health.router)
+app.include_router(auth.router)
 app.include_router(cameras.router)
 app.include_router(monitors.router)
 app.include_router(sources.router)

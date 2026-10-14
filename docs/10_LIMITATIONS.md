@@ -22,6 +22,7 @@ Meter Digit Detection Model」でArgus専用モデルの学習・評価・Model 
 - カメラ一覧はOpenCVで0〜4番を探索
 - URL認証はOpenCV接続用に一時URL形式へ変換するため、機器やOpenCV buildによっては別途対応が必要
 - `ARGUS_SECRET_KEY`未設定時は開発用固定キー
+- 認証はPoC向けの最小構成(未ログイン=VIEWER / ADMINのみパスワード)。HTTP平文・単一の管理者パスワード・sessionはBackendのメモリ上(再起動で再ログイン)。AD/SSO/OAuth/LDAPは未対応
 - Windows DPAPIの実装は確認できず、現在のSecretStoreはFernetを使用
 - WebSocket実装は確認できない
 - Migration設定は確認できない（起動時の限定的なALTER TABLEで対応）

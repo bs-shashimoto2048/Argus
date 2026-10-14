@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
+import { useAuth } from "../auth/AuthContext";
 import type { BaselineStatus, Inference, Monitor, ReadingDiagnostics, RuntimeDiagnostics, Source } from "../types";
 import { formatDateTimeJst } from "../utils/datetime";
 import { InferenceSettings } from "../components/InferenceSettings";
@@ -33,18 +34,21 @@ function CollapsibleSection({ title, summary, open, onToggle, className, childre
 }
 
 export type DetailTab = "monitoring" | "history" | "settings" | "diagnostics";
-const detailTabs: { key: DetailTab; label: string }[] = [
+const detailTabs: { key: DetailTab; label: string; adminOnly?: boolean }[] = [
   { key: "monitoring", label: "監視" },
   { key: "history", label: "履歴" },
-  { key: "settings", label: "設定" },
-  { key: "diagnostics", label: "診断" },
+  { key: "settings", label: "設定", adminOnly: true },
+  { key: "diagnostics", label: "診断", adminOnly: true },
 ];
 
 export function MonitorDetailPage() {
   const { id } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { isAdmin } = useAuth();
+  // 閲覧モードでは「設定」「診断」タブを出さない(設定変更・ROI/前処理編集・baseline操作・source変更は管理者のみ。Backendも403で拒否する)。
+  const visibleTabs = detailTabs.filter((item) => isAdmin || !item.adminOnly);
   const requestedTab = searchParams.get("tab");
-  const tab: DetailTab = detailTabs.some((item) => item.key === requestedTab) ? (requestedTab as DetailTab) : "monitoring";
+  const tab: DetailTab = visibleTabs.some((item) => item.key === requestedTab) ? (requestedTab as DetailTab) : "monitoring";
   const selectTab = (key: DetailTab) => setSearchParams(key === "monitoring" ? {} : { tab: key }, { replace: true });
   const monitorId = Number(id);
   const navigate = useNavigate();
@@ -109,11 +113,12 @@ export function MonitorDetailPage() {
 
   // Raw値(Debug用)。推論Runtime停止中は404/409になるため失敗は無視する。
   useEffect(() => {
+    if (!isAdmin) { setReadingDiagnostics(null); return; } // 診断情報(reading diagnostics)は管理者のみ
     const poll = () => api.readingDiagnostics(monitorId).then(setReadingDiagnostics).catch(() => setReadingDiagnostics(null));
     poll();
     const timer = window.setInterval(poll, 5000);
     return () => window.clearInterval(timer);
-  }, [monitorId]);
+  }, [monitorId, isAdmin]);
 
   // 読取基準値(設定タブの「積算値チェック」に表示するread-only情報)。取得できなくても設定の操作はできる。
   useEffect(() => {
@@ -212,16 +217,16 @@ export function MonitorDetailPage() {
   return <main className="page monitor-detail-page">
     <header className="topbar detail-header">
       <div>
-        <div className="breadcrumbs">モニター管理 / メーター詳細<span className="monitor-id-badge"> ・ Monitor ID: {monitor.id}</span></div>
+        <div className="breadcrumbs">{isAdmin ? "モニター管理 / メーター詳細" : "メーター詳細"}<span className="monitor-id-badge"> ・ Monitor ID: {monitor.id}</span></div>
         <h1>{monitor.display_name}</h1>
       </div>
       <div className="topbar-actions">
-        <button className="secondary" onClick={() => navigate("/monitors")}>＜ モニター管理へ</button>
+        {isAdmin ? <button className="secondary" onClick={() => navigate("/monitors")}>＜ モニター管理へ</button> : <button className="secondary" onClick={() => navigate("/")}>＜ ダッシュボードへ</button>}
       </div>
     </header>
 
     <div className="detail-tabs" role="tablist" aria-label="モニター詳細">
-      {detailTabs.map((item) => <button key={item.key} type="button" role="tab" id={`tab-${item.key}`} aria-selected={tab === item.key} className={`detail-tab${tab === item.key ? " active" : ""}`} onClick={() => selectTab(item.key)}>{item.label}</button>)}
+      {visibleTabs.map((item) => <button key={item.key} type="button" role="tab" id={`tab-${item.key}`} aria-selected={tab === item.key} className={`detail-tab${tab === item.key ? " active" : ""}`} onClick={() => selectTab(item.key)}>{item.label}</button>)}
     </div>
 
     {(error || message) && <div className={`alert ${error ? "error" : "success"}`}>{error || message}</div>}

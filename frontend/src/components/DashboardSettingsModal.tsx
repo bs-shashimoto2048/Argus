@@ -1,5 +1,6 @@
 import { DASHBOARD_DISPLAY_FPS_DEFAULT, DASHBOARD_DISPLAY_FPS_OPTIONS, DASHBOARD_HIGH_FPS, DASHBOARD_RELOAD_OPTIONS } from "../hooks/useDashboardSettings";
 import type { DashboardDisplayFps, DashboardReloadMinutes, DashboardSettings } from "../hooks/useDashboardSettings";
+import { useAuth } from "../auth/AuthContext";
 import { CsvExportSettingsPanel } from "./CsvExportSettingsPanel";
 
 type Props = {
@@ -10,6 +11,7 @@ type Props = {
 
 // 将来の拡張を見据え「表示設定」セクションを設ける。今回はDashboard表示FPSのみ配置する。
 export function DashboardSettingsModal({ settings, onChange, onClose }: Props) {
+  const { isAdmin } = useAuth();
   return <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Dashboard設定">
     <div className="modal dashboard-settings-modal">
       <div className="modal-head"><h2>Dashboard設定</h2><button className="icon-button" onClick={onClose}>×</button></div>
@@ -48,7 +50,8 @@ export function DashboardSettingsModal({ settings, onChange, onClose }: Props) {
       </section>
       {/* CSV出力(Issue #17)は表示設定(Frontend-only/localStorage)とは独立させ、
           Backendで永続化・出力する(CsvExportSettingsPanel内でBackend APIを直接叩く)。 */}
-      <CsvExportSettingsPanel />
+      {/* 管理系(Backendへ保存する設定)はADMINだけ。表示FPS・画面自動リロードはこのブラウザだけの設定なので、閲覧モードでも変更できる。 */}
+      {isAdmin && <CsvExportSettingsPanel />}
       <div className="modal-actions"><button className="primary" onClick={onClose}>閉じる</button></div>
     </div>
   </div>;
