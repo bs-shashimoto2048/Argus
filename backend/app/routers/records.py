@@ -32,6 +32,13 @@ class CorrectionInput(BaseModel):
     force: bool = False  # 前後の正式値などから極端に乖離した補正値(桁落ち等の疑い)を確認したうえで保存する(2段階確認)
 
 
+class MemoInput(BaseModel):
+    """記録単位の運用メモ。前後の空白は除き、空文字はメモ削除(NULL)として保存する。上限500文字。"""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+    memo: str = Field(max_length=500)
+
+
 class RecordSettingsInput(BaseModel):
     enabled: bool
 
@@ -146,6 +153,18 @@ def correct_record(record_id: int, body: CorrectionInput, request: Request, db: 
         raise HTTPException(exc.status, {"code": exc.code, "message": str(exc), **({"details": exc.details} if exc.details else {})}) from exc
     record = svc.get_record(db, record_id)
     return {**result, "record": svc.serialize(record)}
+
+
+@router.patch("/{record_id}/memo")
+def update_record_memo(record_id: int, body: MemoInput, db: Session = Depends(get_db)):
+    """メモだけを更新する(他のフィールドは一切変更しない)。"""
+    record = svc.get_record(db, record_id)
+    if record is None:
+        raise HTTPException(404, "計測記録が見つかりません")
+    record.memo = body.memo or None
+    db.commit()
+    db.refresh(record)
+    return svc.serialize(record)
 
 
 @router.get("/{record_id}/corrections")

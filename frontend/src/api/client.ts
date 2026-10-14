@@ -42,6 +42,7 @@ export const api={
  // 読取値(正式値)の手動修正と、その監査履歴(carried_forward / 基準値競合の記録だけ修正できる。元証跡は変わらない)
  correctRecord:(id:number,body:CorrectionRequest)=>baselineRequest<CorrectionResult>(`/api/records/${id}/correct`,{method:'POST',body:JSON.stringify(body)}),
  recordCorrections:(id:number)=>baselineRequest<{record_id:number;corrections:RecordCorrection[]}>(`/api/records/${id}/corrections`),
+ updateRecordMemo:(id:number,memo:string)=>baselineRequest<ReadingRecord>(`/api/records/${id}/memo`,{method:'PATCH',body:JSON.stringify({memo})}),
  recordImage:(id:number,kind:"original"|"overlay")=>`/api/records/${id}/image/${kind}`,
  exportExcelSave:(body:ExcelExportRequest)=>baselineRequest<ExcelExportSaved>('/api/records/export/excel',{method:'POST',body:JSON.stringify(body)}),
  exportExcelDownload:async(body:ExcelExportRequest):Promise<{blob:Blob;filename:string;totalRows:number|null}>=>{

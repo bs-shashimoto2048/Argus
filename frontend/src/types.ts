@@ -124,6 +124,7 @@ export type ReadingRecord = {
   raw_confidence:number|null;inference_at:string|null;snapshot_consistent:boolean;
   // 手動修正(元証跡は変わらない。監査の正本はcorrections)
   is_corrected:boolean;correction_count:number;original_value:string|null;corrected_at:string|null;corrected_by:string|null;
+  memo:string|null;
   correctable:boolean;correctable_reason:"carried_forward"|"baseline_conflict"|null;
 };
 export type RecordCorrection = {

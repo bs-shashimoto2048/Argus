@@ -17,12 +17,12 @@ function recordsHandler(items = [normal, notSaved, carried], total = items.lengt
 const lastRecordsUrl = (calls: Call[]) => new URL(calls.filter((c) => c.url.startsWith("/api/records?")).pop()!.url, "http://x");
 
 describe("履歴・データ: 取得とフィルタ", () => {
-  it("1時間記録を表(取得日時・モニター・確定値・前回値・使用量・信頼度・状態・画像・詳細)で表示する", async () => {
+  it("1時間記録を表(取得日時・モニター・確定値・前回値・使用量・信頼度・状態・メモ・画像・詳細)で表示する", async () => {
     standardMocks([recordsHandler()]);
     renderApp("/history");
     await screen.findByText("1時間ごとの計測履歴");
     const headers = (await screen.findAllByRole("columnheader")).map((h) => h.textContent);
-    expect(headers).toEqual(["取得日時", "モニター", "正式値", "前回値", "使用量", "信頼度", "状態", "画像", "詳細"]);
+    expect(headers).toEqual(["取得日時", "モニター", "正式値", "前回値", "使用量", "信頼度", "状態", "メモ", "画像", "詳細"]);
     expect(document.querySelectorAll(".records-table tbody tr")).toHaveLength(3);
     const row = document.querySelector('tr[data-record-id="2"]') as HTMLElement; // 「すべてのモニター」では時刻グループ→Monitor順に並ぶため、idで特定する
     expect(within(row).getByText("10/08 19:00")).toBeInTheDocument(); // UTC 10:00 → JST 19:00

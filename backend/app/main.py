@@ -66,6 +66,7 @@ async def lifespan(_app: FastAPI):
                 ("reading_records", "correction_count", "INTEGER DEFAULT 0"),
                 ("reading_records", "corrected_at", "DATETIME"),
                 ("reading_records", "corrected_by", "VARCHAR(80)"),
+                ("reading_records", "memo", "VARCHAR(500)"),
                 ("inference_settings", "reading", "JSON"),
                 ("inference_settings", "roi_mode", "VARCHAR(32) DEFAULT 'filter_only'"),
                 ("inference_settings", "context_margin", "FLOAT DEFAULT 1.0"),

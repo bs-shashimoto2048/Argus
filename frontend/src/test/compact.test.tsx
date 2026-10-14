@@ -68,7 +68,7 @@ describe("Dashboard上部: 状態サマリーは横1行のcompact chip", () => {
     renderApp("/");
     await waitFor(() => expect(document.querySelectorAll(".monitor-card")).toHaveLength(3));
     const toolbar = document.querySelector(".dashboard-toolbar") as HTMLElement;
-    expect([...toolbar.children].map((e) => e.className)).toEqual(["summary-chips", "action-group"]);
+    expect([...toolbar.children].map((e) => e.className)).toEqual(["record-filters", "summary-chips", "action-group"]); // フィルタは状態サマリーの左
     const group = screen.getByRole("group", { name: "ダッシュボード操作" });
     expect(group.children[0]).toHaveTextContent("＋ モニター追加");
     expect(group.children[1]).toHaveClass("monitoring-control"); // 従来どおり[モニター追加]の右隣
@@ -77,17 +77,29 @@ describe("Dashboard上部: 状態サマリーは横1行のcompact chip", () => {
 });
 
 describe("計測履歴のヘッダー: 説明とフィルタが同じ行", () => {
-  it("左=タイトルと説明、右=Monitor・期間のフィルタ。フィルタ専用の2行目を作らない", async () => {
+  it("Dashboard: Monitor・期間のフィルタは映像上部のツールバー(状態サマリーの左)へ移り、計測履歴の見出しにはExport (XL)だけが残る", async () => {
     standardMocks();
     renderApp("/");
     const head = (await screen.findByRole("heading", { name: "計測履歴" })).closest(".records-head") as HTMLElement;
+    const toolbar = document.querySelector(".dashboard-toolbar") as HTMLElement;
+    expect(within(toolbar).getByRole("combobox", { name: "モニター" })).toBeInTheDocument();
+    expect(within(toolbar).getAllByRole("button").slice(0, 3).map((b) => b.textContent)).toEqual(["今日", "過去7日", "任意期間"]);
+    expect(within(head).queryByRole("combobox", { name: "モニター" })).toBeNull();
+    expect(within(head).getAllByRole("button").map((b) => b.textContent)).toEqual(["Export (XL)"]);
+    expect(document.querySelectorAll(".record-filters")).toHaveLength(1);
+  });
+
+  it("履歴・データ: 左=タイトルと説明、右=Monitor・期間のフィルタ(従来の配置のまま)。フィルタ専用の2行目を作らない", async () => {
+    standardMocks();
+    renderApp("/history");
+    const head = (await screen.findByRole("heading", { name: "1時間ごとの計測履歴" })).closest(".records-head") as HTMLElement;
     expect([...head.children].map((e) => e.className)).toEqual(["records-title", "records-controls"]);
     const title = head.querySelector(".records-title") as HTMLElement;
     const controls = head.querySelector(".records-controls") as HTMLElement;
-    expect(title).toHaveTextContent("1時間ごとに自動記録（毎時00分）。詳細な検索・Excel出力は「履歴・データ」から行えます。");
+    expect(title).toHaveTextContent("1時間ごとの正式な記録");
     expect(within(controls).getByRole("combobox", { name: "モニター" })).toBeInTheDocument();
     expect(within(controls).getByRole("group", { name: "表示期間" })).toBeInTheDocument();
-    expect(within(controls).getAllByRole("button").map((b) => b.textContent)).toEqual(["今日", "過去7日", "任意期間", "Export (XL)"]);
+    expect(within(controls).getAllByRole("button").map((b) => b.textContent)).toEqual(["今日", "過去7日", "任意期間", "Excel出力"]);
     expect(title.contains(controls)).toBe(false);
     // フィルタはヘッダー(records-head)の外にも無い
     expect(document.querySelectorAll(".record-filters")).toHaveLength(1);
@@ -108,7 +120,8 @@ describe("計測履歴のヘッダー: 説明とフィルタが同じ行", () =>
     standardMocks();
     const user = userEvent.setup();
     renderApp("/");
-    const controls = (await screen.findByRole("heading", { name: "計測履歴" })).closest(".records-head")!.querySelector(".records-controls") as HTMLElement;
+    await screen.findByRole("heading", { name: "計測履歴" });
+    const controls = document.querySelector(".dashboard-toolbar > .record-filters") as HTMLElement; // Dashboardでは映像上部のツールバー内
     expect(within(controls).queryByRole("group", { name: "期間選択" })).not.toBeInTheDocument();
     await user.click(within(controls).getByRole("button", { name: "過去7日" }));
     expect(within(controls).queryByRole("group", { name: "期間選択" })).not.toBeInTheDocument();
@@ -146,7 +159,7 @@ describe("計測履歴: ページ送りなし・スクロールで全件", () =>
     const wraps = document.querySelectorAll(".records-area .records-table-wrap");
     expect(wraps).toHaveLength(1);
     expect(wraps[0].querySelectorAll("table")).toHaveLength(1);
-    expect(wraps[0].querySelectorAll("thead th")).toHaveLength(9);
+    expect(wraps[0].querySelectorAll("thead th")).toHaveLength(10); // 取得日時/モニター/正式値/前回値/使用量/信頼度/状態/メモ/画像/詳細
     expect(value(".records-table th", "position")).toBe("sticky");
     expect(value(".records-table-wrap", "overflow")).toBe("auto");
   });

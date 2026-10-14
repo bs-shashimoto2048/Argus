@@ -151,7 +151,7 @@ describe("計測履歴: 縦罫線・データ列の区切り・数値の色分�
   });
 
   it("CSS: 「確定値」の左(モニター情報 → 数値データ)と「状態」の左(数値 → 状態・操作)は、通常より強い2px solid #c3cad5", () => {
-    for (const selector of [".history-table th:nth-child(3)", ".history-table td:nth-child(3)", ".history-table th:nth-child(7)", ".history-table td:nth-child(7)"]) expect(value(selector, "border-left")).toBe("2px solid #c3cad5");
+    for (const selector of [".history-table th.c-value", ".history-table td.c-value", ".history-table th.c-state", ".history-table td.c-state"]) expect(value(selector, "border-left")).toBe("2px solid #c3cad5");
     expect(parseInt("2px")).toBeGreaterThan(parseInt(value(".history-table td", "border-left")!)); // 通常は1px
   });
 

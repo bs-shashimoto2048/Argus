@@ -133,7 +133,7 @@ describe("履歴表: ヘッダー固定・スクロール", () => {
     const tables = wrap.querySelectorAll("table");
     expect(tables).toHaveLength(1); // ヘッダーと本体が別tableにならない(列位置がずれない)
     expect(tables[0].querySelector("colgroup")).toBeNull(); // 列幅は固定せず、各列の内容の最小幅(折り返さない幅)
-    expect(tables[0].querySelectorAll("thead th")).toHaveLength(9);
+    expect(tables[0].querySelectorAll("thead th")).toHaveLength(10);
     expect(tables[0].querySelectorAll("tbody tr")).toHaveLength(2);
   });
 

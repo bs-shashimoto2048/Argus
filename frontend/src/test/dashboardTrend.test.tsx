@@ -257,14 +257,15 @@ describe("計測履歴テーブル: 各列は折り返さない最小幅", () =>
 describe("Export (XL)", () => {
   const exportHandler = (calls?: Call[]) => route("POST", "/api/records/export/excel", (c) => { calls?.push(c); return new Response(new Uint8Array([0x50, 0x4b]), { status: 200, headers: { "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Content-Disposition": 'attachment; filename="Argus_MeterRecords_20261009.xlsx"', "X-Argus-Total-Rows": "1234" } }); });
 
-  it("履歴ヘッダーの「任意期間」コントロールの右隣に[Export (XL)]がある", async () => {
+  it("Dashboardでは映像上部の期間コントロールの下流(計測履歴の見出し側)に[Export (XL)]がある。フィルタ(任意期間)はツールバーにある", async () => {
     standardMocks([recordsFor(sampleRecords)]);
     renderApp("/");
     const group = await screen.findByRole("group", { name: "表示期間" });
     const button = screen.getByRole("button", { name: "Export (XL)" });
     expect(button.closest(".records-head")).not.toBeNull();
     const buttons = [...(button.closest(".records-controls") as HTMLElement).querySelectorAll("button")].map((b) => b.textContent);
-    expect(buttons.slice(-2)).toEqual(["任意期間", "Export (XL)"]);
+    expect(buttons).toEqual(["Export (XL)"]); // フィルタは映像上部のツールバーへ移動済み
+    expect(group.closest(".dashboard-toolbar")).not.toBeNull();
     expect(group.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 

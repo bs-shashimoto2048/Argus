@@ -29,11 +29,15 @@ type Props = {
   showExportXl?: boolean;
   // 記録を修正したときに呼ばれる(Dashboardのグラフを取り直す)。
   onRecordCorrected?: () => void;
+  // true: Monitor・期間のフィルタをこのセクションには出さない(Dashboardでは映像の上部に置き、filterを共有する)。
+  hideFilters?: boolean;
+  // メモ編集中・詳細(修正ダイアログ含む)表示中はtrue。親が画面の自動リロードを抑止するために使う。
+  onBusyChange?: (busy: boolean) => void;
 };
 
 // 計測履歴(フィルタ + 固定ヘッダーのスクロール表 + 詳細Drawer)。Dashboard下部・履歴・データ画面・Monitor Detailの履歴タブで共用する。
 // ページ送りは無く、現在の条件の全件を縦スクロールだけで確認できる。内部ではchunk単位で段階的に読み込む。
-export function RecordsSection({ monitors, title, description, showExport = false, refreshMs, fixedMonitorId, size = "compact", filter: controlledFilter, onFilterChange, showExportXl = false, onRecordCorrected }: Props) {
+export function RecordsSection({ monitors, title, description, showExport = false, refreshMs, fixedMonitorId, size = "compact", filter: controlledFilter, onFilterChange, showExportXl = false, onRecordCorrected, hideFilters = false, onBusyChange }: Props) {
   const [ownFilter, setOwnFilter] = useState<RecordFilterValue>({ monitorIds: fixedMonitorId != null ? [fixedMonitorId] : [], period: defaultRecordPeriod() });
   const filter = controlledFilter ?? ownFilter;
   const setFilter = onFilterChange ?? setOwnFilter;
@@ -42,6 +46,7 @@ export function RecordsSection({ monitors, title, description, showExport = fals
   const [error, setError] = useState("");
   const [loadingMore, setLoadingMore] = useState(false);
   const [selected, setSelected] = useState<ReadingRecord | null>(null);
+  const [memoEditing, setMemoEditing] = useState(false);
   const generation = useRef(0); // フィルタ変更のたびに増やし、古い応答を捨てる
   const loadingRef = useRef(false);
   const itemsRef = useRef<ReadingRecord[]>([]);
@@ -138,6 +143,18 @@ export function RecordsSection({ monitors, title, description, showExport = fals
     })();
   };
 
+  // メモ保存: 応答の記録で該当行だけを置き換える(メモ以外は変わらない)。失敗は例外のまま返し、入力欄に表示させる。
+  const saveMemo = async (record: ReadingRecord, memo: string) => {
+    const updated = await api.updateRecordMemo(record.id, memo);
+    const merged = itemsRef.current.map((r) => (r.id === updated.id ? { ...r, memo: updated.memo } : r));
+    itemsRef.current = merged;
+    setItems(merged);
+    setSelected((current) => (current && current.id === updated.id ? { ...current, memo: updated.memo } : current));
+  };
+  const busy = memoEditing || selected !== null;
+  useEffect(() => { onBusyChange?.(busy); }, [busy]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => onBusyChange?.(false), []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const changeFilter = (next: RecordFilterValue) => setFilter(fixedMonitorId != null ? { ...next, monitorIds: [fixedMonitorId] } : next);
   const loaded = items?.length ?? 0;
   const fmt = (n: number) => n.toLocaleString("ja-JP");
@@ -148,7 +165,7 @@ export function RecordsSection({ monitors, title, description, showExport = fals
     <div className="records-head">
       <div className="records-title"><h2>{title}</h2>{description && <p className="muted">{description}</p>}</div>
       <div className="records-controls">
-        <RecordFilters monitors={monitors} value={filter} onChange={changeFilter} hideMonitor={fixedMonitorId != null} />
+        {!hideFilters && <RecordFilters monitors={monitors} value={filter} onChange={changeFilter} hideMonitor={fixedMonitorId != null} />}
         {showExportXl && <ExportXlButton filter={filter} />}
         {showExport && <ExcelExportPanel filter={filter} />}
       </div>
@@ -156,7 +173,7 @@ export function RecordsSection({ monitors, title, description, showExport = fals
     {error && <div className="alert error" role="alert">{error}</div>}
     {/* 表のエリアは常に同じ高さ(読込中・0件・多数件でも変わらない)。表の中だけがスクロールする。 */}
     <div className={`records-area ${size}`} aria-busy={items === null && !error}>
-      {!invalid && items && items.length > 0 && <RecordsTable items={items} onOpen={setSelected} selectedId={selected?.id} hasMore={loaded < total} loadingMore={loadingMore} onNearEnd={loadMore} groupByTime={filter.monitorIds.length === 0} />}
+      {!invalid && items && items.length > 0 && <RecordsTable items={items} onOpen={setSelected} selectedId={selected?.id} hasMore={loaded < total} loadingMore={loadingMore} onNearEnd={loadMore} groupByTime={filter.monitorIds.length === 0} hideMonitor={filter.monitorIds.length === 1} onSaveMemo={saveMemo} onMemoEditingChange={setMemoEditing} />}
       {!invalid && items && items.length === 0 && !error && <div className="records-empty">この条件に該当する計測記録はありません。</div>}
       {!invalid && !items && !error && <div className="records-empty">読み込み中…</div>}
       {invalid && <div className="records-empty">期間を指定してください。</div>}
