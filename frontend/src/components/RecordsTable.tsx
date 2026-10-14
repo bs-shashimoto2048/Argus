@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { ReadingRecord } from "../types";
 import { formatConfidence, formatRecordTime, formatValue, hasImage, imageStatusLabels, recordState } from "../utils/records";
+import { MemoCell } from "./MemoCell";
 import { StateBadge } from "./StateBadge";
 
 // hasMore/onNearEnd/loadingMore: スクロール末尾に近づいたら続きを読み込む(ページ送りなし)。
@@ -8,7 +9,13 @@ import { StateBadge } from "./StateBadge";
 // 行の順序はBackend(GET /api/records)が hour_bucket DESC → Monitor表示順 → id で保証する。ここでは並べ替えない
 // (追加読込・定期更新で、すでに表示している行の位置が動かないようにするため)。グループ判定は連続する行のhour_bucketの比較だけ。
 // 単一Monitorの表示ではgroupByTime=falseにする。
-type Props = { items: ReadingRecord[]; onOpen: (record: ReadingRecord) => void; selectedId?: number | null; hasMore?: boolean; loadingMore?: boolean; onNearEnd?: () => void; groupByTime?: boolean };
+type Props = { items: ReadingRecord[]; onOpen: (record: ReadingRecord) => void; selectedId?: number | null; hasMore?: boolean; loadingMore?: boolean; onNearEnd?: () => void; groupByTime?: boolean;
+  // 単独Monitor選択時はモニター列を出さない(全行が同じMonitorのため)。
+  hideMonitor?: boolean;
+  // メモの保存(未指定ならメモは読み取り専用)と、編集中の通知(自動リロード抑止用)。
+  onSaveMemo?: (record: ReadingRecord, memo: string) => Promise<void>;
+  onMemoEditingChange?: (editing: boolean) => void;
+};
 
 /** 使用量の表示。nullは「-」(0.0は0.0のまま)。DB/APIの値は変えない、表示だけの変換。 */
 export function formatUsage(value: string | null | undefined): string {
@@ -17,7 +24,7 @@ export function formatUsage(value: string | null | undefined): string {
 
 const NEAR_END_PX = 120;
 
-export function RecordsTable({ items, onOpen, selectedId, hasMore = false, loadingMore = false, onNearEnd, groupByTime = false }: Props) {
+export function RecordsTable({ items, onOpen, selectedId, hasMore = false, loadingMore = false, onNearEnd, groupByTime = false, hideMonitor = false, onSaveMemo, onMemoEditingChange }: Props) {
   const rows = items;
   const wrapRef = useRef<HTMLDivElement>(null);
   const nearEnd = () => { const el = wrapRef.current; return !!el && el.scrollHeight - el.scrollTop - el.clientHeight <= NEAR_END_PX; };
@@ -31,7 +38,7 @@ export function RecordsTable({ items, onOpen, selectedId, hasMore = false, loadi
   return <div className="records-table-wrap" ref={wrapRef} onScroll={() => { if (hasMore && !loadingMore && nearEnd()) onNearEnd?.(); }} data-testid="records-scroll">
     <table className={`records-table history-table${groupByTime ? " grouped" : ""}`}>
       <thead>
-        <tr><th>取得日時</th><th>モニター</th><th className="num">正式値</th><th className="num">前回値</th><th className="num">使用量</th><th className="num">信頼度</th><th>状態</th><th>画像</th><th>詳細</th></tr>
+        <tr><th>取得日時</th>{!hideMonitor && <th>モニター</th>}<th className="num c-value">正式値</th><th className="num">前回値</th><th className="num">使用量</th><th className="num">信頼度</th><th className="c-state">状態</th><th className="memo-col">メモ</th><th className="c-image">画像</th><th>詳細</th></tr>
       </thead>
       <tbody>
         {rows.map((record, index) => {
@@ -48,7 +55,7 @@ export function RecordsTable({ items, onOpen, selectedId, hasMore = false, loadi
           const toneClass = state.tone === "caution" || state.tone === "danger" ? ` row-state-${state.tone}` : "";
           return <tr key={record.id} className={`${carried ? "row-carried" : ""}${toneClass}${groupClass}${selectedId === record.id ? " row-selected" : ""}`} data-record-id={record.id} data-hour-bucket={record.hour_bucket}>
             <td className="nowrap">{formatRecordTime(record.recorded_at)}</td>
-            <td className="cell-monitor" title={record.monitor_name.trim()}>{record.monitor_name.trim()}</td>
+            {!hideMonitor && <td className="cell-monitor" title={record.monitor_name.trim()}>{record.monitor_name.trim()}</td>}
             <td className="num c-value">
               <strong className="record-value">{formatValue(record.value)}</strong>
               {carried && <small className="record-raw" title="記録時点の最新のAI読取値です(採用されなかったため、正式値には使っていません)">AI読取値 {formatValue(record.raw_value)}</small>}
@@ -56,12 +63,13 @@ export function RecordsTable({ items, onOpen, selectedId, hasMore = false, loadi
             <td className="num c-prev">{formatValue(record.previous_value)}</td>
             <td className="num c-usage">{formatUsage(record.usage)}</td>
             <td className="num c-conf">{formatConfidence(record.confidence)}</td>
-            <td><StateBadge state={state} />{record.is_corrected && <span className="corrected-badge small" title={`元の正式値 ${formatValue(record.original_value)}`}>運用者修正</span>}</td>
-            <td>{hasImage(record) ? <button type="button" className="link-button" onClick={() => onOpen(record)}>画像</button> : <span className="muted small" title={record.image_error ?? undefined}>{imageStatusLabels[record.image_status]}</span>}</td>
+            <td className="c-state"><StateBadge state={state} />{record.is_corrected && <span className="corrected-badge small" title={`元の正式値 ${formatValue(record.original_value)}`}>運用者修正</span>}</td>
+            <td className="cell-memo"><MemoCell recordLabel={`${formatRecordTime(record.recorded_at)} ${record.monitor_name.trim()}`} memo={record.memo ?? null} onSave={onSaveMemo ? (memo) => onSaveMemo(record, memo) : undefined} onEditingChange={onMemoEditingChange} /></td>
+            <td className="c-image">{hasImage(record) ? <button type="button" className="link-button" onClick={() => onOpen(record)}>画像</button> : <span className="muted small" title={record.image_error ?? undefined}>{imageStatusLabels[record.image_status]}</span>}</td>
             <td><button type="button" className="secondary small-button" onClick={() => onOpen(record)} aria-label={`${formatRecordTime(record.recorded_at)} ${record.monitor_name.trim()} の詳細`}>詳細</button></td>
           </tr>;
         })}
-        {loadingMore && <tr className="row-loading"><td colSpan={9}>続きを読み込み中…</td></tr>}
+        {loadingMore && <tr className="row-loading"><td colSpan={hideMonitor ? 9 : 10}>続きを読み込み中…</td></tr>}
       </tbody>
     </table>
   </div>;

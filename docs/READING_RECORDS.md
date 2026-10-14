@@ -184,3 +184,10 @@ Raw・validation_status・正式値と、元画像・overlayが別のtickのも�
 - 元の証跡（`value` 以外の `raw_value`・`raw_confidence`・`validation_status`・`value_source`・`baseline_conflict`・画像・`inference_at`）は、再計算でも変更しない。
 - Dashboardは、修正の成功後に履歴とグラフをBackendから取り直す（usageをFrontendで仮計算しない）。
 - 既存recordのusage（旧仕様で保存された値を含む）は自動では書き換えない。`backend/scripts/backfill_reading_usage.py` を、Monitor・日付を指定して実行した範囲だけが更新される（dry-runが既定。`--apply` の前にDBをバックアップする）。
+
+## 運用メモ(reading_records.memo)
+
+- 記録単位の自由テキスト(最大500文字・前後の空白は除去・空文字は削除=NULL)。AI読取値・正式値・usage・修正履歴・baselineとは独立で、メモを編集してもそれらは変わりません。
+- 更新は専用API `PATCH /api/records/{id}/memo`(body: `{"memo": "..."}`)。存在しない記録は404、501文字以上は422。`GET /api/records` / `GET /api/records/{id}` の応答に `memo` を含みます。
+- 起動時に `reading_records.memo`(VARCHAR(500) NULL)を `ALTER TABLE ADD COLUMN` で追加します(既存の記録は書き換えず NULL)。
+- Excel出力(22列)には含めません(別途判断)。

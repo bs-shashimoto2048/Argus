@@ -3,10 +3,12 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import type { Monitor, ReadingRecord } from "../types";
 import { MonitorCard } from "../components/MonitorCard";
+import { RecordFilters } from "../components/RecordFilters";
 import { RecordsSection } from "../components/RecordsSection";
 import { TrendChart } from "../components/TrendChart";
 import type { RecordFilterValue } from "../components/RecordFilters";
 import { DashboardSettingsModal } from "../components/DashboardSettingsModal";
+import { useAutoReload } from "../hooks/useAutoReload";
 import { useDashboardSettings } from "../hooks/useDashboardSettings";
 import { combinedMonitorStatus } from "../utils/monitorStatus";
 import { addDays, defaultRecordPeriod, startOfDayJst, todayJst } from "../utils/records";
@@ -30,8 +32,13 @@ export function DashboardPage() {
   const [filter, setFilter] = useState<RecordFilterValue>({ monitorIds: [], period: defaultRecordPeriod() });
   const [visibleCards, setVisibleCards] = useState(3);
   const regionRef = useRef<HTMLDivElement>(null);
+  const [recordsBusy, setRecordsBusy] = useState(false); // 計測履歴のメモ編集中・詳細/修正ダイアログ表示中
   const navigate = useNavigate();
   const { settings, update } = useDashboardSettings();
+
+  // 画面の自動リロード(長時間の常時表示向けの予防措置。映像取得失敗の根本修正ではなく、Runtimeの異常も隠さない)。
+  // 設定ダイアログ・メモ編集・修正ダイアログの表示中は実行しない。
+  useAutoReload(settings.reloadIntervalMinutes, showSettings || recordsBusy);
 
   const load = () => api.monitors().then((result) => setMonitors(result.monitors)).catch((reason: Error) => setError(reason.message));
   // 各Monitorの最新の1時間記録(carried_forwardの補助表示用)。直近3日分の新しい順から、Monitorごとに先頭を採用する。
@@ -76,6 +83,8 @@ export function DashboardPage() {
   return <main className="page dashboard-page">
     {/* ページタイトルは置かない(上部ナビゲーションに「ダッシュボード」があるため)。 */}
     <div className="dashboard-toolbar">
+      {/* 計測履歴・グラフ・Export (XL)が共有する条件(Monitor・期間)。状態サマリーの左に置く。 */}
+      <RecordFilters monitors={monitors} value={filter} onChange={setFilter} />
       <div className="summary-chips" aria-label="状態サマリー">
         <span className="summary-chip tone-ok"><span className="chip-label">正常</span><strong data-testid="count-normal">{counts.normal}</strong></span>
         <span className="summary-chip tone-caution"><span className="chip-label">要確認</span><strong data-testid="count-warning">{counts.warning}</strong></span>
@@ -96,12 +105,12 @@ export function DashboardPage() {
     {/* 最大3列。4台以上はこの領域の中だけが縦スクロールする(ページは伸びない)。表示順(display_order)のまま並べ、異常を前へ出さない。 */}
     <div className="monitor-region" ref={regionRef} onScroll={updateVisible} data-testid="monitor-region">
     <div className="monitor-grid">
-      {monitors.map((monitor) => <MonitorCard key={monitor.id} monitor={monitor} displayFps={settings.displayFps} latestRecord={latestRecords[monitor.id]} onClick={() => navigate(`/monitors/${monitor.id}`)} />)}
+      {monitors.map((monitor) => <MonitorCard key={monitor.id} monitor={monitor} displayFps={settings.displayFps} dimmed={filter.monitorIds.length === 1 && !filter.monitorIds.includes(monitor.id)} latestRecord={latestRecords[monitor.id]} onClick={() => navigate(`/monitors/${monitor.id}`)} />)}
       {monitors.length === 0 && <div className="empty"><h2>モニターがありません</h2><p>最初のモニターを追加してください。</p><button onClick={() => navigate("/monitors/new")}>モニター追加</button></div>}
     </div>
     </div>
     <TrendChart monitors={monitors} filter={filter} refreshMs={60000} reloadToken={trendReload} />
-    <RecordsSection monitors={monitors} title="計測履歴" description="1時間ごとに自動記録（毎時00分）。詳細な検索・Excel出力は「履歴・データ」から行えます。" refreshMs={60000} filter={filter} onFilterChange={setFilter} showExportXl onRecordCorrected={() => setTrendReload((n) => n + 1)} />
+    <RecordsSection monitors={monitors} title="計測履歴" description="1時間ごとに自動記録（毎時00分）。詳細な検索・Excel出力は「履歴・データ」から行えます。" refreshMs={60000} filter={filter} onFilterChange={setFilter} hideFilters onBusyChange={setRecordsBusy} showExportXl onRecordCorrected={() => setTrendReload((n) => n + 1)} />
     {showSettings && <DashboardSettingsModal settings={settings} onChange={update} onClose={() => setShowSettings(false)} />}
   </main>;
 }

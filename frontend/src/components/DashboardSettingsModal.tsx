@@ -1,5 +1,5 @@
-import { DASHBOARD_DISPLAY_FPS_DEFAULT, DASHBOARD_DISPLAY_FPS_OPTIONS, DASHBOARD_HIGH_FPS } from "../hooks/useDashboardSettings";
-import type { DashboardDisplayFps, DashboardSettings } from "../hooks/useDashboardSettings";
+import { DASHBOARD_DISPLAY_FPS_DEFAULT, DASHBOARD_DISPLAY_FPS_OPTIONS, DASHBOARD_HIGH_FPS, DASHBOARD_RELOAD_OPTIONS } from "../hooks/useDashboardSettings";
+import type { DashboardDisplayFps, DashboardReloadMinutes, DashboardSettings } from "../hooks/useDashboardSettings";
 import { CsvExportSettingsPanel } from "./CsvExportSettingsPanel";
 
 type Props = {
@@ -30,6 +30,20 @@ export function DashboardSettingsModal({ settings, onChange, onClose }: Props) {
           (video_fps / inference_fps)には影響しません。全モニターへ一括で適用され、
           ブラウザを閉じても保持されます。画面の外にあるMonitorカードや、
           非表示のタブでは、画像の更新を止めます。
+        </p>
+        <label>
+          画面自動リロード
+          <select
+            value={settings.reloadIntervalMinutes}
+            onChange={(event) => onChange({ reloadIntervalMinutes: Number(event.target.value) as DashboardReloadMinutes })}
+          >
+            {DASHBOARD_RELOAD_OPTIONS.map((option) => <option key={option.minutes} value={option.minutes}>{option.label}</option>)}
+          </select>
+        </label>
+        <p className="muted">
+          長時間表示時に画面を再読み込みします。映像取得・推論設定には影響しません
+          (Monitor Runtimeの再起動やBackendの再起動は行いません)。
+          タブが非表示の間や、メモ編集・読取値修正・この設定画面の表示中は再読み込みせず、終わってから期限を過ぎていれば再読み込みします。
         </p>
       </section>
       {/* CSV出力(Issue #17)は表示設定(Frontend-only/localStorage)とは独立させ、

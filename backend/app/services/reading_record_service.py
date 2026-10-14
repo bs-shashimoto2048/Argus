@@ -426,6 +426,7 @@ def serialize(record: ReadingRecord) -> dict:
         # 手動修正(監査の正本は reading_record_corrections / GET /api/records/{id}/corrections)。元証跡は修正しても変わらない。
         "is_corrected": (record.correction_count or 0) > 0, "correction_count": record.correction_count or 0, "original_value": record.original_value,
         "corrected_at": _iso(record.corrected_at), "corrected_by": record.corrected_by,
+        "memo": record.memo,
         "correctable": correctable_reason(record) is not None, "correctable_reason": correctable_reason(record),
     }
 

@@ -12,9 +12,9 @@ import { aiValueText, validationStatusLabel } from "../utils/readingLabels";
 const fetchStateLabels: Record<string, string> = { running: "取得中", connecting: "接続中", reconnecting: "再接続中", stopped: "停止中", error: "取得エラー" };
 
 // latestRecord: このMonitorの最新の1時間記録(carried_forwardの補助表示用)。無ければ補助表示なし。
-type Props = { monitor: Monitor; onClick: () => void; displayFps: DashboardDisplayFps; latestRecord?: ReadingRecord | null };
+type Props = { monitor: Monitor; onClick: () => void; displayFps: DashboardDisplayFps; latestRecord?: ReadingRecord | null; dimmed?: boolean };
 
-export function MonitorCard({ monitor, onClick, displayFps, latestRecord }: Props) {
+export function MonitorCard({ monitor, onClick, displayFps, latestRecord, dimmed = false }: Props) {
   const cardRef = useRef<HTMLButtonElement>(null);
   const pageVisible = usePageVisible();
   const inView = useInView(cardRef);
@@ -30,7 +30,8 @@ export function MonitorCard({ monitor, onClick, displayFps, latestRecord }: Prop
   const unit = (monitor.value_unit ?? "").trim();
 
   return (
-    <button className="monitor-card" onClick={onClick} ref={cardRef}>
+    // dimmed: 表示上のフォーカスだけ(薄く表示)。映像取得・推論・状態・API取得には影響しない。
+    <button className={`monitor-card${dimmed ? " is-dimmed" : ""}`} data-dimmed={dimmed ? "true" : undefined} onClick={onClick} ref={cardRef}>
       <div className="card-head">
         <span className={`status-dot ${displayStatus}`} aria-hidden="true">●</span>
         <span className="card-title">{monitor.display_name.trim()}</span>

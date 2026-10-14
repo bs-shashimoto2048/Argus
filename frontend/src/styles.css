@@ -779,8 +779,9 @@ body { overflow-x: hidden; }
 .history-table th, .history-table td { border-left: 1px solid #d7dde7; }
 .history-table th:first-child, .history-table td:first-child { border-left: 0; }
 /* データ列群の区切り: 「モニター情報 | 数値データ(確定値〜信頼度) | 状態・操作」の境界(確定値の左、状態の左)は少し強めの2px。 */
-.history-table th:nth-child(3), .history-table td:nth-child(3), .history-table th:nth-child(7), .history-table td:nth-child(7) { border-left: 2px solid #c3cad5; }
-.history-table th:nth-child(8), .history-table td:nth-child(8) { border-left-color: #c3cad5; }
+/* 列の位置ではなくクラスで指定する(単独Monitor選択でモニター列を隠しても、区切りの位置がずれない) */
+.history-table th.c-value, .history-table td.c-value, .history-table th.c-state, .history-table td.c-state { border-left: 2px solid #c3cad5; }
+.history-table th.c-image, .history-table td.c-image { border-left-color: #c3cad5; }
 .history-table .num { text-align: right; font-variant-numeric: tabular-nums; }
 .history-table th.num { padding-right: 12px; }
 .history-table td.num { padding-right: 12px; }
@@ -1071,6 +1072,16 @@ body { overflow-x: hidden; }
 .corrected-facts { grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); }
 .corrected-facts dt { white-space: nowrap; }
 
+/* 計測履歴のメモ列(Dashboard・履歴・Monitor Detail共通) */
+.records-table .memo-col, .records-table .cell-memo { min-width: 120px; max-width: 220px; }
+.records-table .cell-memo { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.memo-button { display: block; width: 100%; max-width: 220px; margin: 0; padding: 0 4px; border: 1px dashed transparent; border-radius: 4px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: text; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.memo-button:hover, .memo-button:focus-visible { border-color: var(--color-border-strong); background: var(--color-surface-secondary); }
+.memo-text { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.memo-editor { display: inline-flex; flex-direction: column; gap: 2px; }
+.memo-editor input { width: 220px; height: 26px; margin: 0; padding: 0 6px; font-size: 14px; }
+.memo-error { color: var(--color-danger, #b91c1c); white-space: normal; max-width: 260px; }
+
 /* ===== Dashboard 密度調整(最終値) =====
    Dashboardの余白・文字サイズ・映像/履歴の高さはこのブロックで決まる(上の旧ルールは構造・色などのみ)。
    優先順位: Monitor映像・現在値 > 使用量推移 > 計測履歴。余白と装飾を削り、空いた面積は映像へ回す。 */
@@ -1131,3 +1142,15 @@ body { overflow-x: hidden; }
 .dashboard-page .history-table td { padding: 0 12px; font-size: 14.5px; line-height: 1.25; }
 .dashboard-page .history-table .small-button { padding: 0 10px; font-size: 13.5px; line-height: 22px; }
 .dashboard-page .records-count { min-height: 18px; margin-top: 2px; font-size: 13px; line-height: 18px; }
+
+/* Dashboard: フィルタ(Monitor・期間)を映像上部のツールバーへ。状態サマリーの左に置き、狭いときは折り返す(映像は押し下げない1行を基本とする) */
+.dashboard-page .dashboard-toolbar > .record-filters { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0; min-width: 0; }
+.dashboard-page .dashboard-toolbar > .record-filters .filter-select select { min-width: 170px; height: 32px; font-size: 14px; }
+.dashboard-page .dashboard-toolbar > .record-filters .filter-group { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
+.dashboard-page .dashboard-toolbar > .record-filters .segment { height: 30px; padding: 0 12px; font-size: 14px; }
+.dashboard-page .dashboard-toolbar > .record-filters .date-range-box { height: 32px; padding: 0 8px; }
+.dashboard-page .dashboard-toolbar > .record-filters .date-range-box input { font-size: 13.5px; }
+.dashboard-page .dashboard-toolbar > .record-filters .filter-error { flex: 1 0 100%; font-size: 12px; }
+/* 単独Monitor選択時の非選択カード: 表示上のフォーカスだけ(薄く・軽いgrayscale)。位置・サイズ・操作は変えない */
+.dashboard-page .monitor-card.is-dimmed { opacity: 0.4; filter: grayscale(0.6); transition: opacity 0.15s ease; }
+.dashboard-page .monitor-card.is-dimmed:hover, .dashboard-page .monitor-card.is-dimmed:focus-visible { opacity: 0.75; }

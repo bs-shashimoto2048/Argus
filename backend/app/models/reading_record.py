@@ -55,6 +55,8 @@ class ReadingRecord(Base):
     correction_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     corrected_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # 最終修正日時(naive UTC)
     corrected_by: Mapped[str | None] = mapped_column(String(80), nullable=True)  # 最終修正者
+    # 運用メモ(記録単位の自由テキスト)。AI読取・正式値・usage・修正・baselineとは独立で、編集してもそれらは変わない。未入力はNULL。
+    memo: Mapped[str | None] = mapped_column(String(500), nullable=True)
     # 記録画像(Phase 2): DBには画像ルートからの相対パスを保存する。
     original_image_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     overlay_image_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
