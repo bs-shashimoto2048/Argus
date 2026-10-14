@@ -6,7 +6,7 @@
 |---|---|---|
 | `ARGUS_DATA_DIR` | データディレクトリ | プロジェクトルートの`data` |
 | `ARGUS_DATABASE_URL` | SQLAlchemy DB URL | `sqlite:///{ARGUS_DATA_DIR}/argus.db` |
-| `ARGUS_SECRET_KEY` | Fernet暗号鍵(カメラのパスワード暗号化用) | 未設定時は開発用固定キーを生成 |
+| `ARGUS_SECRET_KEY` | Fernet暗号鍵(カメラのパスワード暗号化用) | 未設定時は開発用固定キーを生成。PoCでは変更しない(設定すると保存済みcredentialを復号できなくなるため、変更は再登録/migrationを伴う計画的作業) |
 | `ARGUS_ADMIN_PASSWORD_HASH` | ADMINログインのパスワードhash(`pbkdf2_sha256$反復$salt$hash`。`scripts/make_admin_password_hash.py`で生成) | 未設定ならADMIN認証は無効(全員VIEWER) |
 | `ARGUS_SESSION_SECRET` | ADMIN session cookieの署名専用(32文字以上。`ARGUS_SECRET_KEY`とは別) | 未設定ならADMIN認証は無効(全員VIEWER) |
 | `ARGUS_COOKIE_SECURE` | `1`でsession cookieにSecure属性(HTTPS化したとき) | 未設定(PoCのHTTP) |
