@@ -260,6 +260,17 @@ describe("画面自動リロード: useAutoReload(fake timers)", () => {
     expect(reloadSpy).not.toHaveBeenCalled();
   });
 
+  it("1時間設定で50分経過後に5分へ変更すると、変更から5分後にリロードする(変更直後は即リロードしない)", () => {
+    const { rerender } = renderHook(({ m }) => useAutoReload(m, false), { initialProps: { m: 60 } });
+    act(() => { vi.advanceTimersByTime(50 * MIN); });
+    rerender({ m: 5 });
+    expect(reloadSpy).not.toHaveBeenCalled();
+    act(() => { vi.advanceTimersByTime(5 * MIN - 1); });
+    expect(reloadSpy).not.toHaveBeenCalled();
+    act(() => { vi.advanceTimersByTime(1); });
+    expect(reloadSpy).toHaveBeenCalledTimes(1);
+  });
+
   it("タブ非表示の間はリロードせず、表示へ戻った時点で期限超過ならリロードする", () => {
     renderHook(() => useAutoReload(30, false));
     setHidden(true);
