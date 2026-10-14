@@ -200,6 +200,8 @@ Backend（既存API契約の既定ポートは8000。使用中なら開発用ス
 
 開発用スクリプトは、ファイル変更で自動再読込（`--reload`）しますが、監視対象は`backend/`配下だけです。監視Runtimeを動かしている最中に再起動させたくない場合（実運用の確認中など）は、`-NoReload`を付けて起動してください（`.\scripts\start_backend_dev.ps1 -NoReload`）。別のworktreeを使う場合はリポジトリの外に作成してください。
 
+起動スクリプトは`--loop app.event_loop:selector_loop_factory`でSelectorEventLoopを使います（Issue #67）。Windows版Python 3.12のProactorEventLoopは、accept待ちの接続がRSTで切られると待受socketを閉じ、プロセスが生存したままLISTENだけが消えるためです。`uvicorn`を直接起動する場合も同じ`--loop`指定を付けてください。
+
 Frontend（先にBackendを起動しておくこと。Backendが選んだポートを`start_frontend_dev.ps1`が自動検出するため、`ARGUS_BACKEND_URL`を手動設定する必要はない）:
 
 ```powershell
