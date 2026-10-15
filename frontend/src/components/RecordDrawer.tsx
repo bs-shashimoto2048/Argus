@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { CorrectionResult, ReadingRecord, RecordCorrection } from "../types";
 import { displayStatusLabels, formatConfidence, formatRecordDateTimeFull, formatValue, imageUnavailableMessage, limitImageUpscale, recordState } from "../utils/records";
-import { AI_VALUE_HELP, CARRIED_TITLE, OFFICIAL_VALUE_HELP, VALUE_SOURCE_TITLE, carriedNoteBody, validationStatusLabel, valueSourceDescription, valueSourceLabel } from "../utils/readingLabels";
+import { AI_VALUE_HELP, CARRIED_TITLE, OFFICIAL_VALUE_HELP, VALUE_SOURCE_TITLE, carriedNoteBody, recordResultLabel, valueSourceDescription, valueSourceLabel } from "../utils/readingLabels";
 import { CorrectionDialog } from "./CorrectionDialog";
 import { StateBadge } from "./StateBadge";
 import { stripLeadingZeros } from "../utils/readingFormat";
@@ -49,7 +49,7 @@ export function RecordDrawer({ record, onClose, onCorrected, canCorrect = true }
     ...(record.candidate_value && record.candidate_value !== stripLeadingZeros(record.raw_value) ? [["時系列判定候補", formatValue(record.candidate_value)] as [string, string]] : []),
     ["AI読取値の信頼度", formatConfidence(record.raw_confidence)],
     ["正式値の信頼度", formatConfidence(record.confidence)],
-    ["読取結果", validationStatusLabel(record.validation_status)],
+    ["読取結果", recordResultLabel(record)],
     [VALUE_SOURCE_TITLE, valueSourceLabel(record.value_source, record.is_corrected)],
     ["モニター状態", displayStatusLabels[record.display_status] ?? "状態を確認してください"],
     ["読取基準値との不一致", record.baseline_conflict ? "あり" : "なし"],
