@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -54,6 +55,22 @@ class ModelRegistry:
     def clear(self) -> None:
         with self._lock:
             self._cache.clear()
+
+    def close(self) -> None:
+        """保持中のうちstop()を持つもの(cpp worker等の外部プロセス)を停止してから破棄する。
+
+        1件の停止失敗が他の停止を妨げないよう、例外は握りつぶさずログへ残して続行する。
+        """
+        with self._lock:
+            items = list(self._cache.values())
+            self._cache.clear()
+        for item in items:
+            stop = getattr(item, "stop", None)
+            if callable(stop):
+                try:
+                    stop()
+                except Exception:
+                    logging.getLogger("argus.shutdown").exception("モデル資源の停止に失敗しました")
 
     def size(self) -> int:
         with self._lock:

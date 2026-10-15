@@ -1,9 +1,8 @@
-import time
-
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response, StreamingResponse
 
 from runtime.runtime_manager import runtime_manager
+from runtime.shutdown_signal import shutdown_requested
 
 from ..core.auth import ADMIN_ONLY
 router = APIRouter(prefix="/api/monitors", tags=["streams"])
@@ -70,12 +69,13 @@ def _stream_response(monitor_id: int) -> StreamingResponse:
 
     def generate():
         last = None
-        while runtime.state != "stopped":
+        # Backend終了要求(Issue #72)でも抜ける。抜けないと、uvicornが接続の完了を待ち続けて終了できない。
+        while runtime.state != "stopped" and not shutdown_requested.is_set():
             data, stamp = runtime.buffer.get()
             if data and stamp != last:
                 last = stamp
                 yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + data + b"\r\n"
-            time.sleep(0.05)
+            shutdown_requested.wait(0.05)
 
     return StreamingResponse(generate(), media_type="multipart/x-mixed-replace; boundary=frame")
 

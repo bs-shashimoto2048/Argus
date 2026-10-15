@@ -16,11 +16,11 @@ Write-Host "Frontend proxy target: start_frontend_dev.ps1が自動検出しま�
 try {
   if ($NoReload) {
     # 実運用確認中など、ファイル変更で再起動させたくない場合
-    & uvicorn app.main:app --app-dir backend --port $port --loop app.event_loop:selector_loop_factory
+    & uvicorn app.main:app --app-dir backend --port $port --loop app.event_loop:selector_loop_factory --timeout-graceful-shutdown 20
   } else {
     # 監視対象をbackend配下に限定する。リポジトリ配下の別worktree(.claude/worktrees等)の
     # 変更で、動作中のBackend(監視Runtime)が再起動するのを防ぐ。
-    & uvicorn app.main:app --reload --reload-dir backend --app-dir backend --port $port --loop app.event_loop:selector_loop_factory
+    & uvicorn app.main:app --reload --reload-dir backend --app-dir backend --port $port --loop app.event_loop:selector_loop_factory --timeout-graceful-shutdown 20
   }
 } finally {
   Remove-Item -Path $portFile -ErrorAction SilentlyContinue

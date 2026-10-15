@@ -114,18 +114,46 @@ class CppOnnxWorkerProcess:
                 pass
         self._proc = None
 
+    # 段階停止の待ち時間(Issue #72)。workerはstdin EOFで常駐loopを抜け、ONNX sessionを解放して終了する。
+    STOP_LOCK_TIMEOUT_SECONDS = 3.0   # 推論中のinfer()がlockを持つ間の待ち上限(推論1回=数百ms〜1秒程度)
+    STOP_GRACEFUL_SECONDS = 3.0       # stdin close後、自力終了を待つ上限
+    STOP_TERMINATE_SECONDS = 2.0      # terminate後の終了待ち上限
+
     def stop(self) -> None:
-        with self._lock:
-            if self._proc is None:
+        """stdin close → 自力終了待ち → terminate → kill の順で、各段をboundedに停止する。
+
+        正常系(workerが自力終了)ではterminate/killは呼ばない。応答しないworkerでもlockを
+        無期限に待たない(infer()が応答待ちでlockを保持していてもstopは完了する)。
+        """
+        acquired = self._lock.acquire(timeout=self.STOP_LOCK_TIMEOUT_SECONDS)
+        try:
+            proc = self._proc
+            self._proc = None
+            if proc is None:
                 return
-            try:
-                if self._proc.stdin:
-                    self._proc.stdin.close()
-                self._proc.wait(timeout=5)
-            except Exception:
-                self._proc.kill()
-            finally:
-                self._proc = None
+            if acquired:
+                try:
+                    if proc.stdin:
+                        proc.stdin.close()
+                except Exception:
+                    pass
+                try:
+                    proc.wait(timeout=self.STOP_GRACEFUL_SECONDS)
+                    return
+                except subprocess.TimeoutExpired:
+                    pass
+            for action, wait in ((proc.terminate, self.STOP_TERMINATE_SECONDS), (proc.kill, self.STOP_TERMINATE_SECONDS)):
+                try:
+                    action()
+                    proc.wait(timeout=wait)
+                    return
+                except subprocess.TimeoutExpired:
+                    continue
+                except Exception:
+                    return
+        finally:
+            if acquired:
+                self._lock.release()
 
     def is_running(self) -> bool:
         with self._lock:
