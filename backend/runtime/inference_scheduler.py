@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections import deque
 from datetime import datetime, timezone
 
 from io import BytesIO
@@ -21,7 +22,11 @@ from app.schemas.inference import Roi
 from reading.baseline import CONFLICT_ALERT_SECONDS
 from reading.models import ConfirmedReading, ReadingSettings
 from reading.stabilizer import ReadingStabilizer
-from .record_snapshot import InferenceRecordSnapshot
+from reading.canonicalizer import canonical_value, strip_leading_zeros
+from reading.validator import validate_format
+from .record_snapshot import (
+    RECORD_RING_MIN_SPACING_SECONDS, RECORD_RING_SECONDS, InferenceRecordSnapshot, record_grade, select_record_snapshot,
+)
 
 logger = logging.getLogger("argus.scheduler")
 
@@ -134,15 +139,39 @@ class InferenceScheduler:
         self._snapshot: InferenceRecordSnapshot | None = None
         self._snapshot_lock = Lock()
         self._tick = 0
+        self._ring: deque[InferenceRecordSnapshot] = deque()  # 毎時記録のsnapshot選択用(直近RECORD_RING_SECONDS秒を間引いて保持)
 
     def get_record_snapshot(self) -> InferenceRecordSnapshot | None:
         """直近の完了した推論tickのsnapshotを取得する(不変オブジェクトなので、取得後に別tickの値が混ざらない)。"""
         with self._snapshot_lock:
             return self._snapshot
 
+    def select_record_snapshot(self, target: datetime) -> InferenceRecordSnapshot | None:
+        """毎時記録用: 基準時刻targetの前後から、最も近い正常なsnapshotを選ぶ(無ければNone)。snapshotは不変で、画像等は選んだ1つのものだけを使う。"""
+        with self._snapshot_lock:
+            candidates = list(self._ring)
+        return select_record_snapshot(candidates, target)
+
     def _publish_snapshot(self, snapshot: InferenceRecordSnapshot) -> None:
         with self._snapshot_lock:
             self._snapshot = snapshot  # オブジェクトを丸ごと交換する(フィールド単位の更新はしない)
+            self._remember(snapshot)
+
+    def _remember(self, snapshot: InferenceRecordSnapshot) -> None:
+        """毎時記録の選択用に、直近のsnapshotを間引いて保持する(画像を含むため、全tickは持たない)。
+        最小間隔内に来たtickは、適性が上の場合だけ直前のものと入れ替える(正常なtickを異常なtickで押し出さない)。"""
+        ring = self._ring
+        if ring and (snapshot.inference_at - ring[-1].inference_at).total_seconds() < RECORD_RING_MIN_SPACING_SECONDS:
+            def rank(item: InferenceRecordSnapshot) -> int:
+                grade = record_grade(item)
+                return 99 if grade is None else grade
+
+            if rank(snapshot) >= rank(ring[-1]):
+                return
+            ring.pop()
+        ring.append(snapshot)
+        while (snapshot.inference_at - ring[0].inference_at).total_seconds() > RECORD_RING_SECONDS:
+            ring.popleft()
 
     def _build_snapshot(self, *, inference_at: datetime, captured_at: datetime | None, original: bytes | None, overlay: bytes | None,
                         result: InferenceResult, confirmed: ConfirmedReading, formal: dict | None, processing_time_ms: float) -> InferenceRecordSnapshot:
@@ -168,7 +197,18 @@ class InferenceScheduler:
             baseline_value=baseline["value"] if baseline else None, baseline_epoch=int(confirmed.baseline_epoch or 0),
             baseline_conflict=bool(conflict_alert), conflict_status=conflict.status.value if conflict else None,
             conflict_candidate=conflict.candidate if conflict else None, conflict_count=conflict.count if conflict else 0,
+            raw_matches_candidate=self._raw_matches_candidate(confirmed.raw_value, candidate),
         )
+
+    def _raw_matches_candidate(self, raw_value: str | None, candidate: dict | None) -> bool:
+        """このtickのRaw単独が、expected_digits(先頭0を保持した桁数)を満たし、多数決の候補と同じ値か。"""
+        settings = self.stabilizer.settings
+        if not settings.enabled:
+            return bool(raw_value)  # 安定化なし(単発のRawをそのまま運用値にする互換モード): 多数決の候補は無く、Rawが運用値そのもの
+        if not raw_value or not candidate:
+            return False
+        canonical = canonical_value(raw_value, settings.decimal_position)
+        return canonical is not None and validate_format(canonical, settings.expected_digits) and strip_leading_zeros(canonical) == candidate["value"]
 
     @property
     def enabled(self) -> bool:

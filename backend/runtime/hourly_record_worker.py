@@ -16,6 +16,9 @@ from app.services.reading_record_service import RecordOutcome, record_due
 logger = logging.getLogger("argus.records")
 
 _DEFAULT_POLL_INTERVAL_SECONDS = 30.0
+# 毎時00分から_FAST_POLL_WINDOW_SECONDS秒間は、_FAST_POLL_INTERVAL_SECONDS間隔で確認する(JSTのUTC+9は毎時00分が一致する)。
+_FAST_POLL_INTERVAL_SECONDS = 1.0
+_FAST_POLL_WINDOW_SECONDS = 20.0
 
 
 class HourlyRecordWorker:
@@ -51,8 +54,14 @@ class HourlyRecordWorker:
             except Exception as exc:  # Background Workerの予期しない例外でBackend本体を落とさない
                 self.last_error = f"{type(exc).__name__}: {exc}"
                 logger.exception("計測記録のtickに失敗しました")
-            if self._stop.wait(self._poll_interval):
+            if self._stop.wait(self._next_wait()):
                 break
+
+    def _next_wait(self, now: datetime | None = None) -> float:
+        """毎時00分の直後だけ短い間隔で確認する(基準時刻の前後から選ぶsnapshotの探索範囲が揃った時点で、すぐ記録するため)。"""
+        now = now or datetime.now(timezone.utc)
+        seconds_into_hour = now.minute * 60 + now.second
+        return _FAST_POLL_INTERVAL_SECONDS if seconds_into_hour < _FAST_POLL_WINDOW_SECONDS else self._poll_interval
 
     def tick(self, now: datetime | None = None) -> list[RecordOutcome]:
         db = SessionLocal()

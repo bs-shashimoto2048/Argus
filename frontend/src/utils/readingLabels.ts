@@ -90,8 +90,25 @@ export function valueSourceLabel(source: string | null | undefined, corrected = 
 }
 export const valueSourceDescription = (source: string | null | undefined) => (source && SOURCE_HELPS[source]) || null;
 
+/** 記録の読取結果が「採用」でも、この記録時点のAI読取値・画像が時系列判定の候補と一致しないため、正式値には採用していない状態(Issue #77)。 */
+export const MISMATCH_REJECTED_LABEL = "時系列判定候補とAI読取値が一致しないため不採用";
+export const MISMATCH_REJECTED_BODY = "直近の複数回の読取では候補値が確定しましたが、この記録時点のAI読取値と一致しなかったため、正式値として採用せず、直前の正式値を継続使用しています。";
+type MismatchFields = Pick<ReadingRecord, "validation_status" | "raw_value"> & { value_source?: ReadingRecord["value_source"]; candidate_value?: string | null };
+export function isMismatchRejected(record: MismatchFields): boolean {
+  return record.value_source === "carried_forward"
+    && (record.validation_status === "confirmed" || record.validation_status === "low_confidence")
+    && !!record.candidate_value && !!record.raw_value
+    && record.candidate_value !== stripLeadingZeros(record.raw_value);
+}
+
+/** 記録の「読取結果」(利用者向け)。内部のvalidation_statusだけでなく、この記録で正式採用したかを反映する。 */
+export function recordResultLabel(record: MismatchFields): string {
+  return isMismatchRejected(record) ? MISMATCH_REJECTED_LABEL : validationStatusLabel(record.validation_status);
+}
+
 /** 記録(Drawer・Dashboard・グラフの印)の「直前の正式値を継続使用」の説明本文。 */
-export function carriedNoteBody(record: Pick<ReadingRecord, "validation_status" | "raw_value">, baseline?: string | null): string {
+export function carriedNoteBody(record: MismatchFields, baseline?: string | null): string {
+  if (isMismatchRejected(record)) return MISMATCH_REJECTED_BODY;
   return validationStatusDescription(record.validation_status, record.raw_value, baseline)
     ?? `今回のAI読取値${record.raw_value ? `「${aiValueText(record.raw_value)}」` : ""}は採用されなかったため、直前の正式値を継続使用しています。`;
 }

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ApiError, api } from "../api/client";
 import type { BaselineStatus, CorrectionDeviation, CorrectionResult, ReadingRecord } from "../types";
 import { formatConfidence, formatRecordDateTimeFull, formatValue, limitImageUpscale } from "../utils/records";
-import { AI_VALUE_AUTOFILL_ALLOWED, AI_VALUE_AUTOFILL_BLOCKED_MESSAGE, AI_VALUE_AUTOFILL_WARNING, AI_VALUE_AUTOFILL_WARNING_MESSAGE, AI_VALUE_HELP, BASELINE_MISMATCH_HELP, BASELINE_MISMATCH_LABEL, VALUE_SOURCE_TITLE, userErrorMessage, validationStatusDescription, validationStatusLabel, valueSourceLabel } from "../utils/readingLabels";
+import { AI_VALUE_AUTOFILL_ALLOWED, AI_VALUE_AUTOFILL_BLOCKED_MESSAGE, AI_VALUE_AUTOFILL_WARNING, AI_VALUE_AUTOFILL_WARNING_MESSAGE, AI_VALUE_HELP, BASELINE_MISMATCH_HELP, BASELINE_MISMATCH_LABEL, VALUE_SOURCE_TITLE, userErrorMessage, isMismatchRejected, MISMATCH_REJECTED_BODY, recordResultLabel, validationStatusDescription, valueSourceLabel } from "../utils/readingLabels";
 import { stripLeadingZeros } from "../utils/readingFormat";
 
 const OPERATOR_KEY = "argus.baseline.operator"; // 基準値の操作と同じ(自己申告の操作者名を覚えておく)
@@ -34,7 +34,7 @@ export function CorrectionDialog({ record, onClose, onCorrected }: Props) {
   const rawCandidate = record.raw_value ? stripLeadingZeros(record.raw_value) : null;
   const rawAutofill = rawCandidate != null && AI_VALUE_AUTOFILL_ALLOWED.has(record.validation_status ?? "");
   const rawAutofillWarning = rawAutofill && AI_VALUE_AUTOFILL_WARNING.has(record.validation_status ?? "");
-  const statusExplanation = validationStatusDescription(record.validation_status, record.raw_value, baseline?.baseline?.value);
+  const statusExplanation = isMismatchRejected(record) ? MISMATCH_REJECTED_BODY : validationStatusDescription(record.validation_status, record.raw_value, baseline?.baseline?.value);
   const ready = value.trim() !== "" && reason.trim() !== "" && operator.trim() !== "" && (deviation === null || deviationChecked);
   const changeValue = (next: string) => { setValue(next); setDeviation(null); setDeviationChecked(false); }; // 値を変えたら、確認し直す
   const liveConflict = baseline?.conflict?.active ?? false;
@@ -92,7 +92,7 @@ export function CorrectionDialog({ record, onClose, onCorrected }: Props) {
           <div><dt>現在の正式値</dt><dd className="strong">{formatValue(record.value)}</dd></div>
           <div><dt title={AI_VALUE_HELP}>最新のAI読取値</dt><dd>{formatValue(record.raw_value)}</dd></div>
           <div><dt>AI読取値の信頼度</dt><dd>{formatConfidence(record.raw_confidence)}</dd></div>
-          <div><dt>AI読取結果</dt><dd>{validationStatusLabel(record.validation_status)}</dd></div>
+          <div><dt>AI読取結果</dt><dd>{recordResultLabel(record)}</dd></div>
           <div><dt>{VALUE_SOURCE_TITLE}</dt><dd>{valueSourceLabel(record.value_source, record.is_corrected)}</dd></div>
           <div><dt>現在の読取基準値</dt><dd>{baseline?.baseline?.value ?? "--"}</dd></div>
           <div><dt title={BASELINE_MISMATCH_HELP}>{BASELINE_MISMATCH_LABEL}</dt><dd>{liveConflict ? `あり（不一致のAI読取値 ${baseline?.conflict?.candidate ?? "--"}）` : record.baseline_conflict ? "記録時にあり" : "なし"}</dd></div>

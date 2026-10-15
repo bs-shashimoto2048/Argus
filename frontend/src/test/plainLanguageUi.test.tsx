@@ -142,6 +142,71 @@ describe("通常のUIに内部名を出さない", () => {
     for (const label of ["正式値", "1時間前の正式値", "使用量（前回との差）", "最新のAI読取値", "AI読取値の信頼度", "正式値の信頼度", "読取結果", "正式値の決まり方", "モニター状態", "読取基準値との不一致", "AI読取方式", "使用モデル"]) expect(screen.getAllByText(label, { selector: "dt, small" }).length).toBeGreaterThan(0);
   });
 
+  describe("記録Drawer: 読取結果は「この記録でAI読取値を正式採用したか」と矛盾しない(Issue #77)", () => {
+    const MISMATCH = "時系列判定候補とAI読取値が一致しないため不採用";
+    const resultRow = () => screen.getByText("読取結果").nextElementSibling as HTMLElement;
+    const sourceRow = () => screen.getByText("正式値の決まり方").nextElementSibling as HTMLElement;
+    const show = (over: Record<string, unknown>) => {
+      mockFetch([get("/api/records/7/corrections", { corrections: [] })]);
+      render(<RecordDrawer record={{ ...carried("confirmed"), baseline_conflict: false, ...over }} onClose={() => {}} />);
+    };
+
+    it("A. confirmed + 採用(raw/candidate一致): 「採用」と表示する", () => {
+      show({ value_source: "confirmed", raw_value: "0216044", candidate_value: "216044", value: "216044" });
+      expect(resultRow()).toHaveTextContent("採用");
+      expect(sourceRow()).toHaveTextContent("今回のAI読取値を採用");
+      expect(screen.queryByText(MISMATCH)).not.toBeInTheDocument();
+      expect(screen.queryByText("時系列判定候補")).not.toBeInTheDocument();
+    });
+
+    it("B. id 224型(raw 021644 / candidate 216044 / confirmed + carried_forward): 「採用」と表示せず、不一致による不採用を説明する", () => {
+      show({ validation_status: "confirmed", value_source: "carried_forward", raw_value: "021644", candidate_value: "216044", value: "216044" });
+      expect(resultRow().textContent).toBe(MISMATCH);
+      expect(resultRow().textContent).not.toBe("採用");
+      expect(sourceRow()).toHaveTextContent("直前の正式値を継続使用");
+      expect(screen.getByRole("note")).toHaveTextContent("直近の複数回の読取では候補値が確定しましたが、この記録時点のAI読取値と一致しなかったため、正式値として採用せず、直前の正式値を継続使用しています。");
+      // 最新のAI読取値と時系列判定候補を区別して表示する
+      expect(screen.getByText("最新のAI読取値").nextElementSibling).toHaveTextContent("021644");
+      expect(screen.getByText("時系列判定候補").nextElementSibling).toHaveTextContent("216044");
+      expect(visibleText()).not.toMatch(INTERNAL);
+    });
+
+    it("C. low_confidence + carried_forward + 不一致: 「要確認」より不一致による不採用を優先する", () => {
+      show({ validation_status: "low_confidence", value_source: "carried_forward", raw_value: "021644", candidate_value: "216044" });
+      expect(resultRow().textContent).toBe(MISMATCH);
+      expect(screen.getByRole("note")).toHaveTextContent("正式値として採用せず、直前の正式値を継続使用しています。");
+    });
+
+    it("D. invalid_format + carried_forward: 従来の形式不一致の表示を維持する(候補があっても不一致の文言にしない)", () => {
+      show({ validation_status: "invalid_format", value_source: "carried_forward", raw_value: "0216025", candidate_value: "21625" });
+      expect(resultRow().textContent).toBe("表示桁数・小数部の形式が一致しないため不採用");
+      expect(screen.getByRole("note")).toHaveTextContent("設定された表示桁数・小数部の形式と一致しなかったため、正式値として採用されませんでした。");
+    });
+
+    it.each([
+      ["decrease_detected", "読取基準値より小さいため不採用"],
+      ["rate_exceeded", "増加量が設定上限を超えたため不採用"],
+    ])("E. %s: 既存の表示を維持する", (validation, label) => {
+      show({ validation_status: validation, value_source: "carried_forward", raw_value: "0215993", candidate_value: "215993" });
+      expect(resultRow().textContent).toBe(label);
+    });
+
+    it("旧記録(candidate_valueなし)のconfirmed + carried_forwardは、従来の表示のまま(不一致とは断定しない)", () => {
+      show({ validation_status: "confirmed", value_source: "carried_forward", raw_value: "021644", candidate_value: null });
+      expect(resultRow().textContent).toBe("採用");
+    });
+  });
+
+  it("記録Drawer: 時系列判定候補は、AI読取値(先頭0除去後)と異なるときだけ区別して表示する(Issue #77)", () => {
+    mockFetch([get("/api/records/7/corrections", { corrections: [] })]);
+    const { rerender } = render(<RecordDrawer record={{ ...carried("invalid_format"), raw_value: "0216025", candidate_value: "21625" }} onClose={() => {}} />);
+    expect(screen.getByText("時系列判定候補")).toBeInTheDocument();
+    rerender(<RecordDrawer record={{ ...carried("invalid_format"), raw_value: "0216025", candidate_value: "216025" }} onClose={() => {}} />);
+    expect(screen.queryByText("時系列判定候補")).not.toBeInTheDocument();
+    rerender(<RecordDrawer record={{ ...carried("invalid_format"), raw_value: "0216025" }} onClose={() => {}} />);
+    expect(screen.queryByText("時系列判定候補")).not.toBeInTheDocument();
+  });
+
   it("記録Drawer(carried_forward): 「直前の正式値を継続使用」と、AI読取値が採用されなかった理由・正式値の継続を説明する", async () => {
     mockFetch([get("/api/records/7/corrections", { corrections: [] })]);
     render(<RecordDrawer record={carried("decrease_detected")} onClose={() => {}} onCorrected={() => {}} />);

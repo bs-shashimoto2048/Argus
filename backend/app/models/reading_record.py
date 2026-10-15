@@ -30,6 +30,8 @@ class ReadingRecord(Base):
     value: Mapped[str | None] = mapped_column(String(128), nullable=True)
     numeric_value: Mapped[str | None] = mapped_column(String(64), nullable=True)
     raw_value: Mapped[str | None] = mapped_column(String(128), nullable=True)  # 元の桁列(先頭0を含む)
+    # 記録した推論tickの時点で、窓内の多数決が採用した候補(先頭0除去後)。raw_valueとの違い(Issue #77)を後から確認するための監査用。
+    candidate_value: Mapped[str | None] = mapped_column(String(128), nullable=True)
     # 正式記録値(value)の由来: confirmed=記録時点の最新候補が確定した値 / carried_forward=最新Rawは棄却中だが
     # 直前の正常Confirmed値を保持した(回転途中・見切れ中など。valueは「直近の最高値」ではなく直前の正常確定値) /
     # none=正式に記録できるConfirmed値が無い(映像が正常でない、確定値が一度も無い)

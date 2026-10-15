@@ -9,7 +9,15 @@ Raw・信頼度・validation_status・正式値・画像(元画像/overlay)・en
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
+
+# 毎時記録のsnapshot選択(Issue #77)。計測枠の基準時刻の前後この秒数の範囲から、最も近い正常なsnapshotを選ぶ。
+# 推論5fps・窓5tick・多数決3tick一致のため、1tickの揺れや数秒の棄却はこの範囲で十分に外れる想定。
+RECORD_SELECT_BEFORE_SECONDS = 10.0
+RECORD_SELECT_AFTER_SECONDS = 10.0
+# 直近snapshotを保持する時間と最小間隔(画像を含むため、全tickは保持せず間引く)。
+RECORD_RING_SECONDS = 30.0
+RECORD_RING_MIN_SPACING_SECONDS = 0.5
 
 
 @dataclass(frozen=True)
@@ -54,7 +62,40 @@ class InferenceRecordSnapshot:
     conflict_candidate: str | None
     conflict_count: int
 
+    # このtickのRaw自体が、多数決で採用された候補と一致し、桁数(expected_digits)も満たすか。
+    # overlay/Raw(そのtick単独)と、validation_status/正式値(窓内の多数決)が食い違わないtickだけTrueになる。
+    raw_matches_candidate: bool = False
+
     @property
     def value_accepted(self) -> bool:
         """このtickのRawが正式値として採用された(confirmed / low_confidence)か。"""
         return self.validation_status in ("confirmed", "low_confidence")
+
+
+def record_grade(snapshot: InferenceRecordSnapshot) -> int | None:
+    """毎時記録に「正常採用」してよいtickの適性(小さいほど良い)。0: confirmed / 1: low_confidence。
+    Raw・推論画像・candidate・validationの意味が一致する(raw_matches_candidate)tickだけが対象で、
+    Stabilizer上confirmedでもRawが候補と食い違うtick、および棄却中(invalid_format/pending等)のtickはNone(正常採用しない)。"""
+    if not snapshot.raw_matches_candidate:
+        return None
+    if snapshot.validation_status == "confirmed":
+        return 0
+    if snapshot.validation_status == "low_confidence":
+        return 1
+    return None
+
+
+def evidence_consistent(snapshot: InferenceRecordSnapshot) -> bool:
+    """このsnapshotを、Rawと一致する正常な証跡(value_source=confirmed)として記録してよいか。"""
+    return record_grade(snapshot) is not None
+
+
+def select_record_snapshot(snapshots: list[InferenceRecordSnapshot], target: datetime,
+                           before: float = RECORD_SELECT_BEFORE_SECONDS, after: float = RECORD_SELECT_AFTER_SECONDS) -> InferenceRecordSnapshot | None:
+    """基準時刻targetの前後(before/after秒)から、記録に使うsnapshotを1つ選ぶ(適性の高い順、同じ適性なら基準時刻に近い順)。
+    範囲内に採用されたsnapshotが無ければNone(呼び出し側が従来の安全側へ進む)。"""
+    low, high = target - timedelta(seconds=before), target + timedelta(seconds=after)
+    pool = [s for s in snapshots if low <= s.inference_at <= high and record_grade(s) is not None]
+    if not pool:
+        return None
+    return min(pool, key=lambda s: (record_grade(s), abs((s.inference_at - target).total_seconds()), s.inference_at))

@@ -7,7 +7,7 @@ import { formatTimeJst } from "../utils/datetime";
 import { combinedMonitorStatus, monitorStatusLabels } from "../utils/monitorStatus";
 import { formatDuration } from "../utils/readingFormat";
 import { formatRecordTime } from "../utils/records";
-import { aiValueText, validationStatusLabel } from "../utils/readingLabels";
+import { aiValueText, recordResultLabel } from "../utils/readingLabels";
 
 const fetchStateLabels: Record<string, string> = { running: "取得中", connecting: "接続中", reconnecting: "再接続中", stopped: "停止中", error: "取得エラー" };
 
@@ -59,7 +59,7 @@ export function MonitorCard({ monitor, onClick, displayFps, latestRecord, dimmed
       <div className="card-notices">
         {/* 直近の1時間記録が前回確定値の保持(Raw棄却中)だった場合の補助表示。大きな現在値は常に正式値(先頭0除去後)。 */}
         {latestRecord?.value_source === "carried_forward" && (
-          <div className="carried-badge" role="status">直前の正式値を継続使用<small>{formatRecordTime(latestRecord.recorded_at)}のAI読取値 {aiValueText(latestRecord.raw_value)} は{validationStatusLabel(latestRecord.validation_status)}</small></div>
+          <div className="carried-badge" role="status">直前の正式値を継続使用<small>{formatRecordTime(latestRecord.recorded_at)}のAI読取値 {aiValueText(latestRecord.raw_value)} は{recordResultLabel(latestRecord)}</small></div>
         )}
         {/* Issue #40: 合意候補がbaselineと矛盾して一定時間続いている(固着の疑い)場合の警告バッジ。 */}
         {monitor.reading_baseline?.conflict && (
