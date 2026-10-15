@@ -82,10 +82,32 @@ def test_low_confidence_is_used_when_there_is_no_confirmed():
     assert chosen.validation_status == "low_confidence" and chosen.inference_at == BUCKET + timedelta(seconds=2)
 
 
-def test_accepted_with_disagreeing_raw_is_the_last_acceptable_tier():
-    ring = [snap(-1, raw="021644", matches=False), snap(1, status="invalid_format", raw="021644", matches=False)]
+def test_confirmed_with_disagreeing_raw_is_never_a_normal_candidate():
+    # 業務仕様: Raw/画像/candidate/validationが一致するtickだけを正常採用する。多数決でconfirmedでも、そのtickのRawが食い違えば対象外(近さより合格が先)。
+    mismatch = snap(-1, raw="021644", candidate="216044", matches=False)  # id 224型(Rawは6桁、多数決は7桁)
+    assert mismatch.validation_status == "confirmed" and record_grade(mismatch) is None
+    assert select_record_snapshot([mismatch, snap(1, status="invalid_format", raw="021644", matches=False)], BUCKET) is None
+
+
+def test_case_a_matching_confirmed_is_adopted():
+    chosen = select_record_snapshot([snap(0, raw="0216044", candidate="216044", matches=True)], BUCKET)
+    assert chosen is not None and record_grade(chosen) == 0
+
+
+def test_case_c_invalid_format_is_not_adopted():
+    assert select_record_snapshot([snap(0, status="invalid_format", raw="0216025", candidate="21625", matches=False)], BUCKET) is None
+
+
+def test_case_d_matching_snapshot_8s_away_beats_a_nearer_mismatching_confirmed():
+    ring = [snap(1, raw="021644", candidate="216044", matches=False), snap(-8, raw="0216044", candidate="216044", matches=True)]
     chosen = select_record_snapshot(ring, BUCKET)
-    assert chosen.raw_value == "021644" and chosen.validation_status == "confirmed" and record_grade(chosen) == 2
+    assert chosen.raw_value == "0216044" and chosen.inference_at == BUCKET - timedelta(seconds=8)
+
+
+def test_case_e_matching_low_confidence_beats_a_nearer_mismatching_confirmed():
+    ring = [snap(1, raw="021644", candidate="216044", matches=False), snap(3, status="low_confidence", raw="0216044", candidate="216044", matches=True)]
+    chosen = select_record_snapshot(ring, BUCKET)
+    assert chosen.validation_status == "low_confidence" and chosen.inference_at == BUCKET + timedelta(seconds=3)
 
 
 def test_no_acceptable_snapshot_in_range_returns_none():
@@ -300,6 +322,36 @@ def test_when_no_good_tick_exists_the_record_keeps_the_safe_carried_forward_beha
     assert (record.validation_status, record.value_source, record.value, record.raw_value) == ("invalid_format", "carried_forward", "216025", "021625")
 
 
+def test_case_f_without_a_matching_snapshot_a_mismatching_confirmed_is_never_stored_as_confirmed(db, monkeypatch):
+    # ±10秒に、Rawが候補と食い違うconfirmed(id 224型)しか無い。最新snapshotもそれ。fallback経路でもvalue_source=confirmedにしない。
+    monitor = make_monitor(db)
+    mismatch = [snap(o, raw="021644", candidate="216044", matches=False) for o in (-3, 0, 4, 10)]
+    scheduler = FakeSelectingScheduler(mismatch, latest=mismatch[-1])
+    assert scheduler.select_record_snapshot(BUCKET) is None
+    install(monkeypatch, monitor.id, scheduler)
+    svc.record_due(db, BUCKET + timedelta(seconds=10.5), writer=RecordingWriter())
+    record = only_record(db, monitor)
+    assert record.value_source == "carried_forward" and record.value_source != "confirmed"
+    assert (record.raw_value, record.candidate_value) == ("021644", "216044")  # 食い違いは証跡に残る
+    assert svc.serialize(record)["correctable"] is True  # 運用者の確認対象になる
+
+
+def test_fallback_latest_snapshot_that_is_consistent_is_still_confirmed(db, monkeypatch):
+    # Schedulerが選択機能を持たない(従来経路)場合でも、Rawが一致するconfirmedは従来どおりconfirmed。
+    monitor = make_monitor(db)
+    latest = snap(0.2, raw="0216044", candidate="216044", matches=True)
+
+    class LegacyScheduler:
+        latest_overlay = latest_overlay_source = latest_confirmed = None
+
+        def get_record_snapshot(self):
+            return latest
+
+    install(monkeypatch, monitor.id, LegacyScheduler())
+    svc.record_due(db, BUCKET + timedelta(seconds=0.5), writer=RecordingWriter())
+    assert only_record(db, monitor).value_source == "confirmed"
+
+
 def test_low_confidence_only_is_recorded_as_low_confidence(db, monkeypatch):
     monitor = make_monitor(db)
     ring = [snap(-3, status="invalid_format", raw="021644", matches=False), snap(2, status="low_confidence", tick=901)]
@@ -325,3 +377,11 @@ def test_worker_polls_fast_only_right_after_the_hour():
     assert worker._next_wait(BUCKET + timedelta(seconds=19)) == 1.0
     assert worker._next_wait(BUCKET + timedelta(seconds=25)) == 30.0
     assert worker._next_wait(BUCKET + timedelta(minutes=30)) == 30.0
+
+
+def test_passthrough_mode_ticks_are_consistent_so_they_stay_confirmed(monkeypatch):
+    # 安定化を無効にした互換モードは多数決の候補が無いが、単発のRawが運用値そのもの。全記録がcarried_forwardにならないこと。
+    scheduler, _ = make_scheduler(monkeypatch, ["0216044"])
+    scheduler.stabilizer.settings.enabled = False
+    last = run_ticks(scheduler, 2)[-1]
+    assert (last.validation_status, last.raw_matches_candidate) == ("confirmed", True)

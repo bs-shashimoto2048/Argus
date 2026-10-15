@@ -202,9 +202,11 @@ class InferenceScheduler:
 
     def _raw_matches_candidate(self, raw_value: str | None, candidate: dict | None) -> bool:
         """このtickのRaw単独が、expected_digits(先頭0を保持した桁数)を満たし、多数決の候補と同じ値か。"""
+        settings = self.stabilizer.settings
+        if not settings.enabled:
+            return bool(raw_value)  # 安定化なし(単発のRawをそのまま運用値にする互換モード): 多数決の候補は無く、Rawが運用値そのもの
         if not raw_value or not candidate:
             return False
-        settings = self.stabilizer.settings
         canonical = canonical_value(raw_value, settings.decimal_position)
         return canonical is not None and validate_format(canonical, settings.expected_digits) and strip_leading_zeros(canonical) == candidate["value"]
 

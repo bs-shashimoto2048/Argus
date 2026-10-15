@@ -358,7 +358,7 @@ def test_raw_and_overlay_and_original_come_from_the_same_tick(db, monkeypatch):
 def test_confirmed_tick_is_confirmed_and_the_formal_value_is_the_snapshot_value(db, monkeypatch):
     monitor = make_monitor(db)
     now = jst(11, 0, 1)
-    snap = make_snapshot(monitor.id, now, validation_status="confirmed", raw_value="0215860", raw_confidence=0.9, confirmed_value="215860", confirmed_confidence=0.9, baseline_conflict=False)
+    snap = make_snapshot(monitor.id, now, validation_status="confirmed", raw_value="0215860", raw_confidence=0.9, confirmed_value="215860", confirmed_confidence=0.9, baseline_conflict=False, candidate_value="215860", raw_matches_candidate=True)
     install(monkeypatch, monitor.id, [snap])
     svc.record_due(db, now, writer=RecordingWriter())
     record = db.scalars(select(ReadingRecord).where(ReadingRecord.monitor_id == monitor.id)).one()

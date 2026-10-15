@@ -73,13 +73,21 @@ class InferenceRecordSnapshot:
 
 
 def record_grade(snapshot: InferenceRecordSnapshot) -> int | None:
-    """毎時記録に使う適性(小さいほど良い)。0: Rawと一致するconfirmed / 1: Rawと一致するlow_confidence /
-    2: 採用はされたがこのtickのRawは候補と食い違う / None: 棄却中(invalid_format/pending/decrease_detected等)。"""
+    """毎時記録に「正常採用」してよいtickの適性(小さいほど良い)。0: confirmed / 1: low_confidence。
+    Raw・推論画像・candidate・validationの意味が一致する(raw_matches_candidate)tickだけが対象で、
+    Stabilizer上confirmedでもRawが候補と食い違うtick、および棄却中(invalid_format/pending等)のtickはNone(正常採用しない)。"""
+    if not snapshot.raw_matches_candidate:
+        return None
     if snapshot.validation_status == "confirmed":
-        return 0 if snapshot.raw_matches_candidate else 2
+        return 0
     if snapshot.validation_status == "low_confidence":
-        return 1 if snapshot.raw_matches_candidate else 2
+        return 1
     return None
+
+
+def evidence_consistent(snapshot: InferenceRecordSnapshot) -> bool:
+    """このsnapshotを、Rawと一致する正常な証跡(value_source=confirmed)として記録してよいか。"""
+    return record_grade(snapshot) is not None
 
 
 def select_record_snapshot(snapshots: list[InferenceRecordSnapshot], target: datetime,

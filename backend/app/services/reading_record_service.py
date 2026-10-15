@@ -18,7 +18,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
-from runtime.record_snapshot import RECORD_SELECT_AFTER_SECONDS
+from runtime.record_snapshot import RECORD_SELECT_AFTER_SECONDS, evidence_consistent
 from runtime.record_writer import record_writer as default_record_writer
 from runtime.runtime_manager import runtime_manager
 
@@ -238,8 +238,9 @@ def build_record(db: Session, monitor: Monitor, bucket: datetime, now_utc: datet
     numeric = _decimal(value)
     if not has_value:
         value_source = "none"
-    elif validation_status in _ACCEPTED_VALIDATION:
+    elif validation_status in _ACCEPTED_VALIDATION and (not use_snapshot or evidence_consistent(snapshot)):
         value_source = "confirmed"
+    # 上記以外(棄却中、または採用されていてもこのtickのRawが多数決の候補と食い違う)は正常採用にしない(Issue #77)。
     else:
         value_source = "carried_forward"
 
