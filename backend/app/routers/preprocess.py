@@ -22,9 +22,14 @@ def preview(monitor_id: int, request: PreprocessPreviewRequest):
         raise HTTPException(503, "映像フレームをまだ取得できていません")
     try:
         image = Image.open(BytesIO(data)).convert("RGB")
-        processed = preprocess_service.apply(preprocess_service.crop_roi(image, request.roi), request.settings)
+        cropped = preprocess_service.crop_roi(image, request.roi)
+        # 巨大画像を確保してから弾くのではなく、resize前に出力サイズを検証する(Issue #81)。
+        preprocess_service.ensure_preview_size(cropped.size, request.settings)
+        processed = preprocess_service.apply(cropped, request.settings)
         output = BytesIO()
         processed.save(output, format="JPEG", quality=90)
         return Response(output.getvalue(), media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+    except preprocess_service.PreviewTooLargeError as exc:
+        raise HTTPException(422, str(exc)) from None
     except Exception as exc:
         raise HTTPException(422, "前処理Previewを生成できません") from exc

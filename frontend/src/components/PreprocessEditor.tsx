@@ -10,15 +10,16 @@ type Props = { monitorId:number; roi:Roi; initial:Record<string, unknown>; onClo
 export function PreprocessEditor({ monitorId, roi, initial, onClose, onSaved }: Props) {
   const [settings, setSettings] = useState<PreprocessSettings>({ ...defaults, ...initial } as PreprocessSettings);
   const [processed, setProcessed] = useState("");
+  const [previewError, setPreviewError] = useState("");
   const [tick, setTick] = useState(0);
-  useEffect(() => { const timer = window.setTimeout(async () => { try { const url = await api.preprocessPreview(monitorId, { settings, roi }); setProcessed((old) => { if (old) URL.revokeObjectURL(old); return url; }); } catch { setProcessed(""); } }, 180); return () => window.clearTimeout(timer); }, [monitorId, roi, settings, tick]);
+  useEffect(() => { const timer = window.setTimeout(async () => { try { const url = await api.preprocessPreview(monitorId, { settings, roi }); setProcessed((old) => { if (old) URL.revokeObjectURL(old); return url; }); setPreviewError(""); } catch (error) { setProcessed(""); setPreviewError(error instanceof Error ? error.message : ""); } }, 180); return () => window.clearTimeout(timer); }, [monitorId, roi, settings, tick]);
   const update = <K extends keyof PreprocessSettings>(key: K, value: PreprocessSettings[K]) => setSettings((current) => ({ ...current, [key]: value }));
   return <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="前処理編集">
     <div className="modal preprocess-editor">
       <div className="modal-head"><h2>前処理を編集</h2><button className="icon-button" onClick={onClose}>×</button></div>
       <div className="preprocess-preview">
         <div><small>Original</small><img src={`${api.preview(monitorId)}?preprocess=${tick}`} alt="Original" /></div>
-        <div><small>Processed</small>{processed ? <img src={processed} alt="Processed" /> : <div className="no-video">Preview待機中</div>}</div>
+        <div><small>Processed</small>{processed ? <img src={processed} alt="Processed" /> : <div className="no-video">{previewError || "Preview待機中"}</div>}</div>
       </div>
       <div className="preprocess-controls">
         <fieldset className="preprocess-group">
