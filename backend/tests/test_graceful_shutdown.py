@@ -260,10 +260,12 @@ def _open_stream(port: int, stop: threading.Event):
         pass
 
 
-def _run_server_and_terminate(clients: int) -> float:
+def _run_server_and_terminate(clients: int, db_dir: Path) -> float:
     port = _free_port()
+    # CIはARGUS_DATABASE_URLで共有DBを指す。隔離サーバーがそのDBへ触れないよう、専用の一時DBへ向ける。
+    env = dict(os.environ, ARGUS_DATABASE_URL=f"sqlite:///{(db_dir / 'shutdown_server.db').as_posix()}")
     server = Path(__file__).with_name("_shutdown_server.py")
-    proc = subprocess.Popen([sys.executable, str(server), str(port)], creationflags=subprocess.CREATE_NEW_PROCESS_GROUP, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    proc = subprocess.Popen([sys.executable, str(server), str(port)], creationflags=subprocess.CREATE_NEW_PROCESS_GROUP, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
     stop = threading.Event()
     try:
         for _ in range(60):
@@ -288,5 +290,5 @@ def _run_server_and_terminate(clients: int) -> float:
 
 @pytest.mark.skipif(sys.platform != "win32", reason="CTRL_BREAK_EVENTはWindowsのみ")
 @pytest.mark.parametrize("clients", [0, 3])
-def test_process_exits_on_ctrl_break_even_with_active_streams(clients):
-    assert _run_server_and_terminate(clients) < 10
+def test_process_exits_on_ctrl_break_even_with_active_streams(clients, tmp_path):
+    assert _run_server_and_terminate(clients, tmp_path) < 10
