@@ -1,4 +1,5 @@
 import logging
+import time
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -33,6 +34,15 @@ def _set_status(monitor_id: int, status: str) -> None:
             monitor.status = status
             db.commit()
     finally: db.close()
+
+def _stop_stage(name: str, stop) -> None:
+    """終了処理の各段の所要時間をログへ残す(Issue #72: どの段が詰まったか後から分かるように)。"""
+    begin = time.monotonic()
+    try:
+        stop()
+    except Exception:
+        logger.exception("終了処理 %s に失敗しました", name)
+    logging.getLogger("uvicorn.error").info("終了処理 %s: %.1f秒", name, time.monotonic() - begin)
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -104,11 +114,11 @@ async def lifespan(_app: FastAPI):
     # 停止順: 配信ループへ終了通知 → hourly/record/csv worker → Monitor Runtime(映像・推論) → cpp worker。
     # cpp workerはRuntime(推論thread)の停止後に止める(推論中のworkerを先に止めない)。各段はboundedで、無期限に待たない。
     request_shutdown()
-    hourly_record_worker.stop()
-    record_writer.stop()
-    csv_export_worker.stop()
-    runtime_manager.stop_all()
-    model_registry.close()
+    _stop_stage("hourly_record_worker", hourly_record_worker.stop)
+    _stop_stage("record_writer", record_writer.stop)
+    _stop_stage("csv_export_worker", csv_export_worker.stop)
+    _stop_stage("runtime_manager", runtime_manager.stop_all)
+    _stop_stage("cpp_worker", model_registry.close)
 
 app = FastAPI(title=settings.app_name, version=settings.version, lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_origin_regex=settings.cors_origin_regex, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])

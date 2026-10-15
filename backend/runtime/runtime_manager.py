@@ -1,6 +1,15 @@
-from threading import RLock
+import logging
+from threading import RLock, Thread
+from time import monotonic
 from .monitor_runtime import MonitorRuntime
 from .video_reader import ReaderConfig
+
+logger = logging.getLogger("uvicorn.error")
+
+# stop_all全体の待ち上限。各Runtimeの停止は並列で、1台が詰まっても他と全体を無期限に待たせない
+# (各Runtime内の停止は reader.close 3秒 + scheduler join 2秒 + 映像thread join 2秒 = 最大約7秒)。
+STOP_ALL_TIMEOUT_SECONDS = 12.0
+
 
 class RuntimeManager:
     def __init__(self) -> None:
@@ -96,8 +105,34 @@ class RuntimeManager:
 
     def get(self, monitor_id: int) -> MonitorRuntime | None:
         return self.get_runtime(monitor_id)
-    def stop_all(self) -> None:
+    def stop_all(self, timeout: float = STOP_ALL_TIMEOUT_SECONDS) -> None:
+        """全Runtimeを並列に停止する(Issue #72)。1台の停止が詰まっても、timeoutで見切って先へ進む。"""
         with self._lock:
-            for monitor_id in list(self._runtimes): self.stop_monitor(monitor_id)
+            runtimes = dict(self._runtimes)
+            self._runtimes.clear()
+        started = monotonic()
+        durations: dict[int, float] = {}
+
+        def stop_one(monitor_id: int, runtime: MonitorRuntime) -> None:
+            begin = monotonic()
+            try:
+                runtime.stop()
+            except Exception:
+                logger.exception("monitor %s のRuntime停止に失敗しました", monitor_id)
+            durations[monitor_id] = monotonic() - begin
+
+        threads = {mid: Thread(target=stop_one, args=(mid, rt), name=f"argus-stop-{mid}", daemon=True) for mid, rt in runtimes.items()}
+        for thread in threads.values():
+            thread.start()
+        deadline = started + timeout
+        for thread in threads.values():
+            thread.join(max(0.0, deadline - monotonic()))
+        with self._lock:
+            for monitor_id in runtimes:
+                self._generation[monitor_id] = self._generation.get(monitor_id, 0) + 1
+        stuck = [mid for mid, thread in threads.items() if thread.is_alive()]
+        logger.info("Runtime停止: %s台 / %.1f秒 (各台: %s)", len(runtimes), monotonic() - started, ", ".join(f"{mid}={sec:.1f}s" for mid, sec in sorted(durations.items())) or "-")
+        if stuck:
+            logger.warning("Runtime停止が%.0f秒以内に完了しませんでした(monitor %s)。待たずに終了処理を続行します", timeout, stuck)
 
 runtime_manager = RuntimeManager()

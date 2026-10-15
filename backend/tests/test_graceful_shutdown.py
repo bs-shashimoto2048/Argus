@@ -292,3 +292,65 @@ def _run_server_and_terminate(clients: int, db_dir: Path) -> float:
 @pytest.mark.parametrize("clients", [0, 3])
 def test_process_exits_on_ctrl_break_even_with_active_streams(clients, tmp_path):
     assert _run_server_and_terminate(clients, tmp_path) < 10
+
+
+# ---- 停止段の上限(追加修正) ---------------------------------------------------
+
+def test_stop_all_runs_in_parallel_and_gives_up_on_a_stuck_runtime(caplog):
+    release = threading.Event()
+
+    class Stuck:
+        def stop(self):
+            release.wait(20)  # release()が戻らないカメラ相当
+
+    class Quick:
+        stopped = False
+
+        def stop(self):
+            self.stopped = True
+
+    manager = RuntimeManager()
+    quick = [Quick(), Quick()]
+    manager._runtimes.update({2: Stuck(), 3: quick[0], 4: quick[1]})
+    started = time.monotonic()
+    try:
+        manager.stop_all(timeout=1.0)
+    finally:
+        release.set()
+    assert time.monotonic() - started < 3  # 詰まった1台に全体を待たされない
+    assert all(q.stopped for q in quick)
+    assert manager.count() == 0
+
+
+def test_stop_all_total_time_is_the_slowest_runtime_not_the_sum():
+    class Slow:
+        def stop(self):
+            time.sleep(0.5)
+
+    manager = RuntimeManager()
+    manager._runtimes.update({2: Slow(), 3: Slow(), 4: Slow()})
+    started = time.monotonic()
+    manager.stop_all()
+    assert time.monotonic() - started < 1.2  # 直列なら1.5秒以上
+
+
+def test_close_bounded_returns_when_release_hangs():
+    from runtime.monitor_runtime import _close_bounded
+
+    release = threading.Event()
+    started = time.monotonic()
+    ok = _close_bounded(lambda: release.wait(20), 0.3, "test")
+    release.set()
+    assert ok is False
+    assert time.monotonic() - started < 2
+    assert _close_bounded(lambda: None, 1.0, "test") is True
+
+
+def test_stopped_worker_is_not_respawned_by_a_late_infer(tmp_path):
+    from app.inference.cpp_worker_process import CppWorkerStartError
+
+    worker = CppOnnxWorkerProcess(Path(sys.executable), "cpu")
+    worker.stop()
+    with pytest.raises(CppWorkerStartError):
+        worker.infer(Path("x.onnx"), "p", "-", b"\x00" * 3, 1, 1)
+    assert worker._proc is None

@@ -50,8 +50,12 @@ class CppOnnxWorkerProcess:
         self._provider = provider
         self._proc: subprocess.Popen | None = None
         self._lock = threading.Lock()
+        self._closed = False
 
     def _ensure_started(self) -> None:
+        if self._closed:
+            # stop()後に遅れて届いた推論要求でworkerを再起動しない(終了処理中のorphan防止、Issue #72)。
+            raise CppWorkerStartError("WORKER_STOPPED: backend is shutting down")
         if self._proc is not None and self._proc.poll() is None:
             return
         if not self._exe_path.is_file():
@@ -125,6 +129,7 @@ class CppOnnxWorkerProcess:
         正常系(workerが自力終了)ではterminate/killは呼ばない。応答しないworkerでもlockを
         無期限に待たない(infer()が応答待ちでlockを保持していてもstopは完了する)。
         """
+        self._closed = True
         acquired = self._lock.acquire(timeout=self.STOP_LOCK_TIMEOUT_SECONDS)
         try:
             proc = self._proc
