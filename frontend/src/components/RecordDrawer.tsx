@@ -5,6 +5,7 @@ import { displayStatusLabels, formatConfidence, formatRecordDateTimeFull, format
 import { AI_VALUE_HELP, CARRIED_TITLE, OFFICIAL_VALUE_HELP, VALUE_SOURCE_TITLE, carriedNoteBody, validationStatusLabel, valueSourceDescription, valueSourceLabel } from "../utils/readingLabels";
 import { CorrectionDialog } from "./CorrectionDialog";
 import { StateBadge } from "./StateBadge";
+import { stripLeadingZeros } from "../utils/readingFormat";
 
 type Kind = "original" | "overlay";
 
@@ -45,6 +46,7 @@ export function RecordDrawer({ record, onClose, onCorrected, canCorrect = true }
     ["1時間前の正式値", formatValue(record.previous_value)],
     ["使用量（前回との差）", formatValue(record.usage)],
     ["最新のAI読取値", formatValue(record.raw_value)],
+    ...(record.candidate_value && record.candidate_value !== stripLeadingZeros(record.raw_value) ? [["時系列判定候補", formatValue(record.candidate_value)] as [string, string]] : []),
     ["AI読取値の信頼度", formatConfidence(record.raw_confidence)],
     ["正式値の信頼度", formatConfidence(record.confidence)],
     ["読取結果", validationStatusLabel(record.validation_status)],

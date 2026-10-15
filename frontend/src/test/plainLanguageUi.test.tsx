@@ -142,6 +142,16 @@ describe("通常のUIに内部名を出さない", () => {
     for (const label of ["正式値", "1時間前の正式値", "使用量（前回との差）", "最新のAI読取値", "AI読取値の信頼度", "正式値の信頼度", "読取結果", "正式値の決まり方", "モニター状態", "読取基準値との不一致", "AI読取方式", "使用モデル"]) expect(screen.getAllByText(label, { selector: "dt, small" }).length).toBeGreaterThan(0);
   });
 
+  it("記録Drawer: 時系列判定候補は、AI読取値(先頭0除去後)と異なるときだけ区別して表示する(Issue #77)", () => {
+    mockFetch([get("/api/records/7/corrections", { corrections: [] })]);
+    const { rerender } = render(<RecordDrawer record={{ ...carried("invalid_format"), raw_value: "0216025", candidate_value: "21625" }} onClose={() => {}} />);
+    expect(screen.getByText("時系列判定候補")).toBeInTheDocument();
+    rerender(<RecordDrawer record={{ ...carried("invalid_format"), raw_value: "0216025", candidate_value: "216025" }} onClose={() => {}} />);
+    expect(screen.queryByText("時系列判定候補")).not.toBeInTheDocument();
+    rerender(<RecordDrawer record={{ ...carried("invalid_format"), raw_value: "0216025" }} onClose={() => {}} />);
+    expect(screen.queryByText("時系列判定候補")).not.toBeInTheDocument();
+  });
+
   it("記録Drawer(carried_forward): 「直前の正式値を継続使用」と、AI読取値が採用されなかった理由・正式値の継続を説明する", async () => {
     mockFetch([get("/api/records/7/corrections", { corrections: [] })]);
     render(<RecordDrawer record={carried("decrease_detected")} onClose={() => {}} onCorrected={() => {}} />);

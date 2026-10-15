@@ -18,6 +18,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
+from runtime.record_snapshot import RECORD_SELECT_AFTER_SECONDS
 from runtime.record_writer import record_writer as default_record_writer
 from runtime.runtime_manager import runtime_manager
 
@@ -178,11 +179,24 @@ def _live_raw_and_validation(monitor_id: int) -> tuple[str | None, str | None]:
     return confirmed.raw_value, confirmed.validation_status.value
 
 
-def get_fresh_snapshot(monitor_id: int, now_utc: datetime):
-    """そのMonitorの、直近の完了した推論tickのsnapshotを**1回だけ**取得する(古い場合・無い場合はNone)。
+def _selector(monitor_id: int):
+    """基準時刻に近い正常snapshotを選べるScheduler(無ければNone: 従来どおり直近のsnapshotを使う)。"""
+    runtime = runtime_manager.get_runtime(monitor_id)
+    scheduler = getattr(runtime, "inference_scheduler", None) if runtime else None
+    return getattr(scheduler, "select_record_snapshot", None) if scheduler else None
 
+
+def get_fresh_snapshot(monitor_id: int, now_utc: datetime, target: datetime | None = None):
+    """そのMonitorの、定時計測recordに使う推論tickのsnapshotを**1つだけ**取得する(無い場合はNone)。
+
+    targetを指定すると、計測枠の基準時刻の前後から「Rawと正式値が一致する正常snapshot」で最も近いものを選ぶ(Issue #77)。
+    該当が無い場合は、従来どおり直近のsnapshot(古い場合はNone)を証跡にする。
     定時計測recordの値・Raw・判定・画像・engine/modelは、すべてこの1つのsnapshotから作る(別tickの値を混ぜない)。
     """
+    select = _selector(monitor_id) if target is not None else None
+    chosen = select(target) if select else None
+    if chosen is not None:
+        return chosen
     runtime = runtime_manager.get_runtime(monitor_id)
     scheduler = getattr(runtime, "inference_scheduler", None) if runtime else None
     getter = getattr(scheduler, "get_record_snapshot", None) if scheduler else None
@@ -252,6 +266,7 @@ def build_record(db: Session, monitor: Monitor, bucket: datetime, now_utc: datet
         value_source=value_source,
         numeric_value=str(numeric) if numeric is not None else None,
         raw_value=raw_value if has_value else None,
+        candidate_value=snapshot.candidate_value if use_snapshot else None,
         previous_value=previous_value,
         usage=usage,
         confidence=confidence,
@@ -312,9 +327,13 @@ def record_due(db: Session, now_utc: datetime | None = None, started_at: datetim
         if status not in _VALUE_OK_STATUSES and not settled:
             outcomes.append(RecordOutcome(monitor.id, key, "waiting"))
             continue
+        if elapsed < RECORD_SELECT_AFTER_SECONDS and monitor.status == "running" and _selector(monitor.id) is not None:
+            # 基準時刻の直後のtickも選択の候補にするため、探索範囲(基準時刻+RECORD_SELECT_AFTER_SECONDS)が揃うまで待つ。
+            outcomes.append(RecordOutcome(monitor.id, key, "waiting"))
+            continue
         try:
-            # 推論snapshotは記録ごとに1回だけ取得し、同じsnapshotだけから記録(Raw/判定/値)と画像ジョブを作る。
-            snapshot = get_fresh_snapshot(monitor.id, now_utc)
+            # 推論snapshotは記録ごとに1回だけ選び、同じsnapshotだけから記録(Raw/判定/値)と画像ジョブを作る。
+            snapshot = get_fresh_snapshot(monitor.id, now_utc, bucket.astimezone(timezone.utc))
             record = build_record(db, monitor, bucket, now_utc, snapshot)
             db.add(record)
             db.commit()  # 計測値の記録を先に確定する(画像保存の成否に関わらず残る)
@@ -415,6 +434,7 @@ def serialize(record: ReadingRecord) -> dict:
         "id": record.id, "monitor_id": record.monitor_id, "monitor_name": record.monitor_name,
         "hour_bucket": record.hour_bucket, "recorded_at": _iso(record.recorded_at),
         "value": record.value, "value_source": record.value_source, "numeric_value": record.numeric_value, "raw_value": record.raw_value,
+        "candidate_value": record.candidate_value,
         "previous_value": record.previous_value, "usage": record.usage, "confidence": record.confidence,
         "validation_status": record.validation_status, "display_status": record.display_status,
         "baseline_conflict": record.baseline_conflict, "engine": record.engine, "model_id": record.model_id,

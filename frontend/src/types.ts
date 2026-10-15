@@ -117,7 +117,7 @@ export type ValueSource = "confirmed"|"carried_forward"|"none";
 export type ImageStatus = "not_saved"|"pending"|"ok"|"failed"|"dropped"|"disabled";
 export type ReadingRecord = {
   id:number;monitor_id:number;monitor_name:string;hour_bucket:string;recorded_at:string;
-  value:string|null;value_source:ValueSource;numeric_value:string|null;raw_value:string|null;previous_value:string|null;usage:string|null;
+  value:string|null;value_source:ValueSource;numeric_value:string|null;raw_value:string|null;candidate_value?:string|null;previous_value:string|null;usage:string|null;
   confidence:number|null;validation_status:string|null;display_status:string;baseline_conflict:boolean;
   engine:string|null;model_id:string|null;original_image_path:string|null;overlay_image_path:string|null;image_status:ImageStatus;image_error:string|null;
   // 証跡: raw_confidenceは最新Raw側のconfidence(confidenceは正式値側)。inference_atはその証跡snapshotの推論時刻。snapshot_consistent=falseは同一tick保証が無かった既存の記録
