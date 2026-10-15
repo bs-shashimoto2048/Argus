@@ -12,6 +12,8 @@ from runtime.csv_export_worker import csv_export_worker
 from runtime.hourly_record_worker import hourly_record_worker
 from runtime.record_writer import record_writer
 from runtime.video_reader import ReaderConfig
+from runtime.shutdown_signal import install_signal_hook, request_shutdown
+from .inference.registry import model_registry
 from .services.secret_store import decrypt
 from .services.result_store import save_result
 from .services.reading_record_service import backfill_value_source
@@ -34,6 +36,7 @@ def _set_status(monitor_id: int, status: str) -> None:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    install_signal_hook()
     Base.metadata.create_all(engine)
     if engine.url.get_backend_name() == "sqlite":
         with engine.begin() as connection:
@@ -98,10 +101,14 @@ async def lifespan(_app: FastAPI):
     record_writer.start()
     hourly_record_worker.start()
     yield
+    # 停止順: 配信ループへ終了通知 → hourly/record/csv worker → Monitor Runtime(映像・推論) → cpp worker。
+    # cpp workerはRuntime(推論thread)の停止後に止める(推論中のworkerを先に止めない)。各段はboundedで、無期限に待たない。
+    request_shutdown()
     hourly_record_worker.stop()
     record_writer.stop()
     csv_export_worker.stop()
     runtime_manager.stop_all()
+    model_registry.close()
 
 app = FastAPI(title=settings.app_name, version=settings.version, lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_origin_regex=settings.cors_origin_regex, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
