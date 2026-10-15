@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from threading import Event, Lock, Thread, current_thread
 import time
 
@@ -10,6 +11,22 @@ from .video_reader import ReaderConfig, VideoReader
 from .inference_scheduler import InferenceScheduler
 from app.core.config import settings as app_settings
 from app.inference.registry import model_registry
+
+logger = logging.getLogger("uvicorn.error")
+
+# VideoCapture.release()は、別threadがread()でブロック中だと戻らないことがある(FFmpegのREAD_TIMEOUT 8秒まで)。
+# 停止処理をそれに巻き込まないよう、release側は3秒で見切る(未完了でも資源は読取threadの終了時に解放される)。
+READER_CLOSE_TIMEOUT_SECONDS = 3.0
+
+
+def _close_bounded(close, timeout: float, label: str) -> bool:
+    thread = Thread(target=close, name="argus-reader-close", daemon=True)
+    thread.start()
+    thread.join(timeout)
+    if thread.is_alive():
+        logger.warning("%s が%.0f秒以内に完了しませんでした。待たずに停止処理を続行します", label, timeout)
+        return False
+    return True
 
 
 class MonitorRuntime:
@@ -59,14 +76,24 @@ class MonitorRuntime:
 
     def stop(self) -> None:
         self._stop.set()
+        timings: list[str] = []
+        begin = time.monotonic()
         reader = self.reader
         if reader:
-            reader.close()
+            _close_bounded(reader.close, READER_CLOSE_TIMEOUT_SECONDS, f"monitor {self.monitor_id} のVideoReader.close")
+        timings.append(f"reader.close={time.monotonic() - begin:.1f}s")
+        step = time.monotonic()
         if self.inference_scheduler:
             self.inference_scheduler.stop()
+        timings.append(f"scheduler={time.monotonic() - step:.1f}s")
+        step = time.monotonic()
         if self._thread and self._thread.is_alive() and self._thread is not current_thread():
             self._thread.join(timeout=2)
+        timings.append(f"thread={time.monotonic() - step:.1f}s")
+        step = time.monotonic()
         self._set_status("stopped")
+        timings.append(f"status={time.monotonic() - step:.1f}s")
+        logger.info("monitor %s 停止: %s", self.monitor_id, ", ".join(timings))
 
     def update_settings(self, video_fps: float, inference_settings: dict | None) -> None:
         """映像取得(VideoReader/VideoCapture)を再接続せず、推論設定だけを更新する。
